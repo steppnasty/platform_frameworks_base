@@ -59,12 +59,16 @@ Layer::Layer(SurfaceFlinger* flinger,
         mOpaqueLayer(true),
         mNeedsDithering(false),
         mSecure(false),
-        mProtectedByApp(false),
-        mLayerQcomFlags(0)
+#ifdef QCOM_HARDWARE
+        mLayerQcomFlags(0),
+#endif
+        mProtectedByApp(false)
 {
     mCurrentCrop.makeInvalid();
     glGenTextures(1, &mTextureName);
+#ifdef QCOM_HARDWARE
     updateLayerQcomFlags(LAYER_UPDATE_STATUS, true, mLayerQcomFlags);
+#endif
 }
 
 void Layer::onFirstRef()
@@ -255,7 +259,9 @@ void Layer::setPerFrameData(hwc_layer_t* hwcl) {
     } else {
         hwcl->handle = buffer->handle;
     }
+#ifdef QCOM_HARDWARE
     hwcl->flags = getPerFrameFlags(hwcl->flags, mLayerQcomFlags);
+#endif
 }
 
 void Layer::onDraw(const Region& clip) const
@@ -356,10 +362,12 @@ bool Layer::isProtected() const
             (activeBuffer->getUsage() & GRALLOC_USAGE_PROTECTED);
 }
 
+#ifdef QCOM_HARDWARE
 void Layer::setIsUpdating(bool isUpdating)
 {
     updateLayerQcomFlags(LAYER_UPDATE_STATUS, isUpdating, mLayerQcomFlags);
 }
+#endif
 
 uint32_t Layer::doTransaction(uint32_t flags)
 {
@@ -426,9 +434,9 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
             recomputeVisibleRegions = true;
             return;
         }
-
+#ifdef QCOM_HARDWARE
         updateLayerQcomFlags(LAYER_UPDATE_STATUS, true, mLayerQcomFlags);
-
+#endif
         // update the active buffer
         mActiveBuffer = mSurfaceTexture->getCurrentBuffer();
 
@@ -516,8 +524,10 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
                     bufWidth, bufHeight, mCurrentTransform,
                     front.requested_w, front.requested_h);
         }
+#ifdef QCOM_HARDWARE
     } else {
         updateLayerQcomFlags(LAYER_UPDATE_STATUS, false, mLayerQcomFlags);
+#endif
     }
 }
 
