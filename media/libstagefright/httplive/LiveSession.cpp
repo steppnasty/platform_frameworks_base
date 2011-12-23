@@ -223,6 +223,8 @@ void LiveSession::onDisconnect() {
 }
 
 status_t LiveSession::fetchFile(const char *url, sp<ABuffer> *out) {
+    LOGW("fetchFile %s", url);
+
     *out = NULL;
 
     sp<DataSource> source;
@@ -520,6 +522,7 @@ rinse_repeat:
                 return;
             } else {
                 ALOGV("fetchPlaylist stopped due to seek, let seek complete");
+                return;
             }
         } else {
             mPlaylist = playlist;
@@ -569,7 +572,7 @@ rinse_repeat:
         if (mPrevBandwidthIndex != (ssize_t)bandwidthIndex) {
             // Go back to the previous bandwidth.
 
-            ALOGI("new bandwidth does not have the sequence number "
+            ALOGW("new bandwidth does not have the sequence number "
                  "we're looking for, switching back to previous bandwidth");
 
             mLastPlaylistFetchTimeUs = -1;
@@ -589,7 +592,7 @@ rinse_repeat:
             // we've missed the boat, let's start from the lowest sequence
             // number available and signal a discontinuity.
 
-            ALOGI("We've missed the boat, restarting playback.");
+            ALOGW("We've missed the boat, restarting playback.");
             mSeqNumber = lastSeqNumberInPlaylist;
             explicitDiscontinuity = true;
 
@@ -655,7 +658,7 @@ rinse_repeat:
             return;
         }
 
-        ALOGI("Retrying with a different bandwidth stream.");
+        ALOGW("Retrying with a different bandwidth stream.");
 
         mLastPlaylistFetchTimeUs = -1;
         bandwidthIndex = getBandwidthIndex();
@@ -666,17 +669,24 @@ rinse_repeat:
     }
 
     if ((size_t)mPrevBandwidthIndex != bandwidthIndex) {
+#ifdef QCOM_HARDWARE
         char value[PROPERTY_VALUE_MAX];
         if(property_get("httplive.enable.discontinuity", value, NULL) &&
            (!strcasecmp(value, "true") || !strcmp(value, "1")) ) {
            bandwidthChanged = true;
-           ALOGV("discontinuity property set, queue discontinuity");
+           ALOGW("discontinuity property set, queue discontinuity");
         }
         else {
-           ALOGV("BW changed, but do not queue discontinuity");
            bandwidthChanged = false;
         }
 
+        if (mPrevBandwidthIndex >= 0) {
+           LOGW("BW changed from index %d to index %d",
+                    mPrevBandwidthIndex, bandwidthIndex);
+        }
+#else
+        bandwidthChanged = true;
+#endif
     }
 
     if (mPrevBandwidthIndex < 0) {
@@ -688,7 +698,7 @@ rinse_repeat:
     if (explicitDiscontinuity || bandwidthChanged) {
         // Signal discontinuity.
 
-        ALOGI("queueing discontinuity (explicit=%d, bandwidthChanged=%d)",
+        ALOGW("queueing discontinuity (explicit=%d, bandwidthChanged=%d)",
               explicitDiscontinuity, bandwidthChanged);
 
         sp<ABuffer> tmp = new ABuffer(188);
@@ -893,20 +903,20 @@ void LiveSession::onSeek(const sp<AMessage> &msg) {
              int32_t newSeqNumber = mFirstSeqNumber + index;
 
              if (newSeqNumber == mSeqNumber) {
-                 ALOGV("Seek not required current seq %d", mSeqNumber);
+                 ALOGW("Seek not required current seq %d", mSeqNumber);
                  mSeekTimeUs = -1;
 
              } else {
                  mSeqNumber = newSeqNumber;
                  mDataSource->reset();
                  mSeekTimeUs = segmentStartUs;
-                 ALOGV("Seeking to seq %d new seek time %0.2f secs", newSeqNumber, mSeekTimeUs/1E6);
+                 ALOGW("Seeking to seq %d new seek time %0.2f secs", newSeqNumber, mSeekTimeUs/1E6);
              }
         }
     } else {
         mSeekTimeUs = -1;
         if( mPlaylist != NULL ) {
-           ALOGI("Seeking Live Streams is not supported, ignore seek");
+           ALOGW("Seeking Live Streams is not supported, ignore seek");
         } else {
            ALOGE("onSeek error - Playlist is NULL");
         }
