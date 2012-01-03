@@ -58,6 +58,13 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_C_INCLUDES += hardware/libhardware/modules/gralloc
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+LOCAL_SHARED_LIBRARIES += \
+	libQcomUI
+LOCAL_C_INCLUDES += hardware/qcom/display/libqcomui
+LOCAL_CFLAGS += -DQCOM_HARDWARE
+endif
+
 LOCAL_MODULE:= libsurfaceflinger
 
 include $(BUILD_SHARED_LIBRARY)
