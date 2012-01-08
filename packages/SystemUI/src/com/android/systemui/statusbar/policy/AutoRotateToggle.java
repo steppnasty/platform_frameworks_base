@@ -16,61 +16,50 @@
 
 package com.android.systemui.statusbar.policy;
 
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.provider.Settings;
+import android.util.AttributeSet;
 import android.util.Log;
-import android.util.Slog;
 import android.view.IWindowManager;
-import android.widget.CompoundButton;
+
+import com.android.systemui.R;
 
 /**
  * TODO: Listen for changes to the setting.
  */
-public class AutoRotateController implements CompoundButton.OnCheckedChangeListener {
-    private static final String TAG = "StatusBar.AutoRotateController";
-
-    private Context mContext;
-    private CompoundButton mCheckBox;
+public class AutoRotateToggle extends Toggle {
 
     private boolean mAutoRotation;
-    private boolean mSystemUpdate;
 
     private ContentObserver mAccelerometerRotationObserver = new ContentObserver(new Handler()) {
         @Override
         public void onChange(boolean selfChange) {
-            updateAccelerometerRotationCheckbox();
+            updateToggleState();
         }
     };
 
-    public AutoRotateController(Context context, CompoundButton checkbox) {
-        mContext = context;
+    public AutoRotateToggle(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
+
+    public AutoRotateToggle(Context context, AttributeSet attrs, int defStyle) {
+        super(context, attrs);
+
         mAutoRotation = getAutoRotation();
-        mCheckBox = checkbox;
-        checkbox.setChecked(mAutoRotation);
-        checkbox.setOnCheckedChangeListener(this);
     }
 
-    public void onCheckedChanged(CompoundButton view, boolean checked) {
-        if (mSystemUpdate)
-            return;
-
-        if (checked != mAutoRotation) {
-            setAutoRotation(checked);
-        }
-    }
-
-    private void updateAccelerometerRotationCheckbox() {
-        mSystemUpdate = true;
-        mCheckBox.setChecked(Settings.System.getInt(
-                mContext.getContentResolver(),
-                Settings.System.ACCELEROMETER_ROTATION, 0) != 0);
-        mSystemUpdate = false;
+    @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
+        mToggle.setChecked(mAutoRotation);
     }
 
     private boolean getAutoRotation() {
@@ -95,5 +84,19 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
                 }
             }
         });
+    }
+
+    @Override
+    protected void updateInternalState() {
+        mToggle.setChecked(Settings.System.getInt(
+                mContext.getContentResolver(),
+                Settings.System.ACCELEROMETER_ROTATION, 0) != 0);
+    }
+
+    @Override
+    protected void onCheckChanged(boolean isChecked) {
+        if (isChecked != mAutoRotation) {
+            setAutoRotation(isChecked);
+        }
     }
 }
