@@ -261,7 +261,7 @@ bool LayerRenderer::resizeLayer(Layer* layer, uint32_t width, uint32_t height) {
     return true;
 }
 
-Layer* LayerRenderer::createTextureLayer(bool isOpaque) {
+Layer* LayerRenderer::createTextureLayer(bool isOpaque, int textureName) {
     LAYER_RENDERER_LOGD("Creating new texture layer");
 
     Layer* layer = new Layer(0, 0);
@@ -277,8 +277,11 @@ Layer* LayerRenderer::createTextureLayer(bool isOpaque) {
     layer->setRenderTarget(GL_NONE); // see ::updateTextureLayer()
 
     glActiveTexture(GL_TEXTURE0);
-    layer->generateTexture();
 
+    if (textureName == 0)
+        layer->generateTexture();
+    else
+        *(layer->getTexturePointer()) = static_cast<GLuint>(textureName);
     return layer;
 }
 
