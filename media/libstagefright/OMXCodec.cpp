@@ -1732,7 +1732,21 @@ status_t OMXCodec::setVideoOutputFormat(
         OMX_VIDEO_PARAM_PORTFORMATTYPE format;
         InitOMXParams(&format);
         format.nPortIndex = kPortIndexOutput;
+#ifdef QCOM_HARDWARE
+        if (!strncmp(mComponentName, "OMX.qcom",8)) {
+            int32_t reqdColorFormat = ColorFormatInfo::getPreferredColorFormat(mOMXLivesLocally);
+            for(format.nIndex = 0;
+                    (OK == mOMX->getParameter(mNode, OMX_IndexParamVideoPortFormat, &format, sizeof(format)));
+                    format.nIndex++) {
+                if(format.eColorFormat == reqdColorFormat)
+                    break;
+            }
+        } else
+#endif
         format.nIndex = 0;
+
+        CODEC_LOGV("Video O/P format.nIndex 0x%x",format.nIndex);
+        CODEC_LOGE("Video O/P format.eColorFormat 0x%x",format.eColorFormat);
 
         status_t err = mOMX->getParameter(
                 mNode, OMX_IndexParamVideoPortFormat,
@@ -4259,7 +4273,7 @@ void OMXCodec::setG711Format(int32_t numChannels) {
 
 void OMXCodec::setImageOutputFormat(
         OMX_COLOR_FORMATTYPE format, OMX_U32 width, OMX_U32 height) {
-    CODEC_LOGV("setImageOutputFormat(%ld, %ld)", width, height);
+    CODEC_LOGE("setImageOutputFormat(%ld, %ld)", width, height);
 
 #if 0
     OMX_INDEXTYPE index;
