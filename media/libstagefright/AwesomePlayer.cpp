@@ -245,9 +245,9 @@ AwesomePlayer::~AwesomePlayer() {
 
     if (mStatistics) {
         Mutex::Autolock autoLock(mStatsLock);
-        LOGW("=========================================================");
-        LOGW("Average Frames Per Second: %.4f", mStats.mFPSSumUs/((double)mStats.mStatisticsFrames));
-        LOGW("========================================================");
+        ALOGW("=========================================================");
+        ALOGW("Average Frames Per Second: %.4f", mStats.mFPSSumUs/((double)mStats.mStatisticsFrames));
+        ALOGW("========================================================");
     }
 
     reset();
@@ -1902,7 +1902,7 @@ void AwesomePlayer::onVideoEvent() {
             diff = now - mStats.mLastFrameUs;
             if (diff > 250000) {
                 float fps =((mStats.mTotalFrames - mStats.mLastFrame) * 1E6)/diff;
-                LOGW("Frames per second: %.4f", fps);
+                ALOGW("Frames per second: %.4f", fps);
 
                 mStats.mFPSSumUs += fps;
                 mStats.mLastFrameUs = now;
@@ -2495,32 +2495,32 @@ void AwesomePlayer::modifyFlags(unsigned value, FlagMode mode) {
 void AwesomePlayer::logStatistics() {
     const char *mime;
     mVideoTrack->getFormat()->findCString(kKeyMIMEType, &mime);
-    LOGW("=====================================================");
-    if (mFlags & LOOPING) {LOGW("Looping Update");}
-    LOGW("Mime Type: %s",mime);
-    LOGW("Number of frames dropped: %lld",mStats.mNumVideoFramesDropped);
-    LOGW("Number of frames rendered: %u",mStats.mTotalFrames);
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    if (mFlags & LOOPING) {ALOGW("Looping Update");}
+    ALOGW("Mime Type: %s",mime);
+    ALOGW("Number of frames dropped: %lld",mStats.mNumVideoFramesDropped);
+    ALOGW("Number of frames rendered: %u",mStats.mTotalFrames);
+    ALOGW("=====================================================");
 }
 
 inline void AwesomePlayer::logFirstFrame() {
-    LOGW("=====================================================");
-    LOGW("First frame latency: %lld ms",(getTimeOfDayUs()-mStats.mFirstFrameLatencyStartUs)/1000);
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    ALOGW("First frame latency: %lld ms",(getTimeOfDayUs()-mStats.mFirstFrameLatencyStartUs)/1000);
+    ALOGW("=====================================================");
     mStats.mVeryFirstFrame = false;
 }
 
 inline void AwesomePlayer::logSeek() {
-    LOGW("=====================================================");
-    LOGW("Seek position: %lld ms",mSeekTimeUs/1000);
-    LOGW("Seek latency: %lld ms",(getTimeOfDayUs()-mStats.mFirstFrameLatencyStartUs)/1000);
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    ALOGW("Seek position: %lld ms",mSeekTimeUs/1000);
+    ALOGW("Seek latency: %lld ms",(getTimeOfDayUs()-mStats.mFirstFrameLatencyStartUs)/1000);
+    ALOGW("=====================================================");
 }
 
 inline void AwesomePlayer::logPause() {
-    LOGW("=====================================================");
-    LOGW("Pause position: %lld ms",mVideoTimeUs/1000);
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    ALOGW("Pause position: %lld ms",mVideoTimeUs/1000);
+    ALOGW("=====================================================");
 }
 
 inline void AwesomePlayer::logCatchUp(int64_t ts, int64_t clock, int64_t delta)
@@ -2558,12 +2558,12 @@ inline void AwesomePlayer::logOnTime(int64_t ts, int64_t clock, int64_t delta)
 
 void AwesomePlayer::logSyncLoss()
 {
-    LOGW("=====================================================");
-    LOGW("Number of times AV Sync Losses = %u", mStats.mNumTimesSyncLoss);
-    LOGW("Max Video Ahead time delta = %u", -mStats.mMaxEarlyDelta/1000);
-    LOGW("Max Video Behind time delta = %u", mStats.mMaxLateDelta/1000);
-    LOGW("Max Time sync loss = %u",mStats.mMaxTimeSyncLoss/1000);
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    ALOGW("Number of times AV Sync Losses = %u", mStats.mNumTimesSyncLoss);
+    ALOGW("Max Video Ahead time delta = %u", -mStats.mMaxEarlyDelta/1000);
+    ALOGW("Max Video Behind time delta = %u", mStats.mMaxLateDelta/1000);
+    ALOGW("Max Time sync loss = %u",mStats.mMaxTimeSyncLoss/1000);
+    ALOGW("=====================================================");
 }
 
 inline int64_t AwesomePlayer::getTimeOfDayUs() {

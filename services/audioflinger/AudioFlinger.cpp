@@ -4178,7 +4178,7 @@ sp<IAudioRecord> AudioFlinger::openRecord(
     inputBufferSize = getInputBufferSize(sampleRate, format, channelCount);
     if (inputBufferSize == 0) {
         lStatus = BAD_VALUE;
-        LOGE("Bad audio input parameters: sampling rate %u, format %d, channels %d",  sampleRate, format, channelCount);
+        ALOGE("Bad audio input parameters: sampling rate %u, format %d, channels %d",  sampleRate, format, channelCount);
         goto Exit;
     }
     // add client to list
@@ -4445,7 +4445,7 @@ bool AudioFlinger::RecordThread::threadLoop()
                             if (((int) framesOut != mFrameCount) &&
                                 (mFormat != AUDIO_FORMAT_PCM_16_BIT) ) {
                                 mBytesRead = mInput->stream->read(mInput->stream, buffer.raw, buffer.frameCount * mFrameSize);
-                                LOGE("IR mBytesRead = %d",mBytesRead);
+                                ALOGE("IR mBytesRead = %d",mBytesRead);
                                 if(mBytesRead >= 0 ){
                                   buffer.frameCount = mBytesRead/mFrameSize;
                                 }

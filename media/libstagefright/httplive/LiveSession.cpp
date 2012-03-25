@@ -223,7 +223,7 @@ void LiveSession::onDisconnect() {
 }
 
 status_t LiveSession::fetchFile(const char *url, sp<ABuffer> *out) {
-    LOGW("fetchFile %s", url);
+    ALOGW("fetchFile %s", url);
 
     *out = NULL;
 
@@ -681,7 +681,7 @@ rinse_repeat:
         }
 
         if (mPrevBandwidthIndex >= 0) {
-           LOGW("BW changed from index %d to index %d",
+           ALOGW("BW changed from index %d to index %d",
                     mPrevBandwidthIndex, bandwidthIndex);
         }
 #else

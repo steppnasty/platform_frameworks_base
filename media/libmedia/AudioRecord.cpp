@@ -186,13 +186,13 @@ status_t AudioRecord::set(
     size_t inputBuffSizeInBytes = -1;
     if (AudioSystem::getInputBufferSize(sampleRate, format, channelCount, &inputBuffSizeInBytes)
             != NO_ERROR) {
-        LOGE("AudioSystem could not query the input buffer size.");
+        ALOGE("AudioSystem could not query the input buffer size.");
         return NO_INIT;
     }
-    LOGV("AudioRecord::set() inputBuffSizeInBytes = %d", inputBuffSizeInBytes );
+    ALOGV("AudioRecord::set() inputBuffSizeInBytes = %d", inputBuffSizeInBytes );
 
     if (inputBuffSizeInBytes == 0) {
-        LOGE("Recording parameters are not supported: sampleRate %d, channelCount %d, format %d",
+        ALOGE("Recording parameters are not supported: sampleRate %d, channelCount %d, format %d",
             sampleRate, channelCount, format);
         return BAD_VALUE;
     }
@@ -219,7 +219,7 @@ status_t AudioRecord::set(
 
     // We use 2* size of input buffer for ping pong use of record buffer.
     int minFrameCount = 2 * inputBuffSizeInBytes / frameSizeInBytes;
-    LOGV("AudioRecord::set() minFrameCount = %d", minFrameCount);
+    ALOGV("AudioRecord::set() minFrameCount = %d", minFrameCount);
     if (frameCount == 0) {
         frameCount = minFrameCount;
     } else if (frameCount < minFrameCount) {

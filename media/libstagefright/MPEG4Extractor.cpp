@@ -2567,7 +2567,7 @@ static bool BetterSniffMPEG4(
         *meta = new AMessage;
         (*meta)->setInt64("meta-data-size", moovAtomEndOffset);
 
-        LOGV("found metadata size: %lld", moovAtomEndOffset);
+        ALOGV("found metadata size: %lld", moovAtomEndOffset);
     }
 
     return true;
@@ -2601,7 +2601,7 @@ status_t MPEG4Extractor::updateVideoTrackInfoFromESDS_MPEG4Video(
     uint32_t offset = (csd_size) - 4;
     if (csd != NULL && csd[offset] == 0x00 && csd[offset+1] == 0x00 &&
         csd[offset+2] == 0x01 && csd[offset+3] < 0x20) {
-        LOGW("Reset Mime type from mp4v to H.263");
+        ALOGW("Reset Mime type from mp4v to H.263");
         mLastTrack->meta->setCString(kKeyMIMEType, FourCC2MIME( FOURCC('s', '2', '6', '3')));
     }
     return OK;
@@ -2611,13 +2611,13 @@ void MPEG4Source::logTrackStatistics()
 {
     const char *mime;
     mFormat->findCString(kKeyMIMEType, &mime);
-    LOGW("=====================================================");
-    LOGW("Mime Type: %s",mime);
-    LOGW("Total number of samples in track: %u",mSampleTable->countSamples());
-    LOGW("Number of key samples: %u",mSampleTable->getNumSyncSamples());
-    LOGW("Number of corrupt samples: %u",mNumSamplesReadError ?
+    ALOGW("=====================================================");
+    ALOGW("Mime Type: %s",mime);
+    ALOGW("Total number of samples in track: %u",mSampleTable->countSamples());
+    ALOGW("Number of key samples: %u",mSampleTable->getNumSyncSamples());
+    ALOGW("Number of corrupt samples: %u",mNumSamplesReadError ?
            mNumSamplesReadError-1 : mNumSamplesReadError); //last sample reads error for EOS
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
 }
 
 void MPEG4Source::logExpectedFrames()
@@ -2626,12 +2626,12 @@ void MPEG4Source::logExpectedFrames()
     mFormat->findCString(kKeyMIMEType, &mime);
     int64_t durationUs;
     getFormat()->findInt64(kKeyDuration, &durationUs);
-    LOGW("=====================================================");
-    LOGW("Mime type: %s",mime);
-    LOGW("Track duration: %lld",durationUs/1000);
-    LOGW("Total number of samples in track: %u",mSampleTable->countSamples());
-    LOGW("Expected frames per second: %.2f",((float)mSampleTable->countSamples()*1000)/((float)durationUs/1000));
-    LOGW("=====================================================");
+    ALOGW("=====================================================");
+    ALOGW("Mime type: %s",mime);
+    ALOGW("Track duration: %lld",durationUs/1000);
+    ALOGW("Total number of samples in track: %u",mSampleTable->countSamples());
+    ALOGW("Expected frames per second: %.2f",((float)mSampleTable->countSamples()*1000)/((float)durationUs/1000));
+    ALOGW("=====================================================");
 }
 
 
