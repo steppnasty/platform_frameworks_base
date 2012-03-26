@@ -236,6 +236,7 @@ AwesomePlayer::AwesomePlayer()
         mStats.mStatisticsFrames = 0;
         mStats.mFPSSumUs = 0;
         mStats.mTotalTime = 0;
+        mStats.mFirstFrameTime = 0;
     }
     reset();
 }
@@ -249,7 +250,7 @@ AwesomePlayer::~AwesomePlayer() {
         Mutex::Autolock autoLock(mStatsLock);
         ALOGW("=========================================================");
         ALOGW("Average Frames Per Second: %.4f", mStats.mFPSSumUs/((double)mStats.mStatisticsFrames));
-        ALOGW("Total Frames / Total Time: %.4f", ((double)mStats.mTotalFrames*1E6)/((double)mStats.mTotalTime));
+        ALOGW("Total Frames / Total Time: %.4f", ((double)(mStats.mTotalFrames-1)*1E6)/((double)mStats.mTotalTime));
         ALOGW("========================================================");
     }
 
@@ -1659,16 +1660,23 @@ void AwesomePlayer::onVideoEvent() {
     }
     mVideoEventPending = false;
 
-    if(mStatistics) {
+    if (mStatistics) {
         Mutex::Autolock autoLock(mStatsLock);
-        int64_t now = getTimeOfDayUs(),
-                diff = now - mStats.mLastFrameUs;
+        if(mStats.mTotalFrames < 2){
+           mStats.mLastFrameUs = getTimeOfDayUs();
+           mStats.mFirstFrameTime = getTimeOfDayUs();
+        }
+        mStats.mTotalTime = getTimeOfDayUs() - mStats.mFirstFrameTime;
+        int64_t now = getTimeOfDayUs();
+        int64_t diff = now - mStats.mLastFrameUs;
         if (diff > 250000 && !mStats.mVeryFirstFrame) {
              double fps =((mStats.mTotalFrames - mStats.mLastFrame) * 1E6)/diff;
+             if (mStats.mStatisticsFrames == 0) {
+                 fps =((mStats.mTotalFrames - mStats.mLastFrame - 1) * 1E6)/diff;
+             }
              LOGW("Frames per second: %.4f, Duration of measurement: %lld", fps,diff);
-             ++mStats.mStatisticsFrames;
-             mStats.mTotalTime+=diff;
              mStats.mFPSSumUs += fps;
+             ++mStats.mStatisticsFrames;
              mStats.mLastFrameUs = now;
              mStats.mLastFrame = mStats.mTotalFrames;
          }
@@ -1820,10 +1828,11 @@ void AwesomePlayer::onVideoEvent() {
         if(mStatistics)
         {
             Mutex::Autolock autoLock(mStatsLock);
-            if(mStats.mVeryFirstFrame)
+            if(mStats.mVeryFirstFrame){
                 logFirstFrame();
                 LOGW("setting first frame time");
                 mStats.mLastFrameUs = getTimeOfDayUs();
+            }
         }
     }
 
