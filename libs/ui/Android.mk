@@ -66,7 +66,7 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_C_INCLUDES := \
     external/skia/include/core
 
-ifeq ($(TARGET_BOARD_PLATFORM),msm7x30)
+ifeq ($(BOARD_USES_HTC_CAMERA),true)
     LOCAL_SRC_FILES+= OverlayHtc.cpp
 endif
 
