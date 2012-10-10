@@ -434,6 +434,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     // Behavior of ENDCALL Button.  (See Settings.System.END_BUTTON_BEHAVIOR.)
     int mEndcallBehavior;
 
+    // Behavior of trackball wake
+    boolean mTrackballWakeScreen;
+
     // Behavior of POWER button while in-call and screen on.
     // (See Settings.Secure.INCALL_POWER_BUTTON_BEHAVIOR.)
     int mIncallPowerBehavior;
@@ -501,7 +504,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     Settings.System.VOLUME_MUSIC_CONTROLS), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     "fancy_rotation_anim"), false, this);
-
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.TRACKBALL_WAKE_SCREEN), false, this);
             updateSettings();
         }
 
@@ -1001,7 +1005,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                     Settings.Secure.INCALL_POWER_BUTTON_BEHAVIOR_DEFAULT);
             int accelerometerDefault = Settings.System.getInt(resolver,
                     Settings.System.ACCELEROMETER_ROTATION, DEFAULT_ACCELEROMETER_ROTATION);
-            
+            mTrackballWakeScreen = (Settings.System.getInt(resolver,
+                    Settings.System.TRACKBALL_WAKE_SCREEN, 1) == 1);
             // set up rotation lock state
             mUserRotationMode = (accelerometerDefault == 0)
                 ? WindowManagerPolicy.USER_ROTATION_LOCKED
@@ -3129,9 +3134,17 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     @Override
     public int interceptMotionBeforeQueueingWhenScreenOff(int policyFlags) {
         int result = 0;
-
-        final boolean isWakeMotion = (policyFlags
-                & (WindowManagerPolicy.FLAG_WAKE | WindowManagerPolicy.FLAG_WAKE_DROPPED)) != 0;
+        final int policyflag = (policyFlags
+                & (WindowManagerPolicy.FLAG_WAKE | WindowManagerPolicy.FLAG_WAKE_DROPPED));
+        if (DEBUG) Log.d(TAG, "MotionEvent: policyflag=" + policyflag);
+        if (DEBUG) Log.d(TAG, "MotionEvent: mTrackballWakeScreen=" + mTrackballWakeScreen);
+        final boolean isWakeMotion = (policyflag != 0) && (policyflag != 3)
+            // mouse events will produce a 1 (WAKE) or 2 (WAKE_DROPPED) but never 3,
+            // so we can assign 3 as a special value for the legacy trackball motion events
+            // in InputReader.cpp so we can AND it with a toggle setting
+            // This is really wrong but seems to work without affecting other input
+            // devices ability to wake the device.
+            || ((policyflag == 3) && mTrackballWakeScreen);
         if (isWakeMotion) {
             if (mKeyguardMediator.isShowing()) {
                 // If the keyguard is showing, let it decide what to do with the wake motion.
