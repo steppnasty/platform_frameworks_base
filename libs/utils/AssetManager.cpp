@@ -538,15 +538,11 @@ Asset* AssetManager::openNonAsset(const char* fileName, AccessMode mode)
     size_t i = mAssetPaths.size();
     while (i > 0) {
         i--;
-<<<<<<< HEAD
-        ALOGV("Looking for non-asset '%s' in '%s'\n", fileName, mAssetPaths.itemAt(i).path.string());
-=======
         const asset_path& ap = mAssetPaths.itemAt(i);
         if (ap.asSkin) {
             continue;
         }
-        LOGV("Looking for non-asset '%s' in '%s'\n", fileName, ap.path.string());
->>>>>>> e4f37ab... Merge branch 'themes-4.0' into 'ics'
+        ALOGV("Looking for non-asset '%s' in '%s'\n", fileName, ap.path.string());
         Asset* pAsset = openNonAssetInPathLocked(
             fileName, mode, ap);
         if (pAsset != NULL) {
@@ -628,70 +624,6 @@ const ResTable* AssetManager::getResTable(bool required) const
     if (mCacheMode != CACHE_OFF && !mCacheValid)
         const_cast<AssetManager*>(this)->loadFileNameCacheLocked();
 
-<<<<<<< HEAD
-    const size_t N = mAssetPaths.size();
-    for (size_t i=0; i<N; i++) {
-        Asset* ass = NULL;
-        ResTable* sharedRes = NULL;
-        bool shared = true;
-        const asset_path& ap = mAssetPaths.itemAt(i);
-        Asset* idmap = openIdmapLocked(ap);
-        ALOGV("Looking for resource asset in '%s'\n", ap.path.string());
-        if (ap.type != kFileTypeDirectory) {
-            if (i == 0) {
-                // The first item is typically the framework resources,
-                // which we want to avoid parsing every time.
-                sharedRes = const_cast<AssetManager*>(this)->
-                    mZipSet.getZipResourceTable(ap.path);
-            }
-            if (sharedRes == NULL) {
-                ass = const_cast<AssetManager*>(this)->
-                    mZipSet.getZipResourceTableAsset(ap.path);
-                if (ass == NULL) {
-                    ALOGV("loading resource table %s\n", ap.path.string());
-                    ass = const_cast<AssetManager*>(this)->
-                        openNonAssetInPathLocked("resources.arsc",
-                                                 Asset::ACCESS_BUFFER,
-                                                 ap);
-                    if (ass != NULL && ass != kExcludedAsset) {
-                        ass = const_cast<AssetManager*>(this)->
-                            mZipSet.setZipResourceTableAsset(ap.path, ass);
-                    }
-                }
-                
-                if (i == 0 && ass != NULL) {
-                    // If this is the first resource table in the asset
-                    // manager, then we are going to cache it so that we
-                    // can quickly copy it out for others.
-                    ALOGV("Creating shared resources for %s", ap.path.string());
-                    sharedRes = new ResTable();
-                    sharedRes->add(ass, (void*)(i+1), false, idmap);
-                    sharedRes = const_cast<AssetManager*>(this)->
-                        mZipSet.setZipResourceTable(ap.path, sharedRes);
-                }
-            }
-        } else {
-            ALOGV("loading resource table %s\n", ap.path.string());
-            Asset* ass = const_cast<AssetManager*>(this)->
-                openNonAssetInPathLocked("resources.arsc",
-                                         Asset::ACCESS_BUFFER,
-                                         ap);
-            shared = false;
-        }
-        if ((ass != NULL || sharedRes != NULL) && ass != kExcludedAsset) {
-            if (rt == NULL) {
-                mResources = rt = new ResTable();
-                updateResourceParamsLocked();
-            }
-            ALOGV("Installing resource asset %p in to table %p\n", ass, mResources);
-            if (sharedRes != NULL) {
-                ALOGV("Copying existing resources for %s", ap.path.string());
-                rt->add(sharedRes);
-            } else {
-                ALOGV("Parsing resources for %s", ap.path.string());
-                rt->add(ass, (void*)(i+1), !shared, idmap);
-            }
-=======
     mResources = rt = new ResTable();
 
     if (rt) {
@@ -702,7 +634,7 @@ const ResTable* AssetManager::getResTable(bool required) const
         }
     }
 
-    if (required && !rt) LOGW("Unable to find resources file resources.arsc");
+    if (required && !rt) ALOGW("Unable to find resources file resources.arsc");
     if (!rt) {
         mResources = rt = new ResTable();
     }
@@ -716,7 +648,7 @@ void AssetManager::updateResTableFromAssetPath(ResTable *rt, const asset_path& a
     ResTable* sharedRes = NULL;
     bool shared = true;
     size_t cookiePos = (size_t)cookie;
-    LOGV("Looking for resource asset in '%s'\n", ap.path.string());
+    ALOGV("Looking for resource asset in '%s'\n", ap.path.string());
     if (ap.type != kFileTypeDirectory) {
         if (cookiePos == 1) {
             // The first item is typically the framework resources,
@@ -728,7 +660,7 @@ void AssetManager::updateResTableFromAssetPath(ResTable *rt, const asset_path& a
             ass = const_cast<AssetManager*>(this)->
                 mZipSet.getZipResourceTableAsset(ap.path);
             if (ass == NULL) {
-                LOGV("loading resource table %s\n", ap.path.string());
+                ALOGV("loading resource table %s\n", ap.path.string());
                 ass = const_cast<AssetManager*>(this)->
                     openNonAssetInPathLocked("resources.arsc",
                         Asset::ACCESS_BUFFER,
@@ -738,13 +670,12 @@ void AssetManager::updateResTableFromAssetPath(ResTable *rt, const asset_path& a
                         mZipSet.setZipResourceTableAsset(ap.path, ass);
                 }
             }
->>>>>>> e4f37ab... Merge branch 'themes-4.0' into 'ics'
 
             if (cookiePos == 0 && ass != NULL) {
                 // If this is the first resource table in the asset
                 // manager, then we are going to cache it so that we
                 // can quickly copy it out for others.
-                LOGV("Creating shared resources for %s", ap.path.string());
+                ALOGV("Creating shared resources for %s", ap.path.string());
                 sharedRes = new ResTable();
                 sharedRes->add(ass, cookie, false);
                 sharedRes = const_cast<AssetManager*>(this)->
@@ -752,7 +683,7 @@ void AssetManager::updateResTableFromAssetPath(ResTable *rt, const asset_path& a
             }
         }
     } else {
-        LOGV("loading resource table %s\n", ap.path.string());
+        ALOGV("loading resource table %s\n", ap.path.string());
         Asset* ass = const_cast<AssetManager*>(this)->
             openNonAssetInPathLocked("resources.arsc",
                 Asset::ACCESS_BUFFER,
@@ -761,24 +692,18 @@ void AssetManager::updateResTableFromAssetPath(ResTable *rt, const asset_path& a
     }
     if ((ass != NULL || sharedRes != NULL) && ass != kExcludedAsset) {
         updateResourceParamsLocked();
-        LOGV("Installing resource asset %p in to table %p\n", ass, mResources);
+        ALOGV("Installing resource asset %p in to table %p\n", ass, mResources);
         if (sharedRes != NULL) {
-            LOGV("Copying existing resources for %s", ap.path.string());
+            ALOGV("Copying existing resources for %s", ap.path.string());
             rt->add(sharedRes);
         } else {
-            LOGV("Parsing resources for %s", ap.path.string());
+            ALOGV("Parsing resources for %s", ap.path.string());
             rt->add(ass, cookie, !shared);
         }
 
-<<<<<<< HEAD
-    if (required && !rt) ALOGW("Unable to find resources file resources.arsc");
-    if (!rt) {
-        mResources = rt = new ResTable();
-=======
         if (!shared) {
             delete ass;
         }
->>>>>>> e4f37ab... Merge branch 'themes-4.0' into 'ics'
     }
 }
 
@@ -2118,7 +2043,7 @@ bool AssetManager::detachThemePath(const String8 &packageName, void* cookie)
 
     ResTable* rt = mResources;
     if (rt == NULL) {
-        LOGV("ResTable must not be NULL");
+        ALOGV("ResTable must not be NULL");
         return false;
     }
 
