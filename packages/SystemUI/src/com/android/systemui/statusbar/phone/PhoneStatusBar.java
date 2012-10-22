@@ -345,11 +345,6 @@ public class PhoneStatusBar extends StatusBar {
         mIcons = (LinearLayout)sb.findViewById(R.id.icons);
         mTickerView = sb.findViewById(R.id.ticker);
 
-        /* Destroy the old widget before recreating the expanded dialog
-           to make sure there are no context issues */
-        if (mRecreating)
-            mPowerWidget.destroyWidget();
-
         mExpandedDialog = new ExpandedDialog(context);
         mExpandedView = expanded;
         mPile = (NotificationRowLayout)expanded.findViewById(R.id.latestItems);
