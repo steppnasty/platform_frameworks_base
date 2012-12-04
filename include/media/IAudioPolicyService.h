@@ -45,15 +45,15 @@ public:
                                               const char *device_address) = 0;
     virtual audio_policy_dev_state_t getDeviceConnectionState(audio_devices_t device,
                                                                           const char *device_address) = 0;
-    virtual status_t setPhoneState(int state) = 0;
+    virtual status_t setPhoneState(audio_mode_t state) = 0;
     virtual status_t setRingerMode(uint32_t mode, uint32_t mask) = 0;
     virtual status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config) = 0;
     virtual audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage) = 0;
     virtual audio_io_handle_t getOutput(audio_stream_type_t stream,
                                         uint32_t samplingRate = 0,
-                                        uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                        audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                         uint32_t channels = 0,
-                                        audio_policy_output_flags_t flags = AUDIO_POLICY_OUTPUT_FLAG_INDIRECT) = 0;
+                                        audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE) = 0;
 #ifdef WITH_QCOM_LPA
     virtual audio_io_handle_t getSession(audio_stream_type_t stream,
                                         uint32_t format = AUDIO_FORMAT_DEFAULT,
@@ -70,9 +70,9 @@ public:
                                 audio_stream_type_t stream,
                                 int session = 0) = 0;
     virtual void releaseOutput(audio_io_handle_t output) = 0;
-    virtual audio_io_handle_t getInput(int inputSource,
+    virtual audio_io_handle_t getInput(audio_source_t inputSource,
                                     uint32_t samplingRate = 0,
-                                    uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     uint32_t channels = 0,
                                     audio_in_acoustics_t acoustics = (audio_in_acoustics_t)0,
                                     int audioSession = 0) = 0;
@@ -94,7 +94,7 @@ public:
                                     int id) = 0;
     virtual status_t unregisterEffect(int id) = 0;
     virtual status_t setEffectEnabled(int id, bool enabled) = 0;
-    virtual bool     isStreamActive(int stream, uint32_t inPastMs = 0) const = 0;
+    virtual bool     isStreamActive(audio_stream_type_t stream, uint32_t inPastMs = 0) const = 0;
     virtual status_t queryDefaultPreProcessing(int audioSession,
                                               effect_descriptor_t *descriptors,
                                               uint32_t *count) = 0;

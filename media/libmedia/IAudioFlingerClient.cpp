@@ -39,28 +39,31 @@ public:
     {
     }
 
-    void ioConfigChanged(int event, int ioHandle, void *param2)
+    void ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlingerClient::getInterfaceDescriptor());
         data.writeInt32(event);
-        data.writeInt32(ioHandle);
-        if (event == AudioSystem::STREAM_CONFIG_CHANGED) {
-            uint32_t stream = *(uint32_t *)param2;
-            ALOGV("ioConfigChanged stream %d", stream);
-            data.writeInt32(stream);
-#ifdef WITH_QCOM_LPA
-        } else if (event != AudioSystem::OUTPUT_CLOSED && event != AudioSystem::INPUT_CLOSED &&
-                   event != AudioSystem::A2DP_OUTPUT_STATE && event != AudioSystem::EFFECT_CONFIG_CHANGED) {
-#else
-        } else if (event != AudioSystem::OUTPUT_CLOSED && event != AudioSystem::INPUT_CLOSED) {
+        data.writeInt32((int32_t) ioHandle);
+        if (param2 != NULL ) {
+            if (event == AudioSystem::STREAM_CONFIG_CHANGED) {
+                uint32_t stream = *(const uint32_t *)param2;
+                ALOGV("ioConfigChanged stream %d", stream);
+                data.writeInt32(stream);
+            } else if (event != AudioSystem::OUTPUT_CLOSED
+                       && event != AudioSystem::INPUT_CLOSED
+#ifdef QCOM_HARDWARE
+                       && event != AudioSystem::EFFECT_CONFIG_CHANGED
+                       && event != AudioSystem::A2DP_OUTPUT_STATE
 #endif
-            AudioSystem::OutputDescriptor *desc = (AudioSystem::OutputDescriptor *)param2;
-            data.writeInt32(desc->samplingRate);
-            data.writeInt32(desc->format);
-            data.writeInt32(desc->channels);
-            data.writeInt32(desc->frameCount);
-            data.writeInt32(desc->latency);
+                       ) {
+                const AudioSystem::OutputDescriptor *desc = (const AudioSystem::OutputDescriptor *)param2;
+                data.writeInt32(desc->samplingRate);
+                data.writeInt32(desc->format);
+                data.writeInt32(desc->channels);
+                data.writeInt32(desc->frameCount);
+                data.writeInt32(desc->latency);
+            }
         }
         remote()->transact(IO_CONFIG_CHANGED, data, &reply, IBinder::FLAG_ONEWAY);
     }

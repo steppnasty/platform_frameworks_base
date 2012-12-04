@@ -35,7 +35,7 @@ struct AudioSource : public MediaSource, public MediaBufferObserver {
     // Note that the "channels" parameter is _not_ the number of channels,
     // but a bitmask of audio_channels_t constants.
     AudioSource(
-            int inputSource, uint32_t sampleRate,
+            audio_source_t inputSource, uint32_t sampleRate,
             uint32_t channels = AUDIO_CHANNEL_IN_MONO);
 
     status_t initCheck() const;
@@ -105,10 +105,10 @@ private:
     //additions for tunnel source
 public:
     AudioSource(
-        int inputSource, const sp<MetaData>& meta );
+        audio_source_t inputSource, const sp<MetaData>& meta );
 
 private:
-    int32_t mFormat;
+    audio_format_t mFormat;
     String8 mMime;
     int32_t mMaxBufferSize;
     int64_t bufferDurationUs( ssize_t n );

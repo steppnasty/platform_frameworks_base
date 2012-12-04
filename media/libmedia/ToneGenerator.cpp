@@ -798,7 +798,7 @@ const unsigned char ToneGenerator::sToneMappingTable[NUM_REGIONS-1][NUM_SUP_TONE
 //        none
 //
 ////////////////////////////////////////////////////////////////////////////////
-ToneGenerator::ToneGenerator(int streamType, float volume, bool threadCanCallJava) {
+ToneGenerator::ToneGenerator(audio_stream_type_t streamType, float volume, bool threadCanCallJava) {
 
     ALOGV("ToneGenerator constructor: streamType=%d, volume=%f\n", streamType, volume);
 
@@ -1012,27 +1012,23 @@ bool ToneGenerator::initAudioTrack() {
 
     if (mpAudioTrack) {
         delete mpAudioTrack;
-        mpAudioTrack = 0;
+        mpAudioTrack = NULL;
     }
 
    // Open audio track in mono, PCM 16bit, default sampling rate, default buffer size
     mpAudioTrack = new AudioTrack();
-    if (mpAudioTrack == 0) {
-        ALOGE("AudioTrack allocation failed");
-        goto initAudioTrack_exit;
-    }
-    ALOGV("Create Track: %p\n", mpAudioTrack);
+    ALOGV("Create Track: %p", mpAudioTrack);
 
     mpAudioTrack->set(mStreamType,
-                      0,
+                      0,    // sampleRate
                       AUDIO_FORMAT_PCM_16_BIT,
                       AUDIO_CHANNEL_OUT_MONO,
-                      0,
-                      0,
+                      0,    //frameCount
+                      AUDIO_OUTPUT_FLAG_FAST,
                       audioCallback,
-                      this,
-                      0,
-                      0,
+                      this, // user
+                      0,    // notificationFrames
+                      0,    // sharedBuffer
                       mThreadCanCallJava);
 
     if (mpAudioTrack->initCheck() != NO_ERROR) {
@@ -1049,10 +1045,10 @@ bool ToneGenerator::initAudioTrack() {
 initAudioTrack_exit:
 
     // Cleanup
-    if (mpAudioTrack) {
-        ALOGV("Delete Track I: %p\n", mpAudioTrack);
+    if (mpAudioTrack != NULL) {
+        ALOGV("Delete Track I: %p", mpAudioTrack);
         delete mpAudioTrack;
-        mpAudioTrack = 0;
+        mpAudioTrack = NULL;
     }
 
     return false;

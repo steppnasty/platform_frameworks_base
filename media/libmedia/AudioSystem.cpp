@@ -156,9 +156,9 @@ status_t AudioSystem::getStreamMute(int stream, bool* mute)
     return NO_ERROR;
 }
 
-status_t AudioSystem::setMode(int mode)
+status_t AudioSystem::setMode(audio_mode_t mode)
 {
-    if (mode >= AUDIO_MODE_CNT) return BAD_VALUE;
+    if (uint32_t(mode) >= AUDIO_MODE_CNT) return BAD_VALUE;
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return PERMISSION_DENIED;
     return af->setMode(mode);
@@ -298,7 +298,7 @@ status_t AudioSystem::getOutputLatency(uint32_t* latency, int streamType)
     return NO_ERROR;
 }
 
-status_t AudioSystem::getInputBufferSize(uint32_t sampleRate, int format, int channelCount,
+status_t AudioSystem::getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount,
     size_t* buffSize)
 {
     // Do we have a stale gInBufferSize or are we requesting the input buffer size for new values
@@ -386,10 +386,10 @@ void AudioSystem::AudioFlingerClient::binderDied(const wp<IBinder>& who) {
     ALOGW("AudioFlinger server died!");
 }
 
-void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, int ioHandle, void *param2) {
+void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2) {
     ALOGV("ioConfigChanged() event %d", event);
-    OutputDescriptor *desc;
-    uint32_t stream;
+    const OutputDescriptor *desc;
+    audio_stream_type_t stream;
 
     if (ioHandle == 0) return;
 
@@ -397,20 +397,14 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, int ioHandle, v
 
     switch (event) {
     case STREAM_CONFIG_CHANGED:
-        if (param2 == 0) break;
-        stream = *(uint32_t *)param2;
-        ALOGV("ioConfigChanged() STREAM_CONFIG_CHANGED stream %d, output %d", stream, ioHandle);
-        if (gStreamOutputMap.indexOfKey(stream) >= 0) {
-            gStreamOutputMap.replaceValueFor(stream, ioHandle);
-        }
         break;
     case OUTPUT_OPENED: {
         if (gOutputs.indexOfKey(ioHandle) >= 0) {
             ALOGV("ioConfigChanged() opening already existing output! %d", ioHandle);
             break;
         }
-        if (param2 == 0) break;
-        desc = (OutputDescriptor *)param2;
+        if (param2 == NULL) break;
+        desc = (const OutputDescriptor *)param2;
 
         OutputDescriptor *outputDesc =  new OutputDescriptor(*desc);
         gOutputs.add(ioHandle, outputDesc);
@@ -419,7 +413,7 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, int ioHandle, v
         } break;
     case OUTPUT_CLOSED: {
         if (gOutputs.indexOfKey(ioHandle) < 0) {
-            ALOGW("ioConfigChanged() closing unknow output! %d", ioHandle);
+            ALOGW("ioConfigChanged() closing unknown output! %d", ioHandle);
             break;
         }
         ALOGV("ioConfigChanged() output %d closed", ioHandle);
@@ -438,8 +432,8 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(int event, int ioHandle, v
             ALOGW("ioConfigChanged() modifying unknow output! %d", ioHandle);
             break;
         }
-        if (param2 == 0) break;
-        desc = (OutputDescriptor *)param2;
+        if (param2 == NULL) break;
+        desc = (const OutputDescriptor *)param2;
 
         ALOGV("ioConfigChanged() new config for output %d samplingRate %d, format %d channels %d frameCount %d latency %d",
                 ioHandle, desc->samplingRate, desc->format,
@@ -531,7 +525,7 @@ audio_policy_dev_state_t AudioSystem::getDeviceConnectionState(audio_devices_t d
     return aps->getDeviceConnectionState(device, device_address);
 }
 
-status_t AudioSystem::setPhoneState(int state)
+status_t AudioSystem::setPhoneState(audio_mode_t state)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return PERMISSION_DENIED;
@@ -563,9 +557,9 @@ audio_policy_forced_cfg_t AudioSystem::getForceUse(audio_policy_force_use_t usag
 
 audio_io_handle_t AudioSystem::getOutput(audio_stream_type_t stream,
                                     uint32_t samplingRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channels,
-                                    audio_policy_output_flags_t flags)
+                                    audio_output_flags_t flags)
 {
     audio_io_handle_t output = 0;
     // Do not use stream to output map cache if the direct output
@@ -665,9 +659,9 @@ void AudioSystem::closeSession(audio_io_handle_t output)
 }
 #endif
 
-audio_io_handle_t AudioSystem::getInput(int inputSource,
+audio_io_handle_t AudioSystem::getInput(audio_source_t inputSource,
                                     uint32_t samplingRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channels,
                                     audio_in_acoustics_t acoustics,
                                     int sessionId)
@@ -767,7 +761,7 @@ status_t AudioSystem::setEffectEnabled(int id, bool enabled)
     return aps->setEffectEnabled(id, enabled);
 }
 
-status_t AudioSystem::isStreamActive(int stream, bool* state, uint32_t inPastMs)
+status_t AudioSystem::isStreamActive(audio_stream_type_t stream, bool* state, uint32_t inPastMs)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return PERMISSION_DENIED;

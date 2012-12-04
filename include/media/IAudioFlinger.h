@@ -24,9 +24,15 @@
 #include <utils/RefBase.h>
 #include <utils/Errors.h>
 #include <binder/IInterface.h>
+#ifdef QCOM_HARDWARE
+#include <media/IDirectTrack.h>
+#include <media/IDirectTrackClient.h>
+#endif
 #include <media/IAudioTrack.h>
 #include <media/IAudioRecord.h>
 #include <media/IAudioFlingerClient.h>
+#include <system/audio.h>
+#include <hardware/audio_policy.h>
 #include <hardware/audio_effect.h>
 #include <media/IEffect.h>
 #include <media/IEffectClient.h>
@@ -48,7 +54,7 @@ public:
                                 pid_t pid,
                                 int streamType,
                                 uint32_t sampleRate,
-                                uint32_t format,
+                                audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
@@ -77,7 +83,7 @@ public:
                                 pid_t pid,
                                 int input,
                                 uint32_t sampleRate,
-                                uint32_t format,
+                                audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
@@ -89,8 +95,10 @@ public:
      */
     virtual     uint32_t    sampleRate(int output) const = 0;
     virtual     int         channelCount(int output) const = 0;
-    virtual     uint32_t    format(int output) const = 0;
+    virtual     audio_format_t format(audio_io_handle_t output) const = 0;
     virtual     size_t      frameCount(int output) const = 0;
+
+    // return estimated latency in milliseconds
     virtual     uint32_t    latency(int output) const = 0;
 
     /* set/get the audio hardware state. This will probably be used by
@@ -115,7 +123,7 @@ public:
     virtual     bool        streamMute(int stream) const = 0;
 
     // set audio mode
-    virtual     status_t    setMode(int mode) = 0;
+    virtual     status_t    setMode(audio_mode_t mode) = 0;
 
     // mic mute/state
     virtual     status_t    setMicMute(bool state) = 0;
@@ -128,14 +136,15 @@ public:
     virtual void registerClient(const sp<IAudioFlingerClient>& client) = 0;
 
     // retrieve the audio recording buffer size
-    virtual size_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount) = 0;
+    virtual size_t getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount) const = 0;
 
-    virtual int openOutput(uint32_t *pDevices,
-                                    uint32_t *pSamplingRate,
-                                    uint32_t *pFormat,
-                                    uint32_t *pChannels,
-                                    uint32_t *pLatencyMs,
-                                    uint32_t flags) = 0;
+    virtual audio_io_handle_t openOutput(audio_module_handle_t module,
+				         audio_devices_t *pDevices,
+                                         uint32_t *pSamplingRate,
+                                         audio_format_t *pFormat,
+                                         audio_channel_mask_t *pChannelMask,
+                                         uint32_t *pLatencyMs,
+                                         audio_output_flags_t flags) = 0;
 #ifdef WITH_QCOM_LPA
     virtual int openSession(uint32_t *pDevices,
                                  uint32_t *pFormat,
@@ -151,11 +160,11 @@ public:
     virtual status_t suspendOutput(int output) = 0;
     virtual status_t restoreOutput(int output) = 0;
 
-    virtual int openInput(uint32_t *pDevices,
-                                    uint32_t *pSamplingRate,
-                                    uint32_t *pFormat,
-                                    uint32_t *pChannels,
-                                    uint32_t acoustics) = 0;
+    virtual audio_io_handle_t openInput(audio_module_handle_t module,
+                                        audio_devices_t *pDevices,
+                                        uint32_t *pSamplingRate,
+                                        audio_format_t *pFormat,
+                                        audio_channel_mask_t *pChannelMask) = 0;
     virtual status_t closeInput(int input) = 0;
 
     virtual status_t setStreamOutput(uint32_t stream, int output) = 0;
@@ -188,6 +197,8 @@ public:
                                     int *enabled) = 0;
 
     virtual status_t moveEffects(int session, int srcOutput, int dstOutput) = 0;
+
+    virtual audio_module_handle_t loadHwModule(const char *name) = 0;
 #ifdef WITH_QCOM_LPA
     virtual status_t deregisterClient(const sp<IAudioFlingerClient>& client) { return false; };
 #endif

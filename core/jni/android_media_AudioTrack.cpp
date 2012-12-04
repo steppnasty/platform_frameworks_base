@@ -240,7 +240,7 @@ android_media_AudioTrack_native_setup(JNIEnv *env, jobject thiz, jobject weak_th
 
     // compute the frame count
     int bytesPerSample = audioFormat == javaAudioTrackFields.PCM16 ? 2 : 1;
-    int format = audioFormat == javaAudioTrackFields.PCM16 ? 
+    audio_format_t format = audioFormat == javaAudioTrackFields.PCM16 ? 
             AUDIO_FORMAT_PCM_16_BIT : AUDIO_FORMAT_PCM_8_BIT;
     int frameCount = buffSizeInBytes / (nbChannels * bytesPerSample);
     
@@ -292,7 +292,7 @@ android_media_AudioTrack_native_setup(JNIEnv *env, jobject thiz, jobject weak_th
             format,// word length, PCM
             nativeChannelMask,
             frameCount,
-            0,// flags
+            AUDIO_OUTPUT_FLAG_NONE,
             audioCallback, &(lpJniStorage->mCallbackData),//callback, callback data (user)
             0,// notificationFrames == 0 since not using EVENT_MORE_DATA to feed the AudioTrack
             0,// shared mem
@@ -313,7 +313,7 @@ android_media_AudioTrack_native_setup(JNIEnv *env, jobject thiz, jobject weak_th
             format,// word length, PCM
             nativeChannelMask,
             frameCount,
-            0,// flags
+            AUDIO_OUTPUT_FLAG_NONE,
             audioCallback, &(lpJniStorage->mCallbackData),//callback, callback data (user));
             0,// notificationFrames == 0 since not using EVENT_MORE_DATA to feed the AudioTrack 
             lpJniStorage->mMemBase,// shared mem

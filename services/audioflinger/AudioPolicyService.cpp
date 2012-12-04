@@ -186,7 +186,7 @@ audio_policy_dev_state_t AudioPolicyService::getDeviceConnectionState(
                                                       device_address);
 }
 
-status_t AudioPolicyService::setPhoneState(int state)
+status_t AudioPolicyService::setPhoneState(audio_mode_t state)
 {
     if (mpAudioPolicy == NULL) {
         return NO_INIT;
@@ -255,9 +255,9 @@ audio_policy_forced_cfg_t AudioPolicyService::getForceUse(audio_policy_force_use
 
 audio_io_handle_t AudioPolicyService::getOutput(audio_stream_type_t stream,
                                     uint32_t samplingRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channels,
-                                    audio_policy_output_flags_t flags)
+                                    audio_output_flags_t flags)
 {
     if (mpAudioPolicy == NULL) {
         return 0;
@@ -376,9 +376,9 @@ status_t AudioPolicyService::closeSession(audio_io_handle_t output)
 }
 #endif
 
-audio_io_handle_t AudioPolicyService::getInput(int inputSource,
+audio_io_handle_t AudioPolicyService::getInput(audio_source_t inputSource,
                                     uint32_t samplingRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channels,
                                     audio_in_acoustics_t acoustics,
                                     int audioSession)
@@ -562,7 +562,7 @@ status_t AudioPolicyService::setEffectEnabled(int id, bool enabled)
     return mpAudioPolicy->set_effect_enabled(mpAudioPolicy, id, enabled);
 }
 
-bool AudioPolicyService::isStreamActive(int stream, uint32_t inPastMs) const
+bool AudioPolicyService::isStreamActive(audio_stream_type_t stream, uint32_t inPastMs) const
 {
     if (mpAudioPolicy == NULL) {
         return 0;
@@ -857,7 +857,8 @@ status_t AudioPolicyService::AudioCommandThread::dump(int fd)
     return NO_ERROR;
 }
 
-void AudioPolicyService::AudioCommandThread::startToneCommand(int type, int stream)
+void AudioPolicyService::AudioCommandThread::startToneCommand(ToneGenerator::tone_type type, 
+        audio_stream_type_t stream)
 {
     AudioCommand *command = new AudioCommand();
     command->mCommand = START_TONE;
@@ -1420,13 +1421,27 @@ status_t AudioPolicyService::loadPreProcessorConfig(const char *path)
 /* implementation of the interface to the policy manager */
 extern "C" {
 
+
+static audio_module_handle_t aps_load_hw_module(void *service,
+                                             const char *name)
+{
+    sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
+    if (af == 0) {
+        ALOGW("%s: could not get AudioFlinger", __func__);
+        return 0;
+    }
+
+    return af->loadHwModule(name);
+}
+
+// deprecated: replaced by aps_open_output_on_module()
 static audio_io_handle_t aps_open_output(void *service,
-                                             uint32_t *pDevices,
+                                             audio_devices_t *pDevices,
                                              uint32_t *pSamplingRate,
-                                             uint32_t *pFormat,
-                                             uint32_t *pChannels,
+                                             audio_format_t *pFormat,
+                                             audio_channel_mask_t *pChannelMask,
                                              uint32_t *pLatencyMs,
-                                             audio_policy_output_flags_t flags)
+                                             audio_output_flags_t flags)
 {
     sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
     if (af == NULL) {
@@ -1434,7 +1449,25 @@ static audio_io_handle_t aps_open_output(void *service,
         return 0;
     }
 
-    return af->openOutput(pDevices, pSamplingRate, pFormat, pChannels,
+    return af->openOutput((audio_module_handle_t)0, pDevices, pSamplingRate, pFormat, pChannelMask,
+                          pLatencyMs, flags);
+}
+
+static audio_io_handle_t aps_open_output_on_module(void *service,
+                                                   audio_module_handle_t module,
+                                                   audio_devices_t *pDevices,
+                                                   uint32_t *pSamplingRate,
+                                                   audio_format_t *pFormat,
+                                                   audio_channel_mask_t *pChannelMask,
+                                                   uint32_t *pLatencyMs,
+                                                   audio_output_flags_t flags)
+{
+    sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
+    if (af == 0) {
+        ALOGW("%s: could not get AudioFlinger", __func__);
+        return 0;
+    }
+    return af->openOutput(module, pDevices, pSamplingRate, pFormat, pChannelMask,
                           pLatencyMs, flags);
 }
 
@@ -1509,21 +1542,37 @@ static int aps_restore_output(void *service, audio_io_handle_t output)
     return af->restoreOutput(output);
 }
 
+// deprecated: replaced by aps_open_input_on_module()
 static audio_io_handle_t aps_open_input(void *service,
-                                            uint32_t *pDevices,
-                                            uint32_t *pSamplingRate,
-                                            uint32_t *pFormat,
-                                            uint32_t *pChannels,
-                                            uint32_t acoustics)
+                                        audio_devices_t *pDevices,
+                                        uint32_t *pSamplingRate,
+                                        audio_format_t *pFormat,
+                                        audio_channel_mask_t *pChannelMask,
+                                        audio_in_acoustics_t acoustics)
 {
     sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
-    if (af == NULL) {
+    if (af == 0) {
         ALOGW("%s: could not get AudioFlinger", __func__);
         return 0;
     }
 
-    return af->openInput(pDevices, pSamplingRate, pFormat, pChannels,
-                         acoustics);
+    return af->openInput((audio_module_handle_t)0, pDevices, pSamplingRate, pFormat, pChannelMask);
+}
+
+static audio_io_handle_t aps_open_input_on_module(void *service,
+                                                  audio_module_handle_t module,
+                                                  audio_devices_t *pDevices,
+                                                  uint32_t *pSamplingRate,
+                                                  audio_format_t *pFormat,
+                                                  audio_channel_mask_t *pChannelMask)
+{
+    sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
+    if (af == 0) {
+        ALOGW("%s: could not get AudioFlinger", __func__);
+        return 0;
+    }
+
+    return af->openInput(module, pDevices, pSamplingRate, pFormat, pChannelMask);
 }
 
 static int aps_close_input(void *service, audio_io_handle_t input)
@@ -1626,6 +1675,9 @@ namespace {
         stop_tone             : aps_stop_tone,
         set_voice_volume      : aps_set_voice_volume,
         move_effects          : aps_move_effects,
+        load_hw_module        : aps_load_hw_module,
+        open_output_on_module : aps_open_output_on_module,
+        open_input_on_module  : aps_open_input_on_module,
     };
 }; // namespace <unnamed>
 

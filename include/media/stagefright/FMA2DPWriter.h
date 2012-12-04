@@ -65,7 +65,7 @@ private:
     volatile bool mDone;
     int32_t mAudioChannels;
     int32_t mSampleRate;
-    int32_t mAudioFormat;
+    audio_format_t mAudioFormat;
     audio_source_t mAudioSource;
     size_t mBufferSize;
     static void *ReaderThreadWrapper(void *);

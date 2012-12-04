@@ -59,16 +59,16 @@ public:
     virtual audio_policy_dev_state_t getDeviceConnectionState(
                                                                 audio_devices_t device,
                                                                 const char *device_address);
-    virtual status_t setPhoneState(int state);
+    virtual status_t setPhoneState(audio_mode_t state);
     virtual status_t setRingerMode(uint32_t mode, uint32_t mask);
     virtual status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     virtual audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     virtual audio_io_handle_t getOutput(audio_stream_type_t stream,
                                         uint32_t samplingRate = 0,
-                                        uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                        audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                         uint32_t channels = 0,
-                                        audio_policy_output_flags_t flags =
-                                            AUDIO_POLICY_OUTPUT_FLAG_INDIRECT);
+                                        audio_output_flags_t flags =
+                                            AUDIO_OUTPUT_FLAG_NONE);
 #ifdef WITH_QCOM_LPA
     virtual audio_io_handle_t getSession(audio_stream_type_t stream,
                                         uint32_t format = AUDIO_FORMAT_DEFAULT,
@@ -87,9 +87,9 @@ public:
     virtual status_t resumeSession(audio_io_handle_t output, audio_stream_type_t stream);
     virtual status_t closeSession(audio_io_handle_t output);
 #endif
-    virtual audio_io_handle_t getInput(int inputSource,
+    virtual audio_io_handle_t getInput(audio_source_t inputSource,
                                     uint32_t samplingRate = 0,
-                                    uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     uint32_t channels = 0,
                                     audio_in_acoustics_t acoustics =
                                             (audio_in_acoustics_t)0,
@@ -114,7 +114,7 @@ public:
                                     int id);
     virtual status_t unregisterEffect(int id);
     virtual status_t setEffectEnabled(int id, bool enabled);
-    virtual bool isStreamActive(int stream, uint32_t inPastMs = 0) const;
+    virtual bool isStreamActive(audio_stream_type_t stream, uint32_t inPastMs = 0) const;
 
     virtual status_t queryDefaultPreProcessing(int audioSession,
                                               effect_descriptor_t *descriptors,
@@ -180,7 +180,8 @@ private:
         virtual     bool        threadLoop();
 
                     void        exit();
-                    void        startToneCommand(int type = 0, int stream = 0);
+                    void        startToneCommand(ToneGenerator::tone_type type,
+                                                 audio_stream_type_t stream);
                     void        stopToneCommand();
                     status_t    volumeCommand(int stream, float volume, int output, int delayMs = 0);
                     status_t    parametersCommand(int ioHandle, const char *keyValuePairs, int delayMs = 0);
@@ -207,8 +208,8 @@ private:
 
         class ToneData {
         public:
-            int mType;      // tone type (START_TONE only)
-            int mStream;    // stream type (START_TONE only)
+            ToneGenerator::tone_type mType;      // tone type (START_TONE only)
+            audio_stream_type_t mStream;    // stream type (START_TONE only)
         };
 
         class VolumeData {

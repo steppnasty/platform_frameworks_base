@@ -62,12 +62,12 @@ public:
     static status_t setStreamMute(int stream, bool mute);
     static status_t getStreamMute(int stream, bool* mute);
 
-    // set audio mode in audio hardware (see audio_mode_t)
-    static status_t setMode(int mode);
+    // set audio mode in audio hardware
+    static status_t setMode(audio_mode_t mode);
 
     // returns true in *state if tracks are active on the specified stream or has been active
     // in the past inPastMs milliseconds
-    static status_t isStreamActive(int stream, bool *state, uint32_t inPastMs = 0);
+    static status_t isStreamActive(audio_stream_type_t stream, bool *state, uint32_t inPastMs = 0);
 
     // set/get audio hardware parameters. The function accepts a list of parameters
     // key value pairs in the form: key1=value1;key2=value2;...
@@ -89,7 +89,7 @@ public:
 
     static bool routedToA2dpOutput(int streamType);
 
-    static status_t getInputBufferSize(uint32_t sampleRate, int format, int channelCount,
+    static status_t getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount,
         size_t* buffSize);
 
     static status_t setVoiceVolume(float volume);
@@ -120,7 +120,7 @@ public:
         INPUT_CLOSED,
         INPUT_CONFIG_CHANGED,
         STREAM_CONFIG_CHANGED,
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
         A2DP_OUTPUT_STATE,
         EFFECT_CONFIG_CHANGED,
 #endif
@@ -146,15 +146,15 @@ public:
     //
     static status_t setDeviceConnectionState(audio_devices_t device, audio_policy_dev_state_t state, const char *device_address);
     static audio_policy_dev_state_t getDeviceConnectionState(audio_devices_t device, const char *device_address);
-    static status_t setPhoneState(int state);
+    static status_t setPhoneState(audio_mode_t state);
     static status_t setRingerMode(uint32_t mode, uint32_t mask);
     static status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     static audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     static audio_io_handle_t getOutput(audio_stream_type_t stream,
                                         uint32_t samplingRate = 0,
-                                        uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                        audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                         uint32_t channels = AUDIO_CHANNEL_OUT_STEREO,
-                                        audio_policy_output_flags_t flags = AUDIO_POLICY_OUTPUT_FLAG_INDIRECT);
+                                        audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE);
 #ifdef WITH_QCOM_LPA
     static audio_io_handle_t getSession(audio_stream_type_t stream,
                                         uint32_t format = AUDIO_FORMAT_DEFAULT,
@@ -171,9 +171,9 @@ public:
                                audio_stream_type_t stream,
                                int session = 0);
     static void releaseOutput(audio_io_handle_t output);
-    static audio_io_handle_t getInput(int inputSource,
+    static audio_io_handle_t getInput(audio_source_t inputSource,
                                     uint32_t samplingRate = 0,
-                                    uint32_t format = AUDIO_FORMAT_DEFAULT,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     uint32_t channels = AUDIO_CHANNEL_IN_MONO,
                                     audio_in_acoustics_t acoustics = (audio_in_acoustics_t)0,
                                     int sessionId = 0);
@@ -221,7 +221,7 @@ private:
 
         // indicate a change in the configuration of an output or input: keeps the cached
         // values for output/input parameters upto date in client process
-        virtual void ioConfigChanged(int event, int ioHandle, void *param2);
+        virtual void ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2);
     };
 
     class AudioPolicyServiceClient: public IBinder::DeathRecipient

@@ -91,14 +91,10 @@ int JetPlayer::init()
     mAudioTrack = new AudioTrack();
     mAudioTrack->set(AUDIO_STREAM_MUSIC,  //TODO parametrize this
             pLibConfig->sampleRate,
-            1, // format = PCM 16bits per sample,
-            (pLibConfig->numChannels == 2) ? AUDIO_CHANNEL_OUT_STEREO : AUDIO_CHANNEL_OUT_MONO,
+            AUDIO_FORMAT_PCM_16_BIT,
+            audio_channel_out_mask_from_count(pLibConfig->numChannels),
             mTrackBufferSize,
-#ifdef WITH_QCOM_LPA
-            0,
-            0,
-#endif
-            0);
+	    AUDIO_OUTPUT_FLAG_NONE);
 
     // create render and playback thread
     {

@@ -67,6 +67,12 @@ ifeq ($(BOARD_USE_KINETO_COMPATIBILITY),true)
     LOCAL_CFLAGS += -DUSE_KINETO_COMPATIBILITY
 endif
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+	LOCAL_SRC_FILES += \
+		IDirectTrack.cpp \
+		IDirectTrackClient.cpp
+endif
+
 LOCAL_SHARED_LIBRARIES := \
     libui libcutils libutils libbinder libsonivox libicuuc libexpat \
     libcamera_client libstagefright_foundation \
@@ -83,6 +89,7 @@ LOCAL_C_INCLUDES := \
     $(TOP)/frameworks/base/include/media/stagefright/openmax \
     external/icu4c/common \
     external/expat/lib \
-    system/media/audio_effects/include
+    system/media/audio_effects/include \
+    frameworks/base/include 
 
 include $(BUILD_SHARED_LIBRARY)

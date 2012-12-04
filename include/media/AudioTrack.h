@@ -28,8 +28,12 @@
 #include <utils/Errors.h>
 #include <binder/IInterface.h>
 #include <binder/IMemory.h>
+#include <cutils/sched_policy.h>
 #include <utils/threads.h>
 
+#ifdef QCOM_HARDWARE
+#include <media/IDirectTrackClient.h>
+#endif
 namespace android {
 
 // ----------------------------------------------------------------------------
@@ -38,7 +42,11 @@ class audio_track_cblk_t;
 
 // ----------------------------------------------------------------------------
 
-class AudioTrack
+class AudioTrack :
+#ifdef QCOM_HARDWARE
+                    public BnDirectTrackClient,
+#endif
+                    virtual public RefBase
 {
 public:
     enum channel_index {
@@ -69,7 +77,8 @@ public:
             MUTE    = 0x00000001
         };
         uint32_t    flags;
-        int         format;
+        audio_format_t format; // but AUDIO_FORMAT_PCM_8_BIT -> AUDIO_FORMAT_PCM_16_BIT
+	// accessed directly by WebKit ANP callback
         int         channelCount; // will be removed in the future, do not use
         size_t      frameCount;
         size_t      size;
@@ -142,16 +151,28 @@ public:
      * user                Context for use by the callback receiver.
      */
 
-                        AudioTrack( int streamType,
+                        AudioTrack( audio_stream_type_t streamType,
                                     uint32_t sampleRate  = 0,
-                                    int format           = 0,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     int channelMask      = 0,
                                     int frameCount       = 0,
-                                    uint32_t flags       = 0,
-                                    callback_t cbf       = 0,
-                                    void* user           = 0,
+                                    audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
+                                    callback_t cbf       = NULL,
+                                    void* user           = NULL,
                                     int notificationFrames = 0,
                                     int sessionId = 0);
+
+			// DEPRECATED
+			explicit AudioTrack( int streamType,
+				    uint32_t sampleRate  = 0,
+				    int format = AUDIO_FORMAT_DEFAULT,
+				    int channelMask	 = 0,
+				    int frameCount	 = 0,
+				    uint32_t flags	 = (uint32_t) AUDIO_OUTPUT_FLAG_NONE,
+				    callback_t cbf	 = 0,
+				    void* user		 = 0,
+				    int notificationFrames = 0,
+				    int sessionId	 = 0);
 
     /* Creates an audio track and registers it with AudioFlinger. With this constructor,
      * The PCM data to be rendered by AudioTrack is passed in a shared memory buffer
@@ -162,30 +183,16 @@ public:
      * EVENT_UNDERRUN event.
      */
 
-                        AudioTrack( int streamType,
+                        AudioTrack( audio_stream_type_t streamType,
                                     uint32_t sampleRate = 0,
-                                    int format          = 0,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     int channelMask     = 0,
                                     const sp<IMemory>& sharedBuffer = 0,
-                                    uint32_t flags      = 0,
-                                    callback_t cbf      = 0,
-                                    void* user          = 0,
+                                    audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
+                                    callback_t cbf      = NULL,
+                                    void* user          = NULL,
                                     int notificationFrames = 0,
                                     int sessionId = 0);
-#ifdef WITH_QCOM_LPA
-    /* Creates an audio track and registers it with AudioFlinger. With this constructor,
-     * session ID of compressed stream can be registered AudioFlinger and AudioHardware,
-     * for routing purpose.
-     */
-
-                        AudioTrack( int streamType,
-                                    uint32_t sampleRate = 0,
-                                    int format          = 0,
-                                    int channels        = 0,
-                                    uint32_t flags      = 0,
-                                    int sessionId       = 0,
-                                    int lpaSessionId    =-1);
-#endif
 
     /* Terminates the AudioTrack and unregisters it from AudioFlinger.
      * Also destroys all resources assotiated with the AudioTrack.
@@ -200,34 +207,18 @@ public:
      *  - BAD_VALUE: invalid parameter (channels, format, sampleRate...)
      *  - NO_INIT: audio server or audio hardware not initialized
      * */
-            status_t    set(int streamType      =-1,
+            status_t    set(audio_stream_type_t streamType = AUDIO_STREAM_DEFAULT,
                             uint32_t sampleRate = 0,
-                            int format          = 0,
+                            audio_format_t format = AUDIO_FORMAT_DEFAULT,
                             int channelMask     = 0,
                             int frameCount      = 0,
-                            uint32_t flags      = 0,
-                            callback_t cbf      = 0,
-                            void* user          = 0,
+                            audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
+                            callback_t cbf      = NULL,
+                            void* user          = NULL,
                             int notificationFrames = 0,
                             const sp<IMemory>& sharedBuffer = 0,
                             bool threadCanCallJava = false,
                             int sessionId = 0);
-#ifdef WITH_QCOM_LPA
-    /* Initialize an AudioTrack and registers session Id for Tunneled audio decoding.
-     * Returned status (from utils/Errors.h) can be:
-     *  - NO_ERROR: successful intialization
-     *  - INVALID_OPERATION: AudioTrack is already intitialized
-     *  - BAD_VALUE: invalid parameter (channels, format, sampleRate...)
-     *  - NO_INIT: audio server or audio hardware not initialized
-     * */
-            status_t    set(int streamType      =-1,
-                            uint32_t sampleRate = 0,
-                            int format          = 0,
-                            int channels        = 0,
-                            uint32_t flags      = 0,
-                            int sessionId       = 0,
-                            int lpaSessionId    =-1);
-#endif
 
     /* Result of constructing the AudioTrack. This must be checked
      * before using any AudioTrack API (except for set()), using
@@ -244,8 +235,8 @@ public:
 
     /* getters, see constructor */
 
-            int         streamType() const;
-            int         format() const;
+            audio_stream_type_t streamType() const;
+            audio_format_t format() const;
             int         channelCount() const;
             uint32_t    frameCount() const;
             int         frameSize() const;
@@ -447,6 +438,11 @@ public:
      */
             status_t dump(int fd, const Vector<String16>& args) const;
 
+#ifdef QCOM_HARDWARE
+	    virtual void notify(int msg);
+	    virtual status_t getTimeStamp(uint64_t *tstamp);
+#endif
+
 private:
     /* copying audio tracks is not allowed */
                         AudioTrack(const AudioTrack& other);
@@ -469,7 +465,7 @@ private:
             bool processAudioBuffer(const sp<AudioTrackThread>& thread);
             status_t createTrack_l(int streamType,
                                  uint32_t sampleRate,
-                                 uint32_t format,
+                                 audio_format_t format,
                                  uint32_t channelMask,
                                  int frameCount,
                                  uint32_t flags,
@@ -481,6 +477,9 @@ private:
             audio_io_handle_t getOutput_l();
             status_t restoreTrack_l(audio_track_cblk_t*& cblk, bool fromStart);
 
+#ifdef QCOM_HARDWARE
+    sp<IDirectTrack>        mDirectTrack;
+#endif
     sp<IAudioTrack>         mAudioTrack;
     sp<IMemory>             mCblkMemory;
     sp<AudioTrackThread>    mAudioTrackThread;
@@ -490,8 +489,8 @@ private:
     uint32_t                mFrameCount;
 
     audio_track_cblk_t*     mCblk;
-    uint32_t                mFormat;
-    uint8_t                 mStreamType;
+    audio_format_t          mFormat;
+    audio_stream_type_t     mStreamType;
     uint8_t                 mChannelCount;
     uint8_t                 mMuted;
     uint8_t                 mReserved;
@@ -513,7 +512,10 @@ private:
     uint32_t                mNewPosition;
     uint32_t                mUpdatePeriod;
     bool                    mFlushed; // FIXME will be made obsolete by making flush() synchronous
-    uint32_t                mFlags;
+    audio_output_flags_t    mFlags;
+#ifdef QCOM_HARDWARE
+    sp<IAudioFlinger>       mAudioFlinger;
+#endif
 #ifdef WITH_QCOM_LPA
     audio_io_handle_t       mAudioSession;
 #endif
@@ -521,6 +523,12 @@ private:
     int                     mAuxEffectId;
     Mutex                   mLock;
     status_t                mRestoreStatus;
+#ifdef QCOM_HARDWARE
+    void*                   mObserver;
+#endif
+    bool                    mIsTimed;
+    int                     mPreviousPriority;          // before start()
+    SchedPolicy             mPreviousSchedulingGroup;
 };
 
 

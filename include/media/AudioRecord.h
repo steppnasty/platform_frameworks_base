@@ -112,7 +112,7 @@ public:
 
      static status_t getMinFrameCount(int* frameCount,
                                       uint32_t sampleRate,
-                                      int format,
+                                      audio_format_t format,
                                       int channelCount);
 
     /* Constructs an uninitialized AudioRecord. No connection with
@@ -149,9 +149,9 @@ public:
          RECORD_IIR_ENABLE = AUDIO_IN_ACOUSTICS_TX_IIR_ENABLE,
      };
 
-                        AudioRecord(int inputSource,
+                        AudioRecord(audio_source_t inputSource,
                                     uint32_t sampleRate = 0,
-                                    int format          = 0,
+                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                     uint32_t channelMask = AUDIO_CHANNEL_IN_MONO,
                                     int frameCount      = 0,
                                     uint32_t flags      = 0,
@@ -175,9 +175,9 @@ public:
      *  - NO_INIT: audio server or audio hardware not initialized
      *  - PERMISSION_DENIED: recording is not allowed for the requesting process
      * */
-            status_t    set(int inputSource     = 0,
+            status_t    set(audio_source_t inputSource = AUDIO_SOURCE_DEFAULT,
                             uint32_t sampleRate = 0,
-                            int format          = 0,
+                            audio_format_t format = AUDIO_FORMAT_DEFAULT,
                             uint32_t channelMask = AUDIO_CHANNEL_IN_MONO,
                             int frameCount      = 0,
                             uint32_t flags      = 0,
@@ -203,12 +203,12 @@ public:
 
    /* getters, see constructor */
 
-            int         format() const;
+            audio_format_t format() const;
             int         channelCount() const;
             int         channels() const;
             uint32_t    frameCount() const;
             int         frameSize() const;
-            int         inputSource() const;
+            audio_source_t inputSource() const;
 
 
     /* After it's created the track is not active. Call start() to
@@ -349,7 +349,7 @@ private:
 
             bool processAudioBuffer(const sp<ClientRecordThread>& thread);
             status_t openRecord_l(uint32_t sampleRate,
-                                uint32_t format,
+                                audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
@@ -365,9 +365,9 @@ private:
     uint32_t                mFrameCount;
 
     audio_track_cblk_t*     mCblk;
-    uint32_t                mFormat;
+    audio_format_t          mFormat;
     uint8_t                 mChannelCount;
-    uint8_t                 mInputSource;
+    audio_source_t          mInputSource;
     uint8_t                 mReserved[2];
     status_t                mStatus;
     uint32_t                mLatency;

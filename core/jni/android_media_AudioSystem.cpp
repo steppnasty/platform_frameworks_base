@@ -72,7 +72,7 @@ static jboolean
 android_media_AudioSystem_isStreamActive(JNIEnv *env, jobject thiz, jint stream, jint inPastMs)
 {
     bool state = false;
-    AudioSystem::isStreamActive(stream, &state, inPastMs);
+    AudioSystem::isStreamActive((audio_stream_type_t) stream, &state, inPastMs);
     return state;
 }
 
@@ -152,7 +152,7 @@ android_media_AudioSystem_getDeviceConnectionState(JNIEnv *env, jobject thiz, ji
 static int
 android_media_AudioSystem_setPhoneState(JNIEnv *env, jobject thiz, jint state)
 {
-    return check_AudioSystem_Command(AudioSystem::setPhoneState(state));
+    return check_AudioSystem_Command(AudioSystem::setPhoneState((audio_mode_t) state));
 }
 
 static int

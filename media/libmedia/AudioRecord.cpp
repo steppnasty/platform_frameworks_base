@@ -51,7 +51,7 @@ namespace android {
 status_t AudioRecord::getMinFrameCount(
         int* frameCount,
         uint32_t sampleRate,
-        int format,
+        audio_format_t format,
         int channelCount)
 {
     size_t size = 0;
@@ -86,9 +86,9 @@ AudioRecord::AudioRecord()
 }
 
 AudioRecord::AudioRecord(
-        int inputSource,
+        audio_source_t inputSource,
         uint32_t sampleRate,
-        int format,
+        audio_format_t format,
         uint32_t channelMask,
         int frameCount,
         uint32_t flags,
@@ -152,9 +152,9 @@ AudioRecord::~AudioRecord()
 }
 
 status_t AudioRecord::set(
-        int inputSource,
+        audio_source_t inputSource,
         uint32_t sampleRate,
-        int format,
+        audio_format_t format,
         uint32_t channelMask,
         int frameCount,
         uint32_t flags,
@@ -294,7 +294,7 @@ status_t AudioRecord::set(
     mMarkerReached = false;
     mNewPosition = 0;
     mUpdatePeriod = 0;
-    mInputSource = (uint8_t)inputSource;
+    mInputSource = inputSource;
     mFlags = flags;
     mInput = input;
     mFirstread = false;
@@ -315,7 +315,7 @@ uint32_t AudioRecord::latency() const
     return mLatency;
 }
 
-int AudioRecord::format() const
+audio_format_t AudioRecord::format() const
 {
     return mFormat;
 }
@@ -352,9 +352,9 @@ int AudioRecord::frameSize() const
     }
 }
 
-int AudioRecord::inputSource() const
+audio_source_t AudioRecord::inputSource() const
 {
-    return (int)mInputSource;
+    return mInputSource;
 
 }
 
@@ -527,7 +527,7 @@ unsigned int AudioRecord::getInputFramesLost()
 // must be called with mLock held
 status_t AudioRecord::openRecord_l(
         uint32_t sampleRate,
-        uint32_t format,
+        audio_format_t format,
         uint32_t channelMask,
         int frameCount,
         uint32_t flags,

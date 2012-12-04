@@ -97,7 +97,7 @@ public:
         return static_cast <audio_policy_dev_state_t>(reply.readInt32());
     }
 
-    virtual status_t setPhoneState(int state)
+    virtual status_t setPhoneState(audio_mode_t state)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioPolicyService::getInterfaceDescriptor());
@@ -138,9 +138,9 @@ public:
     virtual audio_io_handle_t getOutput(
                                         audio_stream_type_t stream,
                                         uint32_t samplingRate,
-                                        uint32_t format,
+                                        audio_format_t format,
                                         uint32_t channels,
-                                        audio_policy_output_flags_t flags)
+                                        audio_output_flags_t flags)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioPolicyService::getInterfaceDescriptor());
@@ -233,9 +233,9 @@ public:
     }
 
     virtual audio_io_handle_t getInput(
-                                    int inputSource,
+                                    audio_source_t inputSource,
                                     uint32_t samplingRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channels,
                                     audio_in_acoustics_t acoustics,
                                     int audioSession)
@@ -375,11 +375,11 @@ public:
         return static_cast <status_t> (reply.readInt32());
     }
 
-    virtual bool isStreamActive(int stream, uint32_t inPastMs) const
+    virtual bool isStreamActive(audio_stream_type_t stream, uint32_t inPastMs) const
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioPolicyService::getInterfaceDescriptor());
-        data.writeInt32(stream);
+        data.writeInt32((int32_t) stream);
         data.writeInt32(inPastMs);
         remote()->transact(IS_STREAM_ACTIVE, data, &reply);
         return reply.readInt32();
@@ -445,7 +445,7 @@ status_t BnAudioPolicyService::onTransact(
 
         case SET_PHONE_STATE: {
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
-            reply->writeInt32(static_cast <uint32_t>(setPhoneState(data.readInt32())));
+            reply->writeInt32(static_cast <uint32_t>(setPhoneState((audio_mode_t) data.readInt32())));
             return NO_ERROR;
         } break;
 
@@ -478,10 +478,10 @@ status_t BnAudioPolicyService::onTransact(
             audio_stream_type_t stream =
                     static_cast <audio_stream_type_t>(data.readInt32());
             uint32_t samplingRate = data.readInt32();
-            uint32_t format = data.readInt32();
+            audio_format_t format = (audio_format_t) data.readInt32();
             uint32_t channels = data.readInt32();
-            audio_policy_output_flags_t flags =
-                    static_cast <audio_policy_output_flags_t>(data.readInt32());
+            audio_output_flags_t flags =
+                    static_cast <audio_output_flags_t>(data.readInt32());
 
             audio_io_handle_t output = getOutput(stream,
                                                  samplingRate,
@@ -563,9 +563,9 @@ status_t BnAudioPolicyService::onTransact(
 
         case GET_INPUT: {
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
-            int inputSource = data.readInt32();
+            audio_source_t inputSource = (audio_source_t) data.readInt32();
             uint32_t samplingRate = data.readInt32();
-            uint32_t format = data.readInt32();
+            audio_format_t format = (audio_format_t) data.readInt32();
             uint32_t channels = data.readInt32();
             audio_in_acoustics_t acoustics =
                     static_cast <audio_in_acoustics_t>(data.readInt32());
@@ -689,9 +689,9 @@ status_t BnAudioPolicyService::onTransact(
 
         case IS_STREAM_ACTIVE: {
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
-            int stream = data.readInt32();
+            audio_stream_type_t stream = (audio_stream_type_t) data.readInt32();
             uint32_t inPastMs = (uint32_t)data.readInt32();
-            reply->writeInt32( isStreamActive(stream, inPastMs) );
+            reply->writeInt32( isStreamActive((audio_stream_type_t) stream, inPastMs) );
             return NO_ERROR;
         } break;
 

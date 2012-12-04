@@ -111,10 +111,43 @@ extern "C" AudioTrack *_ZN7android10AudioTrackC1EijiiijPFviPvS1_ES1_i(
 #endif
 
 AudioTrack::AudioTrack()
-    : mStatus(NO_INIT)
+    : mStatus(NO_INIT),
+      mIsTimed(false),
+      mPreviousPriority(ANDROID_PRIORITY_NORMAL),
+      mPreviousSchedulingGroup(SP_DEFAULT)
+#ifdef QCOM_HARDWARE
+      ,mAudioFlinger(NULL),
+      mObserver(NULL)
+#endif
 {
 }
 
+AudioTrack::AudioTrack(
+        audio_stream_type_t streamType,
+        uint32_t sampleRate,
+        audio_format_t format,
+        int channelMask,
+        int frameCount,
+        audio_output_flags_t flags,
+        callback_t cbf,
+        void* user,
+        int notificationFrames,
+        int sessionId)
+    : mStatus(NO_INIT),
+      mIsTimed(false),
+      mPreviousPriority(ANDROID_PRIORITY_NORMAL),
+      mPreviousSchedulingGroup(SP_DEFAULT)
+#ifdef QCOM_HARDWARE
+      ,mAudioFlinger(NULL),
+      mObserver(NULL)
+#endif
+{
+    mStatus = set(streamType, sampleRate, format, channelMask,
+            frameCount, flags, cbf, user, notificationFrames,
+            0 /*sharedBuffer*/, false /*threadCanCallJava*/, sessionId);
+}
+
+// DEPRECATED
 AudioTrack::AudioTrack(
         int streamType,
         uint32_t sampleRate,
@@ -126,30 +159,19 @@ AudioTrack::AudioTrack(
         void* user,
         int notificationFrames,
         int sessionId)
-    : mStatus(NO_INIT)
+    : mStatus(NO_INIT),
+      mIsTimed(false),
+      mPreviousPriority(ANDROID_PRIORITY_NORMAL), mPreviousSchedulingGroup(SP_DEFAULT)
+#ifdef QCOM_HARDWARE
+      ,mAudioFlinger(NULL),
+      mObserver(NULL)
+#endif
 {
-    mStatus = set(streamType, sampleRate, format, channelMask,
-            frameCount, flags, cbf, user, notificationFrames,
-            0, false, sessionId);
+    mStatus = set((audio_stream_type_t)streamType, sampleRate, (audio_format_t)format, channelMask,
+            frameCount, (audio_output_flags_t)flags, cbf, user, notificationFrames,
+            0 /*sharedBuffer*/, false /*threadCanCallJava*/, sessionId);
 }
 
-AudioTrack::AudioTrack(
-        int streamType,
-        uint32_t sampleRate,
-        int format,
-        int channelMask,
-        const sp<IMemory>& sharedBuffer,
-        uint32_t flags,
-        callback_t cbf,
-        void* user,
-        int notificationFrames,
-        int sessionId)
-    : mStatus(NO_INIT)
-{
-    mStatus = set(streamType, sampleRate, format, channelMask,
-            0, flags, cbf, user, notificationFrames,
-            sharedBuffer, false, sessionId);
-}
 #ifdef WITH_QCOM_LPA
 AudioTrack::AudioTrack(
         int streamType,
@@ -206,12 +228,12 @@ AudioTrack::~AudioTrack()
 }
 
 status_t AudioTrack::set(
-        int streamType,
+        audio_stream_type_t streamType,
         uint32_t sampleRate,
-        int format,
+        audio_format_t format,
         int channelMask,
         int frameCount,
-        uint32_t flags,
+        audio_output_flags_t flags,
         callback_t cbf,
         void* user,
         int notificationFrames,
@@ -260,7 +282,9 @@ status_t AudioTrack::set(
 
     // force direct flag if format is not linear PCM
     if (!audio_is_linear_pcm(format)) {
-        flags |= AUDIO_POLICY_OUTPUT_FLAG_DIRECT;
+	flags = (audio_output_flags_t)
+		// FIXME why can't we allow direct AND fast?
+		((flags | AUDIO_OUTPUT_FLAG_DIRECT) & ~AUDIO_OUTPUT_FLAG_FAST);
     }
 
     if (!audio_is_output_channel(channelMask)) {
@@ -270,9 +294,9 @@ status_t AudioTrack::set(
     uint32_t channelCount = popcount(channelMask);
 
     audio_io_handle_t output = AudioSystem::getOutput(
-                                    (audio_stream_type_t)streamType,
-                                    sampleRate,format, channelMask,
-                                    (audio_policy_output_flags_t)flags);
+                                    streamType,
+                                    sampleRate, format, channelMask,
+                                    flags);
 
     if (output == 0) {
         ALOGE("Could not get audio output for stream type %d", streamType);
@@ -290,7 +314,7 @@ status_t AudioTrack::set(
     // create the IAudioTrack
     status_t status = createTrack_l(streamType,
                                   sampleRate,
-                                  (uint32_t)format,
+                                  format,
                                   (uint32_t)channelMask,
                                   frameCount,
                                   flags,
@@ -313,7 +337,7 @@ status_t AudioTrack::set(
     mStatus = NO_ERROR;
 
     mStreamType = streamType;
-    mFormat = (uint32_t)format;
+    mFormat = format;
     mChannelMask = (uint32_t)channelMask;
     mChannelCount = channelCount;
     mSharedBuffer = sharedBuffer;
@@ -431,12 +455,12 @@ uint32_t AudioTrack::latency() const
     return mLatency;
 }
 
-int AudioTrack::streamType() const
+audio_stream_type_t AudioTrack::streamType() const
 {
     return mStreamType;
 }
 
-int AudioTrack::format() const
+audio_format_t AudioTrack::format() const
 {
     return mFormat;
 }
@@ -874,8 +898,8 @@ audio_io_handle_t AudioTrack::getOutput()
 // must be called with mLock held
 audio_io_handle_t AudioTrack::getOutput_l()
 {
-    return AudioSystem::getOutput((audio_stream_type_t)mStreamType,
-            mCblk->sampleRate, mFormat, mChannelMask, (audio_policy_output_flags_t)mFlags);
+    return AudioSystem::getOutput(mStreamType,
+            mCblk->sampleRate, mFormat, mChannelMask, mFlags);
 }
 
 int AudioTrack::getSessionId()
@@ -899,7 +923,7 @@ status_t AudioTrack::attachAuxEffect(int effectId)
 status_t AudioTrack::createTrack_l(
         int streamType,
         uint32_t sampleRate,
-        uint32_t format,
+        audio_format_t format,
         uint32_t channelMask,
         int frameCount,
         uint32_t flags,
@@ -1466,6 +1490,23 @@ status_t AudioTrack::dump(int fd, const Vector<String16>& args) const
     ::write(fd, result.string(), result.size());
     return NO_ERROR;
 }
+
+#ifdef QCOM_HARDWARE
+void AudioTrack::notify(int msg) {
+    if (msg == EVENT_UNDERRUN) {
+	ALOGV("Posting event underrun to Audio Sink.");
+	mCbf(EVENT_UNDERRUN, mUserData, 0);
+    }
+}
+
+status_t AudioTrack::getTimeStamp(uint64_t *tstamp) {
+    if (mDirectTrack != NULL) {
+	*tstamp = mDirectTrack->getTimeStamp();
+	ALOGV("Timestamp %lld ", *tstamp);
+    }
+    return NO_ERROR;
+}
+#endif
 
 // =========================================================================
 

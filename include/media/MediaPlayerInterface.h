@@ -53,6 +53,8 @@ enum player_type {
 #define DEFAULT_AUDIOSINK_BUFFERSIZE 1200
 #define DEFAULT_AUDIOSINK_SAMPLERATE 44100
 
+// when the channel mask isn't known, use the channel count to derive a mask in AudioSink::open()
+#define CHANNEL_MASK_USE_CHANNEL_ORDER 0
 
 // callback mechanism for passing messages to MediaPlayer object
 typedef void (*notify_callback_f)(void* cookie,

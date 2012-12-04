@@ -40,6 +40,7 @@
 
 #include <system/audio.h>
 #include <hardware/audio.h>
+#include <hardware/audio_policy.h>
 
 #include "AudioBufferProvider.h"
 
@@ -61,7 +62,18 @@ class AudioResampler;
 
 // ----------------------------------------------------------------------------
 
-static const nsecs_t kStandbyTimeInNsecs = seconds(3);
+// ----------------------------------------------------------------------------
+
+// AudioFlinger has a hard-coded upper limit of 2 channels for capture and playback.
+// There is support for > 2 channel tracks down-mixed to 2 channel output via a down-mix effect.
+// Adding full support for > 2 channel capture or playback would require more than simply changing.
+// this #define.  There is an independent hard-coded upper limit in AudioMixer;
+// removing that AudioMixer limit would be necessary but insufficient to support > 2 channels.
+// The macro FCC_2 highlights some (but not all) places where there are 2-channel assumptions.
+// Search also for "2", "left", "right", "[0]", "[1]", ">> 16", "<< 16", etc.
+#define FCC_2 2     // FCC_2 = Fixed Channel Count 2
+
+static const nsecs_t kDefaultStandbyTimeInNsecs = seconds(3);
 
 class AudioFlinger :
     public BinderService<AudioFlinger>,
@@ -78,7 +90,7 @@ public:
                                 pid_t pid,
                                 int streamType,
                                 uint32_t sampleRate,
-                                uint32_t format,
+                                audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
@@ -100,7 +112,7 @@ public:
 
     virtual     uint32_t    sampleRate(int output) const;
     virtual     int         channelCount(int output) const;
-    virtual     uint32_t    format(int output) const;
+    virtual     audio_format_t format(audio_io_handle_t output) const;
     virtual     size_t      frameCount(int output) const;
     virtual     uint32_t    latency(int output) const;
 
@@ -119,7 +131,7 @@ public:
     virtual     float       streamVolume(int stream, int output) const;
     virtual     bool        streamMute(int stream) const;
 
-    virtual     status_t    setMode(int mode);
+    virtual     status_t    setMode(audio_mode_t mode);
 
     virtual     status_t    setMicMute(bool state);
     virtual     bool        getMicMute() const;
@@ -129,15 +141,16 @@ public:
 
     virtual     void        registerClient(const sp<IAudioFlingerClient>& client);
 
-    virtual     size_t      getInputBufferSize(uint32_t sampleRate, int format, int channelCount);
+    virtual     size_t      getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount) const;
     virtual     unsigned int  getInputFramesLost(int ioHandle);
 
-    virtual int openOutput(uint32_t *pDevices,
-                                    uint32_t *pSamplingRate,
-                                    uint32_t *pFormat,
-                                    uint32_t *pChannels,
-                                    uint32_t *pLatencyMs,
-                                    uint32_t flags);
+    virtual audio_io_handle_t openOutput(audio_module_handle_t module,
+				         audio_devices_t *pDevices,
+                                         uint32_t *pSamplingRate,
+                                         audio_format_t *pFormat,
+                                         audio_channel_mask_t *pChannelMask,
+                                         uint32_t *pLatencyMs,
+                                         audio_output_flags_t flags);
 
 #ifdef WITH_QCOM_LPA
     virtual int openSession(   uint32_t *pDevices,
@@ -161,11 +174,11 @@ public:
 
     virtual status_t restoreOutput(int output);
 
-    virtual int openInput(uint32_t *pDevices,
-                            uint32_t *pSamplingRate,
-                            uint32_t *pFormat,
-                            uint32_t *pChannels,
-                            uint32_t acoustics);
+    virtual audio_io_handle_t openInput(audio_module_handle_t module,
+                                        audio_devices_t *pDevices,
+                                        uint32_t *pSamplingRate,
+                                        audio_format_t *pFormat,
+                                        audio_channel_mask_t *pChannelMask);
 
     virtual status_t closeInput(int input);
 
@@ -220,6 +233,7 @@ public:
         AUDIO_HW_SET_MIC_MUTE,
         AUDIO_SET_VOICE_VOLUME,
         AUDIO_SET_PARAMETER,
+        AUDIO_HW_GET_INPUT_BUFFER_SIZE, // get_input_buffer_size
     };
 
     // record interface
@@ -227,12 +241,14 @@ public:
                                 pid_t pid,
                                 int input,
                                 uint32_t sampleRate,
-                                uint32_t format,
+                                audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
                                 int *sessionId,
                                 status_t *status);
+
+    virtual audio_module_handle_t loadHwModule(const char *name);
 
     virtual     status_t    onTransact(
                                 uint32_t code,
@@ -240,22 +256,27 @@ public:
                                 Parcel* reply,
                                 uint32_t flags);
 
-                uint32_t    getMode() { return mMode; }
-
-                bool        btNrecIsOff() { return mBtNrecIsOff; }
 #ifdef WITH_QCOM_LPA
                 void applyEffectsOn(int16_t *buffer1,
                                     int16_t *buffer2,
                                     int size);
 #endif
 private:
+               audio_mode_t getMode() const { return mMode; }
+
+                bool        btNrecIsOff() const { return mBtNrecIsOff; }
+
                             AudioFlinger();
     virtual                 ~AudioFlinger();
 
     status_t                initCheck() const;
     virtual     void        onFirstRef();
-    audio_hw_device_t*      findSuitableHwDev_l(uint32_t devices);
+    audio_hw_device_t*      findSuitableHwDev_l(audio_module_handle_t module, uint32_t devices);
     void                    purgeStaleEffects_l();
+
+    // standby delay for MIXER and DUPLICATING playback threads is read from property
+    // ro.audio.flinger_standbytime_ms or defaults to kDefaultStandbyTimeInNsecs
+    static nsecs_t          mStandbyTimeInNsecs;
 
     // Internal dump utilites.
     status_t dumpPermissionDenial(int fd, const Vector<String16>& args);
@@ -284,14 +305,14 @@ private:
     public:
                             NotificationClient(const sp<AudioFlinger>& audioFlinger,
                                                 const sp<IAudioFlingerClient>& client,
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
                                                 sp<IBinder> binder);
 #else
                                                 pid_t pid);
 #endif
         virtual             ~NotificationClient();
 
-                sp<IAudioFlingerClient>    client() { return mClient; }
+                sp<IAudioFlingerClient> audioFlingerClient() { return mAudioFlingerClient; }
 
                 // IBinder::DeathRecipient
                 virtual     void        binderDied(const wp<IBinder>& who);
@@ -301,12 +322,12 @@ private:
                             NotificationClient& operator = (const NotificationClient&);
 
         sp<AudioFlinger>        mAudioFlinger;
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
         sp<IBinder>             mBinder;
 #else
         pid_t                   mPid;
 #endif
-        sp<IAudioFlingerClient> mClient;
+        const sp<IAudioFlingerClient> mAudioFlingerClient;
     };
 
     class TrackHandle;
@@ -321,6 +342,9 @@ private:
     class EffectModule;
     class EffectHandle;
     class EffectChain;
+#ifdef QCOM_HARDWARE
+    struct AudioSessionDescriptor;
+#endif
     struct AudioStreamOut;
     struct AudioStreamIn;
 
@@ -365,7 +389,7 @@ private:
                                 TrackBase(const wp<ThreadBase>& thread,
                                         const sp<Client>& client,
                                         uint32_t sampleRate,
-                                        uint32_t format,
+                                        audio_format_t format,
                                         uint32_t channelMask,
                                         int frameCount,
                                         uint32_t flags,
@@ -393,7 +417,7 @@ private:
             virtual status_t getNextBuffer(AudioBufferProvider::Buffer* buffer) = 0;
             virtual void releaseBuffer(AudioBufferProvider::Buffer* buffer);
 
-            uint32_t format() const {
+            audio_format_t format() const {
                 return mFormat;
             }
 
@@ -426,7 +450,7 @@ private:
             // we don't really need a lock for these
             int                 mState;
             int                 mClientTid;
-            uint32_t            mFormat;
+            audio_format_t      mFormat;
             uint32_t            mFlags;
             int                 mSessionId;
             uint8_t             mChannelCount;
@@ -460,7 +484,7 @@ private:
                     int         type() const { return mType; }
                     uint32_t    sampleRate() const;
                     int         channelCount() const;
-                    uint32_t    format() const;
+                    audio_format_t format() const { return mFormat; }
                     size_t      frameCount() const;
                     void        wakeUp()    { mWaitWorkCV.broadcast(); }
                     void        exit();
@@ -514,7 +538,7 @@ private:
                     // unlock effect chains after process
                     void unlockEffectChains(Vector<sp <EffectChain> >& effectChains);
                     // set audio mode to all effect chains
-                    void setMode(uint32_t mode);
+                    void setMode(audio_mode_t mode);
                     // get effect module with corresponding ID on specified audio session
                     sp<AudioFlinger::EffectModule> getEffect_l(int sessionId, int effectId);
                     // add and effect module. Also creates the effect chain is none exists for
@@ -590,7 +614,7 @@ private:
                     uint32_t                mChannelMask;
                     uint16_t                mChannelCount;
                     uint16_t                mFrameSize;
-                    uint32_t                mFormat;
+                    audio_format_t          mFormat;
                     Condition               mParamCond;
                     Vector<String8>         mNewParameters;
                     status_t                mParamStatus;
@@ -628,7 +652,7 @@ private:
                                         const sp<Client>& client,
                                         int streamType,
                                         uint32_t sampleRate,
-                                        uint32_t format,
+                                        audio_format_t format,
                                         uint32_t channelMask,
                                         int frameCount,
                                         const sp<IMemory>& sharedBuffer,
@@ -715,7 +739,7 @@ private:
                                 OutputTrack(  const wp<ThreadBase>& thread,
                                         DuplicatingThread *sourceThread,
                                         uint32_t sampleRate,
-                                        uint32_t format,
+                                        audio_format_t format,
                                         uint32_t channelMask,
                                         int frameCount);
                                 ~OutputTrack();
@@ -770,7 +794,7 @@ private:
                                     const sp<AudioFlinger::Client>& client,
                                     int streamType,
                                     uint32_t sampleRate,
-                                    uint32_t format,
+                                    audio_format_t format,
                                     uint32_t channelMask,
                                     int frameCount,
                                     const sp<IMemory>& sharedBuffer,
@@ -858,6 +882,9 @@ private:
         int                             mNumWrites;
         int                             mNumDelayedWrites;
         bool                            mInWrite;
+
+        // same as AudioFlinger::mStandbyTimeInNsecs except for DIRECT which uses a shorter value
+        nsecs_t                         standbyDelay;
     };
 
     class MixerThread : public PlaybackThread {
@@ -940,7 +967,7 @@ private:
               MixerThread *checkMixerThread_l(int output) const;
               RecordThread *checkRecordThread_l(int input) const;
               float streamVolumeInternal(int stream) const { return mStreamTypes[stream].volume; }
-              void audioConfigChanged_l(int event, int ioHandle, void *param2);
+              void audioConfigChanged_l(int event, audio_io_handle_t ioHandle, const void *param2);
 
               uint32_t nextUniqueId();
               status_t moveEffectChain_l(int sessionId,
@@ -975,7 +1002,7 @@ private:
 
 
                 void        removeClient_l(pid_t pid);
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
                 void        removeNotificationClient(sp<IBinder> binder);
 #else
                 void        removeNotificationClient(pid_t pid);
@@ -993,7 +1020,7 @@ private:
                                 RecordTrack(const wp<ThreadBase>& thread,
                                         const sp<Client>& client,
                                         uint32_t sampleRate,
-                                        uint32_t format,
+                                        audio_format_t format,
                                         uint32_t channelMask,
                                         int frameCount,
                                         uint32_t flags,
@@ -1037,7 +1064,7 @@ private:
                 sp<AudioFlinger::RecordThread::RecordTrack>  createRecordTrack_l(
                         const sp<AudioFlinger::Client>& client,
                         uint32_t sampleRate,
-                        int format,
+                        audio_format_t format,
                         int channelMask,
                         int frameCount,
                         uint32_t flags,
@@ -1177,7 +1204,7 @@ private:
 
         status_t         setDevice(uint32_t device);
         status_t         setVolume(uint32_t *left, uint32_t *right, bool controller);
-        status_t         setMode(uint32_t mode);
+        status_t         setMode(audio_mode_t mode);
         status_t         start();
         status_t         stop();
         void             setSuspended(bool suspended);
@@ -1344,7 +1371,7 @@ private:
         sp<EffectModule> getEffectFromType_l(const effect_uuid_t *type);
         bool setVolume_l(uint32_t *left, uint32_t *right);
         void setDevice_l(uint32_t device);
-        void setMode_l(uint32_t mode);
+        void setMode_l(audio_mode_t mode);
 
         void setInBuffer(int16_t *buffer, bool ownsBuffer = false) {
             mInBuffer = buffer;
@@ -1460,6 +1487,41 @@ private:
         int cnt;
     };
 
+    enum master_volume_support {
+        // MVS_NONE:
+        // Audio HAL has no support for master volume, either setting or
+        // getting.  All master volume control must be implemented in SW by the 
+        // AudioFlinger mixing core.
+        MVS_NONE,
+
+        // MVS_SETONLY:
+        // Audio HAL has support for setting master volume, but not for getting
+        // master volume (original HAL design did not include a getter).
+        // AudioFlinger needs to keep track of the last set master volume in
+        // addition to needing to set an initial, default, master volume at HAL
+        // load time.
+        MVS_SETONLY,
+
+        // MVS_FULL:
+        // Audio HAL has support both for setting and getting master volume.
+        // AudioFlinger should send all set and get master volume requests
+        // directly to the HAL.
+        MVS_FULL,
+    };
+
+    class AudioHwDevice {
+    public:
+        AudioHwDevice(const char *moduleName, audio_hw_device_t *hwDevice) :
+            mModuleName(strdup(moduleName)), mHwDevice(hwDevice){}
+        ~AudioHwDevice() { free((void *)mModuleName); }
+
+        const char *moduleName() const { return mModuleName; }
+        audio_hw_device_t *hwDevice() const { return mHwDevice; }
+    private:
+        const char * const mModuleName;
+        audio_hw_device_t * const mHwDevice;
+    };
+
     friend class RecordThread;
     friend class PlaybackThread;
 
@@ -1469,7 +1531,7 @@ private:
 
                 mutable     Mutex                   mHardwareLock;
                 audio_hw_device_t*                  mPrimaryHardwareDev;
-                Vector<audio_hw_device_t*>          mAudioHwDevs;
+                DefaultKeyedVector<audio_module_handle_t, AudioHwDevice*>  mAudioHwDevs;
     mutable     int                                 mHardwareStatus;
 
 
@@ -1480,35 +1542,33 @@ private:
                 float                               mLPARightVol;
 #endif
                 float                               mMasterVolume;
+                float                               mMasterVolumeSW;
+                master_volume_support               mMasterVolumeSupportLvl;
                 bool                                mMasterMute;
 
                 DefaultKeyedVector< int, sp<RecordThread> >    mRecordThreads;
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
                 DefaultKeyedVector< sp<IBinder>, sp<NotificationClient> >    mNotificationClients;
 #else
                 DefaultKeyedVector< pid_t, sp<NotificationClient> >    mNotificationClients;
 #endif
                 volatile int32_t                    mNextUniqueId;
-                uint32_t                            mMode;
+                audio_mode_t                        mMode;
                 bool                                mBtNrecIsOff;
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
+                DefaultKeyedVector<audio_io_handle_t, AudioSessionDescriptor *> mDirectAudioTracks;
                 int                                 mA2DPHandle; // Handle to notify client (MIO)
-                int                                 mLPAStreamType;
-                AudioStreamOut                     *mLPAOutput;
-                audio_io_handle_t                   mLPAHandle;
-                int                                 mLPAStreamIsActive;
+                // protected by mLock
                 volatile bool                       mIsEffectConfigChanged;
 #endif
-
                 Vector<AudioSessionRef*> mAudioSessionRefs;
-
-#ifdef WITH_QCOM_LPA
-                public:
-                int                                 mLPASessionId;
+#ifdef QCOM_HARDWARE
                 sp<EffectChain>                     mLPAEffectChain;
+                int                                 mLPASessionId;
                 int                                 mLPASampleRate;
                 int                                 mLPANumChannels;
 #endif
+                audio_module_handle_t loadHwModule_l(const char *name);
 };
 
 
