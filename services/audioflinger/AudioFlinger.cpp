@@ -866,9 +866,30 @@ bool AudioFlinger::masterMute() const
     return mMasterMute;
 }
 
+float AudioFlinger::masterVolume_l() const
+{
+#ifndef ICS_AUDIO_BLOB
+    if (MVS_FULL == mMasterVolumeSupportLvl) {
+        float ret_val;
+        AutoMutex lock(mHardwareLock);
+ 
+        mHardwareStatus = AUDIO_HW_GET_MASTER_VOLUME;
+        ALOG_ASSERT((NULL != mPrimaryHardwareDev) &&
+                    (NULL != mPrimaryHardwareDev->get_master_volume),
+                "can't get master volume");
+
+        mPrimaryHardwareDev->get_master_volume(mPrimaryHardwareDev, &ret_val);
+        mHardwareStatus = AUDIO_HW_IDLE;
+        return ret_val;
+    }
+#endif
+
+    return mMasterVolume;
+}
+
 #ifdef WITH_QCOM_LPA
 status_t AudioFlinger::setSessionVolume(int stream, float left, float right)
-{
+
     AutoMutex lock(mLock);
 
     mLPALeftVol  = left;
@@ -5465,7 +5486,11 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
                                           &config.channel_mask, 
 					  &configsample_rate, 
 					  &outStream);
+    uint32_t newflags = flags | AUDIO_OUTPUT_FLAG_PRIMARY;
+    flags = (audio_output_flags_t)newflags;
 #endif
+
+    mHardwareStatus = AUDIO_HW_IDLE;
     ALOGV("openOutput() openOutputStream returned output %p, SamplingRate %d, Format %d, Channels %x, status %d",
             outStream,
             config.sample_rate,
@@ -5473,12 +5498,20 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
             config.channel_mask,
             status);
 
-    mHardwareStatus = AUDIO_HW_IDLE;
-    if (outStream != NULL) {
+    if (status == NO_ERROR && outStream != NULL) {
         AudioStreamOut *output = new AudioStreamOut(outHwDev, outStream);
-        int id = nextUniqueId();
-
-        if ((flags & AUDIO_POLICY_OUTPUT_FLAG_DIRECT) ||
+#ifdef QCOM_HARDWARE
+        if (flags & AUDIO_OUTPUT_FLAG_LPA || flags & AUDIO_OUTPUT_FLAG_TUNNEL ) {
+            AudioSessionDescriptor *desc = new AudioSessionDescriptor(outHwDev, outStream, flags);
+            desc->mActive = true;
+            //TODO:  no stream type
+            //desc->mStreamType = streamType;
+            desc->mVolumeLeft = 1.0;
+            desc->mVolumeRight = 1.0;
+            mDirectAudioTracks.add(id, desc);
+        } else
+#endif
+            if ((flags & AUDIO_OUTPUT_FLAG_DIRECT) ||
             (config.format != AUDIO_FORMAT_PCM_16_BIT) ||
             (config.channel_mask != AUDIO_CHANNEL_OUT_STEREO)) {
             thread = new DirectOutputThread(this, output, id, *pDevices);
@@ -5487,23 +5520,83 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
             thread = new MixerThread(this, output, id, *pDevices);
             ALOGV("openOutput() created mixer output: ID %d thread %p", id, thread);
         }
-        mPlaybackThreads.add(id, thread);
+#ifdef QCOM_HARDWARE
+        if (thread != NULL)
+#endif
+            mPlaybackThreads.add(id, thread);
 
-        if (pSamplingRate != NULL) *pSamplingRate = config.sample_rate;
-        if (pFormat != NULL) *pFormat = config.format;
-        if (pChannelMask !=NULL) *pChannelMask = config.channel_mask;
-        if (pLatencyMs) *pLatencyMs = thread->latency();
-
-#ifdef WITH_QCOM_LPA
+#ifdef QCOM_HARDWARE
         // if the device is a A2DP, then this is an A2DP Output
         if ( true == audio_is_a2dp_device((audio_devices_t) *pDevices) )
         {
             mA2DPHandle = id;
-            LOGV("A2DP device activated. The handle is set to %d", mA2DPHandle);
+            ALOGV("A2DP device activated. The handle is set to %d", mA2DPHandle);
         }
 #endif
-        // notify client processes of the new output creation
-        thread->audioConfigChanged_l(AudioSystem::OUTPUT_OPENED);
+
+        
+        if (pSamplingRate != NULL) *pSamplingRate = config.sample_rate;
+        if (pFormat != NULL) *pFormat = config.format;
+        if (pChannelMask != NULL) *pChannelMask = config.channel_mask;
+#ifdef QCOM_HARDWARE
+        if (thread != NULL) {
+#endif
+            if (pLatencyMs != NULL) *pLatencyMs = thread->latency();
+
+            // notify client processes of the new output creation
+            thread->audioConfigChanged_l(AudioSystem::OUTPUT_OPENED);
+#ifdef QCOM_HARDWARE
+        }
+        else {
+            *pLatencyMs = 0;
+        }
+#endif
+        // the first primary output opened designates the primary hw device
+        if ((mPrimaryHardwareDev == NULL) && (flags & AUDIO_OUTPUT_FLAG_PRIMARY)) {
+            ALOGI("Using module %d as the primary audio interface", module);
+            mPrimaryHardwareDev = outHwDev;
+
+            AutoMutex lock(mHardwareLock);
+            mHardwareStatus = AUDIO_HW_SET_MODE;
+            outHwDev->set_mode(outHwDev, mMode);
+
+            // Determine the level of master volume support the primary audio HAL has,
+            // and set the initial master volume at the same time.
+            float initialVolume = 1.0;
+            mMasterVolumeSupportLvl = MVS_NONE;
+
+            mHardwareStatus = AUDIO_HW_GET_MASTER_VOLUME;
+#ifndef ICS_AUDIO_BLOB
+            if ((NULL != outHwDev->get_master_volume) &&
+                (NO_ERROR == outHwDev->get_master_volume(outHwDev, &initialVolume))) {
+                mMasterVolumeSupportLvl = MVS_FULL;
+            } else
+#endif
+            {
+                mMasterVolumeSupportLvl = MVS_SETONLY;
+                initialVolume = 1.0;
+            }
+
+            mHardwareStatus = AUDIO_HW_SET_MASTER_VOLUME;
+            if ((NULL == outHwDev->set_master_volume) ||
+                (NO_ERROR != outHwDev->set_master_volume(outHwDev, initialVolume))) {
+                mMasterVolumeSupportLvl = MVS_NONE;
+            }
+            // now that we have a primary device, initialize master volume on other devices
+            for (size_t i = 0; i < mAudioHwDevs.size(); i++) {
+                audio_hw_device_t *dev = mAudioHwDevs.valueAt(i)->hwDevice();
+
+                if ((dev != mPrimaryHardwareDev) &&
+                    (NULL != dev->set_master_volume)) {
+                    dev->set_master_volume(dev, initialVolume);
+                }
+            }
+            mHardwareStatus = AUDIO_HW_IDLE;
+            mMasterVolumeSW = (MVS_NONE == mMasterVolumeSupportLvl)
+                                    ? initialVolume
+                                    : 1.0;
+            mMasterVolume   = initialVolume;
+        }
         return id;
     }
 

@@ -234,6 +234,7 @@ public:
         AUDIO_SET_VOICE_VOLUME,
         AUDIO_SET_PARAMETER,
         AUDIO_HW_GET_INPUT_BUFFER_SIZE, // get_input_buffer_size
+        AUDIO_HW_GET_MASTER_VOLUME,     // get_master_volume
     };
 
     // record interface
@@ -1481,6 +1482,20 @@ private:
             hwDev(dev), stream(in) {}
     };
 
+#ifdef QCOM_HARDWARE
+    struct AudioSessionDescriptor {
+        bool    mActive;
+        int     mStreamType;
+        float   mVolumeLeft;
+        float   mVolumeRight;
+        audio_hw_device_t   *hwDev;
+        audio_stream_out_t  *stream;
+        audio_output_flags_t flag;
+        AudioSessionDescriptor(audio_hw_device_t *dev, audio_stream_out_t *out, audio_output_flags_t outflag) :
+            hwDev(dev), stream(out), flag(outflag) {}
+    };
+#endif
+
     struct AudioSessionRef {
         int sessionid;
         pid_t pid;
@@ -1568,6 +1583,7 @@ private:
                 int                                 mLPASampleRate;
                 int                                 mLPANumChannels;
 #endif
+                float       masterVolume_l() const;
                 audio_module_handle_t loadHwModule_l(const char *name);
 };
 
