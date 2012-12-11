@@ -40,7 +40,7 @@ DefaultKeyedVector<audio_io_handle_t, AudioSystem::OutputDescriptor *> AudioSyst
 
 // Cached values for recording queries
 uint32_t AudioSystem::gPrevInSamplingRate = 16000;
-int AudioSystem::gPrevInFormat = AUDIO_FORMAT_PCM_16_BIT;
+audio_format_t AudioSystem::gPrevInFormat = AUDIO_FORMAT_PCM_16_BIT;
 int AudioSystem::gPrevInChannelCount = 1;
 size_t AudioSystem::gInBuffSize = 0;
 
@@ -120,7 +120,7 @@ status_t AudioSystem::getMasterMute(bool* mute)
     return NO_ERROR;
 }
 
-status_t AudioSystem::setStreamVolume(int stream, float value, int output)
+status_t AudioSystem::setStreamVolume(audio_stream_type_t stream, float value, audio_io_handle_t output)
 {
     if (uint32_t(stream) >= AUDIO_STREAM_CNT) return BAD_VALUE;
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
@@ -129,7 +129,7 @@ status_t AudioSystem::setStreamVolume(int stream, float value, int output)
     return NO_ERROR;
 }
 
-status_t AudioSystem::setStreamMute(int stream, bool mute)
+status_t AudioSystem::setStreamMute(audio_stream_type_t stream, bool mute)
 {
     if (uint32_t(stream) >= AUDIO_STREAM_CNT) return BAD_VALUE;
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
@@ -138,7 +138,8 @@ status_t AudioSystem::setStreamMute(int stream, bool mute)
     return NO_ERROR;
 }
 
-status_t AudioSystem::getStreamVolume(int stream, float* volume, int output)
+status_t AudioSystem::getStreamVolume(audio_stream_type_t stream, float* volume,
+        audio_io_handle_t output)
 {
     if (uint32_t(stream) >= AUDIO_STREAM_CNT) return BAD_VALUE;
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
@@ -147,7 +148,7 @@ status_t AudioSystem::getStreamVolume(int stream, float* volume, int output)
     return NO_ERROR;
 }
 
-status_t AudioSystem::getStreamMute(int stream, bool* mute)
+status_t AudioSystem::getStreamMute(audio_stream_type_t stream, bool* mute)
 {
     if (uint32_t(stream) >= AUDIO_STREAM_CNT) return BAD_VALUE;
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
@@ -203,7 +204,12 @@ int AudioSystem::logToLinear(float volume)
     return volume ? 100 - int(dBConvertInverse * log(volume) + 0.5) : 0;
 }
 
-status_t AudioSystem::getOutputSamplingRate(int* samplingRate, int streamType)
+// DEPRECATED
+status_t AudioSystem::getOutputSamplingRate(int* samplingRate, int streamType) {
+    return getOutputSamplingRate(samplingRate, (audio_stream_type_t)streamType);
+}
+
+status_t AudioSystem::getOutputSamplingRate(int* samplingRate, audio_stream_type_t streamType)
 {
     OutputDescriptor *outputDesc;
     audio_io_handle_t output;
@@ -212,7 +218,7 @@ status_t AudioSystem::getOutputSamplingRate(int* samplingRate, int streamType)
         streamType = AUDIO_STREAM_MUSIC;
     }
 
-    output = getOutput((audio_stream_type_t)streamType);
+    output = getOutput(streamType);
     if (output == 0) {
         return PERMISSION_DENIED;
     }
@@ -236,7 +242,12 @@ status_t AudioSystem::getOutputSamplingRate(int* samplingRate, int streamType)
     return NO_ERROR;
 }
 
-status_t AudioSystem::getOutputFrameCount(int* frameCount, int streamType)
+// DEPRECATED
+status_t AudioSystem::getOutputFrameCount(int* frameCount, int streamType) {
+    return getOutputFrameCount(frameCount, (audio_stream_type_t)streamType);
+}
+
+status_t AudioSystem::getOutputFrameCount(int* frameCount, audio_stream_type_t streamType)
 {
     OutputDescriptor *outputDesc;
     audio_io_handle_t output;
@@ -267,7 +278,7 @@ status_t AudioSystem::getOutputFrameCount(int* frameCount, int streamType)
     return NO_ERROR;
 }
 
-status_t AudioSystem::getOutputLatency(uint32_t* latency, int streamType)
+status_t AudioSystem::getOutputLatency(uint32_t* latency, audio_stream_type_t streamType)
 {
     OutputDescriptor *outputDesc;
     audio_io_handle_t output;
@@ -328,7 +339,7 @@ status_t AudioSystem::setVoiceVolume(float value)
     return af->setVoiceVolume(value);
 }
 
-status_t AudioSystem::getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int stream)
+status_t AudioSystem::getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, audio_stream_type_t stream)
 {
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return PERMISSION_DENIED;
@@ -337,7 +348,7 @@ status_t AudioSystem::getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames
         stream = AUDIO_STREAM_MUSIC;
     }
 
-    return af->getRenderPosition(halFrames, dspFrames, getOutput((audio_stream_type_t)stream));
+    return af->getRenderPosition(halFrames, dspFrames, getOutput(stream));
 }
 
 unsigned int AudioSystem::getInputFramesLost(audio_io_handle_t ioHandle) {
@@ -456,7 +467,7 @@ void AudioSystem::setErrorCallback(audio_error_callback cb) {
     gAudioErrorCallback = cb;
 }
 
-bool AudioSystem::routedToA2dpOutput(int streamType) {
+bool AudioSystem::routedToA2dpOutput(audio_stream_type_t streamType) {
     switch(streamType) {
     case AUDIO_STREAM_MUSIC:
     case AUDIO_STREAM_VOICE_CALL:
@@ -825,7 +836,7 @@ extern "C" audio_io_handle_t _ZN7android11AudioSystem9getOutputENS0_11stream_typ
                                     uint32_t samplingRate,
                                     uint32_t format,
                                     uint32_t channels,
-                                    audio_policy_output_flags_t flags) 
+                                    audio_output_flags_t flags) 
 {
    return AudioSystem::getOutput(stream,samplingRate,format,channels>>2,flags);
 }

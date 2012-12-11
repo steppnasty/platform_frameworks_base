@@ -51,7 +51,7 @@ namespace android {
 // static
 status_t AudioTrack::getMinFrameCount(
         int* frameCount,
-        int streamType,
+        audio_stream_type_t streamType,
         uint32_t sampleRate)
 {
     int afSampleRate;
@@ -172,20 +172,31 @@ AudioTrack::AudioTrack(
             0 /*sharedBuffer*/, false /*threadCanCallJava*/, sessionId);
 }
 
-#ifdef WITH_QCOM_LPA
 AudioTrack::AudioTrack(
-        int streamType,
+        audio_stream_type_t streamType,
         uint32_t sampleRate,
-        int format,
-        int channels,
-        uint32_t flags,
-        int sessionId,
-        int lpaSessionId)
-    : mStatus(NO_INIT), mAudioSession(-1)
-{
-    mStatus = set(streamType, sampleRate, format, channels, flags, sessionId, lpaSessionId);
-}
+        audio_format_t format,
+        int channelMask,
+        const sp<IMemory>& sharedBuffer,
+        audio_output_flags_t flags,
+        callback_t cbf,
+        void* user,
+        int notificationFrames,
+        int sessionId)
+    : mStatus(NO_INIT),
+      mIsTimed(false),
+      mPreviousPriority(ANDROID_PRIORITY_NORMAL),
+      mPreviousSchedulingGroup(SP_DEFAULT)
+#ifdef QCOM_HARDWARE
+      ,mAudioFlinger(NULL),
+      mObserver(NULL)
 #endif
+{
+    mStatus = set(streamType, sampleRate, format, channelMask,
+            0 /*frameCount*/, flags, cbf, user, notificationFrames,
+            sharedBuffer, false /*threadCanCallJava*/, sessionId);
+}
+
 AudioTrack::~AudioTrack()
 {
     ALOGV_IF(mSharedBuffer != 0, "Destructor sharedBuffer: %p", mSharedBuffer->pointer());
@@ -921,12 +932,12 @@ status_t AudioTrack::attachAuxEffect(int effectId)
 
 // must be called with mLock held
 status_t AudioTrack::createTrack_l(
-        int streamType,
+        audio_stream_type_t streamType,
         uint32_t sampleRate,
         audio_format_t format,
         uint32_t channelMask,
         int frameCount,
-        uint32_t flags,
+        audio_output_flags_t flags,
         const sp<IMemory>& sharedBuffer,
         audio_io_handle_t output,
         bool enforceFrameCount)
