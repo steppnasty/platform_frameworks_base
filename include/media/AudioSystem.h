@@ -55,12 +55,14 @@ public:
     static status_t getMasterMute(bool* mute);
 
     // set/get stream volume on specified output
-    static status_t setStreamVolume(int stream, float value, int output);
-    static status_t getStreamVolume(int stream, float* volume, int output);
+    static status_t setStreamVolume(audio_stream_type_t stream, float value,
+                                    audio_io_handle_t output);
+    static status_t getStreamVolume(audio_stream_type_t stream, float* volume,
+                                    audio_io_handle_t output);
 
     // mute/unmute stream
-    static status_t setStreamMute(int stream, bool mute);
-    static status_t getStreamMute(int stream, bool* mute);
+    static status_t setStreamMute(audio_stream_type_t stream, bool mute);
+    static status_t getStreamMute(audio_stream_type_t stream, bool* mute);
 
     // set audio mode in audio hardware
     static status_t setMode(audio_mode_t mode);
@@ -83,11 +85,17 @@ public:
     static float linearToLog(int volume);
     static int logToLinear(float volume);
 
-    static status_t getOutputSamplingRate(int* samplingRate, int stream = AUDIO_STREAM_DEFAULT);
-    static status_t getOutputFrameCount(int* frameCount, int stream = AUDIO_STREAM_DEFAULT);
-    static status_t getOutputLatency(uint32_t* latency, int stream = AUDIO_STREAM_DEFAULT);
+    static status_t getOutputSamplingRate(int* samplingRate, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
+    static status_t getOutputFrameCount(int* frameCount, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
+    static status_t getOutputLatency(uint32_t* latency, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
 
-    static bool routedToA2dpOutput(int streamType);
+    // DEPRECATED
+    static status_t getOutputSamplingRate(int* samplingRate, int stream = AUDIO_STREAM_DEFAULT);
+
+    // DEPRECATED
+    static status_t getOutputFrameCount(int* frameCount, int stream = AUDIO_STREAM_DEFAULT);
+
+    static bool routedToA2dpOutput(audio_stream_type_t streamType);
 
     static status_t getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount,
         size_t* buffSize);
@@ -103,7 +111,7 @@ public:
     // - BAD_VALUE: invalid parameter
     // NOTE: this feature is not supported on all hardware platforms and it is
     // necessary to check returned status before using the returned values.
-    static status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int stream = AUDIO_STREAM_DEFAULT);
+    static status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
 
     static unsigned int  getInputFramesLost(audio_io_handle_t ioHandle);
 
@@ -132,7 +140,7 @@ public:
     class OutputDescriptor {
     public:
         OutputDescriptor()
-        : samplingRate(0), format(0), channels(0), frameCount(0), latency(0)  {}
+        : samplingRate(0), format(AUDIO_FORMAT_DEFAULT), channels(0), frameCount(0), latency(0)  {}
 
         uint32_t samplingRate;
         int32_t format;
@@ -246,7 +254,7 @@ private:
     static size_t gInBuffSize;
     // previous parameters for recording buffer size queries
     static uint32_t gPrevInSamplingRate;
-    static int gPrevInFormat;
+    static audio_format_t gPrevInFormat;
     static int gPrevInChannelCount;
 
     static sp<IAudioPolicyService> gAudioPolicyService;

@@ -885,9 +885,9 @@ void AudioPolicyService::AudioCommandThread::stopToneCommand()
     mWaitWorkCV.signal();
 }
 
-status_t AudioPolicyService::AudioCommandThread::volumeCommand(int stream,
+status_t AudioPolicyService::AudioCommandThread::volumeCommand(audio_stream_type_t stream,
                                                                float volume,
-                                                               int output,
+                                                               audio_io_handle_t output,
                                                                int delayMs)
 {
     status_t status = NO_ERROR;
@@ -1096,8 +1096,8 @@ int AudioPolicyService::setStreamVolume(audio_stream_type_t stream,
                                         audio_io_handle_t output,
                                         int delayMs)
 {
-    return (int)mAudioCommandThread->volumeCommand((int)stream, volume,
-                                                   (int)output, delayMs);
+    return (int)mAudioCommandThread->volumeCommand(stream, volume,
+                                                   output, delayMs);
 }
 
 int AudioPolicyService::startTone(audio_policy_tone_t tone,

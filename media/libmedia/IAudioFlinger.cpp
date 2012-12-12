@@ -100,14 +100,15 @@ public:
 
     virtual sp<IAudioTrack> createTrack(
                                 pid_t pid,
-                                int streamType,
+                                audio_stream_type_t streamType,
                                 uint32_t sampleRate,
                                 audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
                                 const sp<IMemory>& sharedBuffer,
-                                int output,
+                                audio_io_handle_t output,
+                                pid_t tid,
                                 int *sessionId,
                                 status_t *status)
     {
@@ -115,14 +116,15 @@ public:
         sp<IAudioTrack> track;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
         data.writeInt32(pid);
-        data.writeInt32(streamType);
+        data.writeInt32((int32_t) streamType);
         data.writeInt32(sampleRate);
         data.writeInt32(format);
         data.writeInt32(channelMask);
         data.writeInt32(frameCount);
         data.writeInt32(flags);
         data.writeStrongBinder(sharedBuffer->asBinder());
-        data.writeInt32(output);
+        data.writeInt32((int32_t) output);
+        data.writeInt32((int32_t) tid);
         int lSessionId = 0;
         if (sessionId != NULL) {
             lSessionId = *sessionId;
@@ -321,54 +323,44 @@ public:
         remote()->transact(MASTER_MUTE, data, &reply);
         return reply.readInt32();
     }
-#ifdef WITH_QCOM_LPA
-    virtual status_t setSessionVolume(int stream, float left, float right)
+
+    virtual status_t setStreamVolume(audio_stream_type_t stream, float value,
+            audio_io_handle_t output)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
-        data.writeFloat(left);
-        data.writeInt32(right);
-        remote()->transact(SET_SESSION_VOLUME, data, &reply);
-        return reply.readInt32();
-    }
-#endif
-    virtual status_t setStreamVolume(int stream, float value, int output)
-    {
-        Parcel data, reply;
-        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
+        data.writeInt32((int32_t) stream);
         data.writeFloat(value);
-        data.writeInt32(output);
+        data.writeInt32((int32_t) output);
         remote()->transact(SET_STREAM_VOLUME, data, &reply);
         return reply.readInt32();
     }
 
-    virtual status_t setStreamMute(int stream, bool muted)
+    virtual status_t setStreamMute(audio_stream_type_t stream, bool muted)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
+        data.writeInt32((int32_t) stream);
         data.writeInt32(muted);
         remote()->transact(SET_STREAM_MUTE, data, &reply);
         return reply.readInt32();
     }
 
-    virtual float streamVolume(int stream, int output) const
+    virtual float streamVolume(audio_stream_type_t stream, audio_io_handle_t output) const
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
-        data.writeInt32(output);
+        data.writeInt32((int32_t) stream);
+        data.writeInt32((int32_t) output);
         remote()->transact(STREAM_VOLUME, data, &reply);
         return reply.readFloat();
     }
 
-    virtual bool streamMute(int stream) const
+    virtual bool streamMute(audio_stream_type_t stream) const
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
+        data.writeInt32((int32_t) stream);
         remote()->transact(STREAM_MUTE, data, &reply);
         return reply.readInt32();
     }
@@ -399,21 +391,21 @@ public:
         return reply.readInt32();
     }
 
-    virtual status_t setParameters(int ioHandle, const String8& keyValuePairs)
+    virtual status_t setParameters(audio_io_handle_t ioHandle, const String8& keyValuePairs)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(ioHandle);
+        data.writeInt32((int32_t) ioHandle);
         data.writeString8(keyValuePairs);
         remote()->transact(SET_PARAMETERS, data, &reply);
         return reply.readInt32();
     }
 
-    virtual String8 getParameters(int ioHandle, const String8& keys)
+    virtual String8 getParameters(audio_io_handle_t ioHandle, const String8& keys)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(ioHandle);
+        data.writeInt32((int32_t) ioHandle);
         data.writeString8(keys);
         remote()->transact(GET_PARAMETERS, data, &reply);
         return reply.readString8();
@@ -610,12 +602,12 @@ public:
         return reply.readInt32();
     }
 
-    virtual status_t setStreamOutput(uint32_t stream, int output)
+    virtual status_t setStreamOutput(audio_stream_type_t stream, audio_io_handle_t output)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(stream);
-        data.writeInt32(output);
+        data.writeInt32((int32_t) stream);
+        data.writeInt32((int32_t) output);
         remote()->transact(SET_STREAM_OUTPUT, data, &reply);
         return reply.readInt32();
     }
@@ -629,11 +621,12 @@ public:
         return reply.readInt32();
     }
 
-    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int output)
+    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames,
+            audio_io_handle_t output) const
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(output);
+        data.writeInt32((int32_t) output);
         remote()->transact(GET_RENDER_POSITION, data, &reply);
         status_t status = reply.readInt32();
         if (status == NO_ERROR) {
@@ -649,11 +642,11 @@ public:
         return status;
     }
 
-    virtual unsigned int getInputFramesLost(int ioHandle)
+    virtual unsigned int getInputFramesLost(audio_io_handle_t ioHandle) const
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
-        data.writeInt32(ioHandle);
+        data.writeInt32((int32_t) ioHandle);
         remote()->transact(GET_INPUT_FRAMES_LOST, data, &reply);
         return reply.readInt32();
     }
@@ -748,7 +741,7 @@ public:
                                     effect_descriptor_t *pDesc,
                                     const sp<IEffectClient>& client,
                                     int32_t priority,
-                                    int output,
+                                    audio_io_handle_t output,
                                     int sessionId,
                                     status_t *status,
                                     int *id,
@@ -769,7 +762,7 @@ public:
         data.write(pDesc, sizeof(effect_descriptor_t));
         data.writeStrongBinder(client->asBinder());
         data.writeInt32(priority);
-        data.writeInt32(output);
+        data.writeInt32((int32_t) output);
         data.writeInt32(sessionId);
 
         status_t lStatus = remote()->transact(CREATE_EFFECT, data, &reply);
@@ -795,13 +788,14 @@ public:
         return effect;
     }
 
-    virtual status_t moveEffects(int session, int srcOutput, int dstOutput)
+    virtual status_t moveEffects(int session, audio_io_handle_t srcOutput, 
+            audio_io_handle_t dstOutput)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
         data.writeInt32(session);
-        data.writeInt32(srcOutput);
-        data.writeInt32(dstOutput);
+        data.writeInt32((int32_t) srcOutput);
+        data.writeInt32((int32_t) dstOutput);
         remote()->transact(MOVE_EFFECTS, data, &reply);
         return reply.readInt32();
     }
@@ -834,12 +828,13 @@ status_t BnAudioFlinger::onTransact(
             size_t bufferCount = data.readInt32();
             uint32_t flags = data.readInt32();
             sp<IMemory> buffer = interface_cast<IMemory>(data.readStrongBinder());
-            int output = data.readInt32();
+            audio_io_handle_t output = (audio_io_handle_t) data.readInt32();
+            pid_t tid = (pid_t) data.readInt32();
             int sessionId = data.readInt32();
             status_t status;
             sp<IAudioTrack> track = createTrack(pid,
-                    streamType, sampleRate, format,
-                    channelCount, bufferCount, flags, buffer, output, &sessionId, &status);
+                    (audio_stream_type_t) streamType, sampleRate, format,
+                    channelCount, bufferCount, flags, buffer, output, tid, &sessionId, &status);
             reply->writeInt32(sessionId);
             reply->writeInt32(status);
             reply->writeStrongBinder(track->asBinder());
@@ -875,7 +870,7 @@ status_t BnAudioFlinger::onTransact(
         case OPEN_RECORD: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             pid_t pid = data.readInt32();
-            int input = data.readInt32();
+            audio_io_handle_t input = (audio_io_handle_t) data.readInt32();
             uint32_t sampleRate = data.readInt32();
             audio_format_t format = (audio_format_t) data.readInt32();
             int channelCount = data.readInt32();
@@ -892,27 +887,27 @@ status_t BnAudioFlinger::onTransact(
         } break;
         case SAMPLE_RATE: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32( sampleRate(data.readInt32()) );
+            reply->writeInt32( sampleRate((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
         case CHANNEL_COUNT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32( channelCount(data.readInt32()) );
+            reply->writeInt32( channelCount((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
         case FORMAT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32( format(data.readInt32()) );
+            reply->writeInt32( format((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
         case FRAME_COUNT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32( frameCount(data.readInt32()) );
+            reply->writeInt32( frameCount((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
         case LATENCY: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32( latency(data.readInt32()) );
+            reply->writeInt32( latency((audio_io_handle_t) data.readInt32()) );
             return NO_ERROR;
         } break;
          case SET_MASTER_VOLUME: {
@@ -935,41 +930,31 @@ status_t BnAudioFlinger::onTransact(
             reply->writeInt32( masterMute() );
             return NO_ERROR;
         } break;
-#ifdef WITH_QCOM_LPA
-        case SET_SESSION_VOLUME: {
-            CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int stream = data.readInt32();
-            float left = data.readFloat();
-            float right = data.readFloat();
-            reply->writeInt32( setSessionVolume(stream, left, right) );
-            return NO_ERROR;
-        } break;
-#endif
         case SET_STREAM_VOLUME: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             int stream = data.readInt32();
             float volume = data.readFloat();
-            int output = data.readInt32();
-            reply->writeInt32( setStreamVolume(stream, volume, output) );
+            audio_io_handle_t output = (audio_io_handle_t) data.readInt32();
+            reply->writeInt32( setStreamVolume((audio_stream_type_t) stream, volume, output) );
             return NO_ERROR;
         } break;
         case SET_STREAM_MUTE: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             int stream = data.readInt32();
-            reply->writeInt32( setStreamMute(stream, data.readInt32()) );
+            reply->writeInt32( setStreamMute((audio_stream_type_t) stream, data.readInt32()) );
             return NO_ERROR;
         } break;
         case STREAM_VOLUME: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             int stream = data.readInt32();
             int output = data.readInt32();
-            reply->writeFloat( streamVolume(stream, output) );
+            reply->writeFloat( streamVolume((audio_stream_type_t) stream, output) );
             return NO_ERROR;
         } break;
         case STREAM_MUTE: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             int stream = data.readInt32();
-            reply->writeInt32( streamMute(stream) );
+            reply->writeInt32( streamMute((audio_stream_type_t) stream) );
             return NO_ERROR;
         } break;
         case SET_MODE: {
@@ -991,14 +976,14 @@ status_t BnAudioFlinger::onTransact(
         } break;
         case SET_PARAMETERS: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int ioHandle = data.readInt32();
+            audio_io_handle_t ioHandle = (audio_io_handle_t) data.readInt32();
             String8 keyValuePairs(data.readString8());
             reply->writeInt32(setParameters(ioHandle, keyValuePairs));
             return NO_ERROR;
          } break;
         case GET_PARAMETERS: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int ioHandle = data.readInt32();
+            audio_io_handle_t ioHandle = (audio_io_handle_t) data.readInt32();
             String8 keys(data.readString8());
             reply->writeString8(getParameters(ioHandle, keys));
             return NO_ERROR;
@@ -1086,24 +1071,24 @@ status_t BnAudioFlinger::onTransact(
 #endif
         case OPEN_DUPLICATE_OUTPUT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int output1 = data.readInt32();
-            int output2 = data.readInt32();
-            reply->writeInt32(openDuplicateOutput(output1, output2));
+            audio_io_handle_t output1 = (audio_io_handle_t) data.readInt32();
+            audio_io_handle_t output2 = (audio_io_handle_t) data.readInt32();
+            reply->writeInt32((int32_t) openDuplicateOutput(output1, output2));
             return NO_ERROR;
         } break;
         case CLOSE_OUTPUT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32(closeOutput(data.readInt32()));
+            reply->writeInt32(closeOutput((audio_io_handle_t) data.readInt32()));
             return NO_ERROR;
         } break;
         case SUSPEND_OUTPUT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32(suspendOutput(data.readInt32()));
+            reply->writeInt32(suspendOutput((audio_io_handle_t) data.readInt32()));
             return NO_ERROR;
         } break;
         case RESTORE_OUTPUT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            reply->writeInt32(restoreOutput(data.readInt32()));
+            reply->writeInt32(restoreOutput((audio_io_handle_t) data.readInt32()));
             return NO_ERROR;
         } break;
         case OPEN_INPUT: {
@@ -1134,8 +1119,8 @@ status_t BnAudioFlinger::onTransact(
         case SET_STREAM_OUTPUT: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             uint32_t stream = data.readInt32();
-            int output = data.readInt32();
-            reply->writeInt32(setStreamOutput(stream, output));
+            audio_io_handle_t output = (audio_io_handle_t) data.readInt32();
+            reply->writeInt32(setStreamOutput((audio_stream_type_t) stream, output));
             return NO_ERROR;
         } break;
         case SET_VOICE_VOLUME: {
@@ -1146,7 +1131,7 @@ status_t BnAudioFlinger::onTransact(
         } break;
         case GET_RENDER_POSITION: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int output = data.readInt32();
+            audio_io_handle_t output = (audio_io_handle_t) data.readInt32();
             uint32_t halFrames;
             uint32_t dspFrames;
             status_t status = getRenderPosition(&halFrames, &dspFrames, output);
@@ -1159,7 +1144,7 @@ status_t BnAudioFlinger::onTransact(
         }
         case GET_INPUT_FRAMES_LOST: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
-            int ioHandle = data.readInt32();
+            audio_io_handle_t ioHandle = (audio_io_handle_t) data.readInt32();
             reply->writeInt32(getInputFramesLost(ioHandle));
             return NO_ERROR;
         } break;
@@ -1219,7 +1204,7 @@ status_t BnAudioFlinger::onTransact(
             data.read(&desc, sizeof(effect_descriptor_t));
             sp<IEffectClient> client = interface_cast<IEffectClient>(data.readStrongBinder());
             int32_t priority = data.readInt32();
-            int output = data.readInt32();
+            audio_io_handle_t output = (audio_io_handle_t) data.readInt32();
             int sessionId = data.readInt32();
             status_t status;
             int id;
@@ -1236,8 +1221,8 @@ status_t BnAudioFlinger::onTransact(
         case MOVE_EFFECTS: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             int session = data.readInt32();
-            int srcOutput = data.readInt32();
-            int dstOutput = data.readInt32();
+            audio_io_handle_t srcOutput = (audio_io_handle_t) data.readInt32();
+            audio_io_handle_t dstOutput = (audio_io_handle_t) data.readInt32();
             reply->writeInt32(moveEffects(session, srcOutput, dstOutput));
             return NO_ERROR;
         } break;

@@ -118,7 +118,7 @@ public:
      */
 
      static status_t getMinFrameCount(int* frameCount,
-                                      int streamType      =-1,
+                                      audio_stream_type_t streamType = AUDIO_STREAM_DEFAULT,
                                       uint32_t sampleRate = 0);
 
     /* Constructs an uninitialized AudioTrack. No connection with
@@ -463,15 +463,15 @@ private:
     };
 
             bool processAudioBuffer(const sp<AudioTrackThread>& thread);
-            status_t createTrack_l(int streamType,
+
+            status_t createTrack_l(audio_stream_type_t streamType,
                                  uint32_t sampleRate,
                                  audio_format_t format,
                                  uint32_t channelMask,
                                  int frameCount,
-                                 uint32_t flags,
+                                 audio_output_flags_t flags,
                                  const sp<IMemory>& sharedBuffer,
-                                 audio_io_handle_t output,
-                                 bool enforceFrameCount);
+                                 audio_io_handle_t output);
             void flush_l();
             status_t setLoop_l(uint32_t loopStart, uint32_t loopEnd, int loopCount);
             audio_io_handle_t getOutput_l();

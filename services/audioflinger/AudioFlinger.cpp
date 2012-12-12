@@ -396,14 +396,15 @@ status_t AudioFlinger::dump(int fd, const Vector<String16>& args)
 
 sp<IAudioTrack> AudioFlinger::createTrack(
         pid_t pid,
-        int streamType,
+        audio_stream_type_t streamType,
         uint32_t sampleRate,
         audio_format_t format,
         uint32_t channelMask,
         int frameCount,
         uint32_t flags,
         const sp<IMemory>& sharedBuffer,
-        int output,
+        audio_io_handle_t output,
+        pid_t tid,
         int *sessionId,
         status_t *status)
 {
@@ -887,31 +888,17 @@ float AudioFlinger::masterVolume_l() const
     return mMasterVolume;
 }
 
-#ifdef WITH_QCOM_LPA
-status_t AudioFlinger::setSessionVolume(int stream, float left, float right)
 
-    AutoMutex lock(mLock);
-
-    mLPALeftVol  = left;
-    mLPARightVol = right;
-    if( (mLPAOutput != NULL) &&
-        (mLPAStreamType == stream) &&
-        (mLPAHandle == (audio_io_handle_t)output) ) {
-        mLPAOutput->stream->set_volume(mLPAOutput->stream,left*mStreamTypes[stream].volume,
-                                       right*mStreamTypes[stream].volume);
-    }
-    return NO_ERROR;
-}
-#endif
-
-status_t AudioFlinger::setStreamVolume(int stream, float value, int output)
+status_t AudioFlinger::setStreamVolume(audio_stream_type_t stream, float value,
+        audio_io_handle_t output)
 {
     // check calling permissions
     if (!settingsAllowed()) {
         return PERMISSION_DENIED;
     }
 
-    if (stream < 0 || uint32_t(stream) >= AUDIO_STREAM_CNT) {
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT) {
+        ALOGE("setStreamVolume() invalid stream %d", stream);
         return BAD_VALUE;
     }
 
@@ -955,15 +942,16 @@ status_t AudioFlinger::setStreamVolume(int stream, float value, int output)
     return NO_ERROR;
 }
 
-status_t AudioFlinger::setStreamMute(int stream, bool muted)
+status_t AudioFlinger::setStreamMute(audio_stream_type_t stream, bool muted)
 {
     // check calling permissions
     if (!settingsAllowed()) {
         return PERMISSION_DENIED;
     }
 
-    if (stream < 0 || uint32_t(stream) >= AUDIO_STREAM_CNT ||
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT ||
         uint32_t(stream) == AUDIO_STREAM_ENFORCED_AUDIBLE) {
+        ALOGE("setStreamMute() invalid stream %d", stream);
         return BAD_VALUE;
     }
 
@@ -976,9 +964,9 @@ status_t AudioFlinger::setStreamMute(int stream, bool muted)
     return NO_ERROR;
 }
 
-float AudioFlinger::streamVolume(int stream, int output) const
+float AudioFlinger::streamVolume(audio_stream_type_t stream, audio_io_handle_t output) const
 {
-    if (stream < 0 || uint32_t(stream) >= AUDIO_STREAM_CNT) {
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT) {
         return 0.0f;
     }
 
@@ -991,22 +979,23 @@ float AudioFlinger::streamVolume(int stream, int output) const
         }
         volume = thread->streamVolume(stream);
     } else {
-        volume = mStreamTypes[stream].volume;
+        volume = streamVolume_l(stream);
     }
 
     return volume;
 }
 
-bool AudioFlinger::streamMute(int stream) const
+bool AudioFlinger::streamMute(audio_stream_type_t stream) const
 {
-    if (stream < 0 || stream >= (int)AUDIO_STREAM_CNT) {
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT) {
         return true;
     }
 
-    return mStreamTypes[stream].mute;
+    AutoMutex lock(mLock);
+    return streamMute_l(stream);
 }
 
-status_t AudioFlinger::setParameters(int ioHandle, const String8& keyValuePairs)
+status_t AudioFlinger::setParameters(audio_io_handle_t ioHandle, const String8& keyValuePairs)
 {
     status_t result;
 
@@ -1095,7 +1084,7 @@ status_t AudioFlinger::setParameters(int ioHandle, const String8& keyValuePairs)
     return BAD_VALUE;
 }
 
-String8 AudioFlinger::getParameters(int ioHandle, const String8& keys)
+String8 AudioFlinger::getParameters(audio_io_handle_t ioHandle, const String8& keys)
 {
 //    ALOGV("getParameters() io %d, keys %s, tid %d, calling tid %d",
 //            ioHandle, keys.string(), gettid(), IPCThreadState::self()->getCallingPid());
@@ -1148,7 +1137,7 @@ size_t AudioFlinger::getInputBufferSize(uint32_t sampleRate, audio_format_t form
     return size;
 }
 
-unsigned int AudioFlinger::getInputFramesLost(int ioHandle)
+unsigned int AudioFlinger::getInputFramesLost(audio_io_handle_t ioHandle) const
 {
     if (ioHandle == 0) {
         return 0;
@@ -1183,7 +1172,8 @@ status_t AudioFlinger::setVoiceVolume(float value)
     return ret;
 }
 
-status_t AudioFlinger::getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int output)
+status_t AudioFlinger::getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, 
+        audio_io_handle_t output) const
 {
     status_t status;
 
@@ -1738,10 +1728,10 @@ AudioFlinger::PlaybackThread::PlaybackThread(const sp<AudioFlinger>& audioFlinge
     mMasterVolume = mAudioFlinger->masterVolume();
     mMasterMute = mAudioFlinger->masterMute();
 
-    for (int stream = 0; stream < AUDIO_STREAM_CNT; stream++) {
-        mStreamTypes[stream].volume = mAudioFlinger->streamVolumeInternal(stream);
-        mStreamTypes[stream].mute = mAudioFlinger->streamMute(stream);
-        mStreamTypes[stream].valid = true;
+    for (audio_stream_type_t stream = (audio_stream_type_t) 0; stream < AUDIO_STREAM_CNT;
+            stream = (audio_stream_type_t) (stream + 1)) {
+        mStreamTypes[stream].volume = mAudioFlinger->streamVolume_l(stream);
+        mStreamTypes[stream].mute = mAudioFlinger->streamMute_l(stream);
     }
 }
 
@@ -5916,7 +5906,7 @@ status_t AudioFlinger::closeInput(int input)
     return NO_ERROR;
 }
 
-status_t AudioFlinger::setStreamOutput(uint32_t stream, int output)
+status_t AudioFlinger::setStreamOutput(audio_stream_type_t stream, audio_io_handle_t output)
 {
     Mutex::Autolock _l(mLock);
     MixerThread *dstThread = checkMixerThread_l(output);

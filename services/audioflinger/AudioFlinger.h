@@ -88,14 +88,15 @@ public:
     // IAudioFlinger interface
     virtual sp<IAudioTrack> createTrack(
                                 pid_t pid,
-                                int streamType,
+                                audio_stream_type_t streamType,
                                 uint32_t sampleRate,
                                 audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
                                 const sp<IMemory>& sharedBuffer,
-                                int output,
+                                audio_io_handle_t output,
+                                pid_t tid,
                                 int *sessionId,
                                 status_t *status);
 
@@ -110,11 +111,11 @@ public:
     virtual     void        deleteSession();
 #endif
 
-    virtual     uint32_t    sampleRate(int output) const;
-    virtual     int         channelCount(int output) const;
+    virtual     uint32_t    sampleRate(audio_io_handle_t output) const;
+    virtual     int         channelCount(audio_io_handle_t output) const;
     virtual     audio_format_t format(audio_io_handle_t output) const;
-    virtual     size_t      frameCount(int output) const;
-    virtual     uint32_t    latency(int output) const;
+    virtual     size_t      frameCount(audio_io_handle_t output) const;
+    virtual     uint32_t    latency(audio_io_handle_t output) const;
 
     virtual     status_t    setMasterVolume(float value);
     virtual     status_t    setMasterMute(bool muted);
@@ -122,27 +123,26 @@ public:
     virtual     float       masterVolume() const;
     virtual     bool        masterMute() const;
 
-#ifdef WITH_QCOM_LPA
-    virtual     status_t    setSessionVolume(int stream, float left, float right);
-#endif
-    virtual     status_t    setStreamVolume(int stream, float value, int output);
-    virtual     status_t    setStreamMute(int stream, bool muted);
+    virtual     status_t    setStreamVolume(audio_stream_type_t stream, float value, 
+                                            audio_io_handle_t output);
+    virtual     status_t    setStreamMute(audio_stream_type_t stream, bool muted);
 
-    virtual     float       streamVolume(int stream, int output) const;
-    virtual     bool        streamMute(int stream) const;
+    virtual     float       streamVolume(audio_stream_type_t stream,
+                                         audio_io_handle_t output) const;
+    virtual     bool        streamMute(audio_stream_type_t stream) const;
 
     virtual     status_t    setMode(audio_mode_t mode);
 
     virtual     status_t    setMicMute(bool state);
     virtual     bool        getMicMute() const;
 
-    virtual     status_t    setParameters(int ioHandle, const String8& keyValuePairs);
-    virtual     String8     getParameters(int ioHandle, const String8& keys);
+    virtual     status_t    setParameters(audio_io_handle_t ioHandle, const String8& keyValuePairs);
+    virtual     String8     getParameters(audio_io_handle_t ioHandle, const String8& keys);
 
     virtual     void        registerClient(const sp<IAudioFlingerClient>& client);
 
     virtual     size_t      getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount) const;
-    virtual     unsigned int  getInputFramesLost(int ioHandle);
+    virtual     unsigned int  getInputFramesLost(audio_io_handle_t ioHandle) const;
 
     virtual audio_io_handle_t openOutput(audio_module_handle_t module,
 				         audio_devices_t *pDevices,
@@ -166,13 +166,14 @@ public:
     virtual status_t closeSession(int output);
 #endif
 
-    virtual int openDuplicateOutput(int output1, int output2);
+    virtual int openDuplicateOutput(audio_io_handle_t output1,
+                                    audio_io_handle_t output2);
 
-    virtual status_t closeOutput(int output);
+    virtual status_t closeOutput(audio_io_handle_t output);
 
-    virtual status_t suspendOutput(int output);
+    virtual status_t suspendOutput(audio_io_handle_t output);
 
-    virtual status_t restoreOutput(int output);
+    virtual status_t restoreOutput(audio_io_handle_t output);
 
     virtual audio_io_handle_t openInput(audio_module_handle_t module,
                                         audio_devices_t *pDevices,
@@ -180,13 +181,14 @@ public:
                                         audio_format_t *pFormat,
                                         audio_channel_mask_t *pChannelMask);
 
-    virtual status_t closeInput(int input);
+    virtual status_t closeInput(audio_io_handle_t input);
 
-    virtual status_t setStreamOutput(uint32_t stream, int output);
+    virtual status_t setStreamOutput(audio_stream_type_t stream, audio_io_handle_t output);
 
     virtual status_t setVoiceVolume(float volume);
 
-    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int output);
+    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames,
+                                       audio_io_handle_t output) const;
 
 #ifdef WITH_QCOM_LPA
     virtual status_t deregisterClient(const sp<IAudioFlingerClient>& client);
@@ -208,13 +210,14 @@ public:
                         effect_descriptor_t *pDesc,
                         const sp<IEffectClient>& effectClient,
                         int32_t priority,
-                        int io,
+                        audio_io_handle_t io,
                         int sessionId,
                         status_t *status,
                         int *id,
                         int *enabled);
 
-    virtual status_t moveEffects(int sessionId, int srcOutput, int dstOutput);
+    virtual status_t moveEffects(int sessionId, audio_io_handle_t srcOutput,
+                        audio_io_handle_t dstOutput);
 
     enum hardware_call_state {
         AUDIO_HW_IDLE = 0,
@@ -240,7 +243,7 @@ public:
     // record interface
     virtual sp<IAudioRecord> openRecord(
                                 pid_t pid,
-                                int input,
+                                audio_io_handle_t input,
                                 uint32_t sampleRate,
                                 audio_format_t format,
                                 uint32_t channelMask,
@@ -967,7 +970,12 @@ private:
               PlaybackThread *checkPlaybackThread_l(int output) const;
               MixerThread *checkMixerThread_l(int output) const;
               RecordThread *checkRecordThread_l(int input) const;
-              float streamVolumeInternal(int stream) const { return mStreamTypes[stream].volume; }
+              // no range check, AudioFlinger::mLock held
+              bool streamMute_l(audio_stream_type_t stream) const
+                                { return mStreamTypes[stream].mute; }
+              // no range check, doesn't check per-thread stream volume, AudioFlinger::mLock held
+              float streamVolume_l(audio_stream_type_t stream) const
+                                { return mStreamTypes[stream].volume; }
               void audioConfigChanged_l(int event, audio_io_handle_t ioHandle, const void *param2);
 
               uint32_t nextUniqueId();

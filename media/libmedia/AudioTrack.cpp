@@ -330,8 +330,7 @@ status_t AudioTrack::set(
                                   frameCount,
                                   flags,
                                   sharedBuffer,
-                                  output,
-                                  true);
+                                  output);
 
     if (status != NO_ERROR) {
         return status;
@@ -939,8 +938,7 @@ status_t AudioTrack::createTrack_l(
         int frameCount,
         audio_output_flags_t flags,
         const sp<IMemory>& sharedBuffer,
-        audio_io_handle_t output,
-        bool enforceFrameCount)
+        audio_io_handle_t output)
 {
     status_t status;
     const sp<IAudioFlinger>& audioFlinger = AudioSystem::get_audio_flinger();
@@ -987,10 +985,12 @@ status_t AudioTrack::createTrack_l(
                 mNotificationFramesAct = frameCount/2;
             }
             if (frameCount < minFrameCount) {
-                ALOGW_IF(enforceFrameCount, "Minimum buffer size corrected from %d to %d",
+                // not ALOGW because it happens all the time when playing key clicks over A2DP
+                ALOGV ("Minimum buffer size corrected from %d to %d",
                          frameCount, minFrameCount);
                 frameCount = minFrameCount;
             }
+
         } else {
             // Ensure that buffer alignment matches channelcount
             int channelCount = popcount(channelMask);
@@ -1002,6 +1002,8 @@ status_t AudioTrack::createTrack_l(
         }
     }
 
+    pid_t tid = -1;
+
     sp<IAudioTrack> track = audioFlinger->createTrack(getpid(),
                                                       streamType,
                                                       sampleRate,
@@ -1011,6 +1013,7 @@ status_t AudioTrack::createTrack_l(
                                                       ((uint16_t)flags) << 16,
                                                       sharedBuffer,
                                                       output,
+                                                      tid,
                                                       &mSessionId,
                                                       &status);
 
@@ -1404,8 +1407,7 @@ status_t AudioTrack::restoreTrack_l(audio_track_cblk_t*& cblk, bool fromStart)
                                mFrameCount,
                                mFlags,
                                mSharedBuffer,
-                               getOutput_l(),
-                               false);
+                               getOutput_l());
 
         if (result == NO_ERROR) {
             uint32_t user = cblk->user;

@@ -183,7 +183,8 @@ private:
                     void        startToneCommand(ToneGenerator::tone_type type,
                                                  audio_stream_type_t stream);
                     void        stopToneCommand();
-                    status_t    volumeCommand(int stream, float volume, int output, int delayMs = 0);
+                    status_t    volumeCommand(audio_stream_type_t stream, float volume,
+                                            audio_io_handle_t output, int delayMs = 0);
                     status_t    parametersCommand(int ioHandle, const char *keyValuePairs, int delayMs = 0);
                     status_t    voiceVolumeCommand(float volume, int delayMs = 0);
                     void        insertCommand_l(AudioCommand *command, int delayMs = 0);
@@ -214,14 +215,14 @@ private:
 
         class VolumeData {
         public:
-            int mStream;
+            audio_stream_type_t mStream;
             float mVolume;
-            int mIO;
+            audio_io_handle_t mIO;
         };
 
         class ParametersData {
         public:
-            int mIO;
+            audio_io_handle_t mIO;
             String8 mKeyValuePairs;
         };
 

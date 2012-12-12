@@ -52,14 +52,15 @@ public:
      */
     virtual sp<IAudioTrack> createTrack(
                                 pid_t pid,
-                                int streamType,
+                                audio_stream_type_t streamType,
                                 uint32_t sampleRate,
                                 audio_format_t format,
                                 uint32_t channelMask,
                                 int frameCount,
                                 uint32_t flags,
                                 const sp<IMemory>& sharedBuffer,
-                                int output,
+                                audio_io_handle_t output,
+                                pid_t tid, // -1 means unused, otherwise must be valid non-0
                                 int *sessionId,
                                 status_t *status) = 0;
 
@@ -81,7 +82,7 @@ public:
 
     virtual sp<IAudioRecord> openRecord(
                                 pid_t pid,
-                                int input,
+                                audio_io_handle_t input,
                                 uint32_t sampleRate,
                                 audio_format_t format,
                                 uint32_t channelMask,
@@ -93,13 +94,13 @@ public:
     /* query the audio hardware state. This state never changes,
      * and therefore can be cached.
      */
-    virtual     uint32_t    sampleRate(int output) const = 0;
-    virtual     int         channelCount(int output) const = 0;
+    virtual     uint32_t    sampleRate(audio_io_handle_t output) const = 0;
+    virtual     int         channelCount(audio_io_handle_t output) const = 0;
     virtual     audio_format_t format(audio_io_handle_t output) const = 0;
-    virtual     size_t      frameCount(int output) const = 0;
+    virtual     size_t      frameCount(audio_io_handle_t output) const = 0;
 
     // return estimated latency in milliseconds
-    virtual     uint32_t    latency(int output) const = 0;
+    virtual     uint32_t    latency(audio_io_handle_t output) const = 0;
 
     /* set/get the audio hardware state. This will probably be used by
      * the preference panel, mostly.
@@ -110,17 +111,16 @@ public:
     virtual     float       masterVolume() const = 0;
     virtual     bool        masterMute() const = 0;
 
-#ifdef WITH_QCOM_LPA
-    virtual     status_t    setSessionVolume(int stream, float value, float right) = 0;
-#endif
     /* set/get stream type state. This will probably be used by
      * the preference panel, mostly.
      */
-    virtual     status_t    setStreamVolume(int stream, float value, int output) = 0;
-    virtual     status_t    setStreamMute(int stream, bool muted) = 0;
+    virtual     status_t    setStreamVolume(audio_stream_type_t stream, float value,
+                                    audio_io_handle_t output) = 0;
+    virtual     status_t    setStreamMute(audio_stream_type_t stream, bool muted) = 0;
 
-    virtual     float       streamVolume(int stream, int output) const = 0;
-    virtual     bool        streamMute(int stream) const = 0;
+    virtual     float       streamVolume(audio_stream_type_t stream,
+                                    audio_io_handle_t output) const = 0;
+    virtual     bool        streamMute(audio_stream_type_t stream) const = 0;
 
     // set audio mode
     virtual     status_t    setMode(audio_mode_t mode) = 0;
@@ -129,8 +129,9 @@ public:
     virtual     status_t    setMicMute(bool state) = 0;
     virtual     bool        getMicMute() const = 0;
 
-    virtual     status_t    setParameters(int ioHandle, const String8& keyValuePairs) = 0;
-    virtual     String8     getParameters(int ioHandle, const String8& keys) = 0;
+    virtual     status_t    setParameters(audio_io_handle_t ioHandle,
+                                    const String8& keyValuePairs) = 0;
+    virtual     String8     getParameters(audio_io_handle_t ioHandle, const String8& keys) = 0;
 
     // register a current process for audio output change notifications
     virtual void registerClient(const sp<IAudioFlingerClient>& client) = 0;
@@ -155,25 +156,27 @@ public:
     virtual status_t resumeSession(int output, int32_t  stream) = 0;
     virtual status_t closeSession(int output) = 0;
 #endif
-    virtual int openDuplicateOutput(int output1, int output2) = 0;
-    virtual status_t closeOutput(int output) = 0;
-    virtual status_t suspendOutput(int output) = 0;
-    virtual status_t restoreOutput(int output) = 0;
+    virtual audio_io_handle_t openDuplicateOutput(audio_io_handle_t output1, 
+                      audio_io_handle_t output2) = 0;
+    virtual status_t closeOutput(audio_io_handle_t output) = 0;
+    virtual status_t suspendOutput(audio_io_handle_t output) = 0;
+    virtual status_t restoreOutput(audio_io_handle_t output) = 0;
 
     virtual audio_io_handle_t openInput(audio_module_handle_t module,
                                         audio_devices_t *pDevices,
                                         uint32_t *pSamplingRate,
                                         audio_format_t *pFormat,
                                         audio_channel_mask_t *pChannelMask) = 0;
-    virtual status_t closeInput(int input) = 0;
+    virtual status_t closeInput(audio_io_handle_t input) = 0;
 
-    virtual status_t setStreamOutput(uint32_t stream, int output) = 0;
+    virtual status_t setStreamOutput(audio_stream_type_t stream, audio_io_handle_t output) = 0;
 
     virtual status_t setVoiceVolume(float volume) = 0;
 
-    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int output) = 0;
+    virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames,
+                                    audio_io_handle_t output) const = 0;
 
-    virtual unsigned int  getInputFramesLost(int ioHandle) = 0;
+    virtual unsigned int  getInputFramesLost(audio_io_handle_t ioHandle) const = 0;
 
     virtual int newAudioSessionId() = 0;
 
@@ -190,13 +193,14 @@ public:
                                     effect_descriptor_t *pDesc,
                                     const sp<IEffectClient>& client,
                                     int32_t priority,
-                                    int output,
+                                    audio_io_handle_t output,
                                     int sessionId,
                                     status_t *status,
                                     int *id,
                                     int *enabled) = 0;
 
-    virtual status_t moveEffects(int session, int srcOutput, int dstOutput) = 0;
+    virtual status_t moveEffects(int session, audio_io_handle_t srcOutput,
+                                    audio_io_handle_t dstOutput) = 0;
 
     virtual audio_module_handle_t loadHwModule(const char *name) = 0;
 #ifdef WITH_QCOM_LPA
