@@ -59,6 +59,7 @@ import android.content.Context;
  */
 public abstract class ActionProvider {
     private SubUiVisibilityListener mSubUiVisibilityListener;
+    private VisibilityListener mVisibilityListener;
 
     /**
      * Creates a new instance.
@@ -71,9 +72,69 @@ public abstract class ActionProvider {
     /**
      * Factory method for creating new action views.
      *
+     * <p>This method has been deprecated in favor of {@link #onCreateActionView(MenuItem)}.
+     * Newer apps that wish to support platform version prior to API 16 should also
+     * implement this method to return a valid action view.</p>
+     *
      * @return A new action view.
+     *
+     * @deprecated use {@link #onCreateActionView(MenuItem)}
      */
     public abstract View onCreateActionView();
+
+    /**
+     * Factory method called by the Android framework to create new action views.
+     * This method returns a new action view for the given MenuItem.
+     * 
+     * <p>If your ActionProvider implementation overrides the deprecated no-argument overload
+     * {@link #onCreateActionView()}, overriding this method for devices running API 16 or later
+     * is recommended but optional. The default implementation calls {@link #onCreateActionView()}
+     * for compatibility with applications written for older platform version.</p>
+     *
+     * @param forItem MenuItem to create the action view for
+     * @return the new action view
+     */
+    public View onCreateActionView(MenuItem forItem) {
+        return onCreateActionView();
+    }
+
+    /**
+     * The result of this method determines whether or not {@link #isVisible()} will be used
+     * by the {@link MenuItem} this ActionProvider is bound to help determine its visibility.
+     * 
+     * @return true if this ActionProvider overrides the visibility of the MenuItem
+     *         it is bound to, false otherwise. The default implementation returns false.
+     * @see #isVisible()
+     */
+    public boolean overridesItemVisibility() {
+        return false;
+    }
+
+    /**
+     * If {@link #overridesItemVisibility()} returns true, the return value of this method
+     * will help determine the visibility of the {@link MenuItem} this ActionProvider is bound to.
+     *
+     * <p>If the MenuItem's visibility is explicitly set to false by the application,
+     * the MenuItem will not be shown, even if this method return true.</p>
+     *
+     * @return true if the MenuItem this ActionProvider is bound to is visible, false if
+     *         it is invisible. The default implementation returns true.
+     */
+    public boolean isVisible() {
+        return true;
+    }
+
+    /**
+     * If this ActionProvider is associated with an item in a menu,
+     * refresh the visibility of the item based on {@link #overridesItemVisibility()} and
+     * {@link #isVisible()}. If {@link #overridesItemVisibility()} returns false, this call
+     * will have no effect.
+     */
+    public void refreshVisibility() {
+        if (mVisibilityListener != null && overridesItemVisibility()) {
+            mVisibilityListener.onActionProviderVisibilityChanged(isVisible());
+        }
+    }
 
     /**
      * Performs an optional default action.
@@ -165,5 +226,15 @@ public abstract class ActionProvider {
      */
     public interface SubUiVisibilityListener {
         public void onSubUiVisibilityChanged(boolean isVisible);
+    }
+
+    /**
+     * Listens to changes in visibility as reported by {@link ActionProvider#refreshVisibility()}.
+     * 
+     * @see ActionProvider#overridesItemVisibility()
+     * @see ActionProvider#isVisible()
+     */
+    public interface VisibilityListener {
+        public void onActionProviderVisibilityChanged(boolean isVisible);
     }
 }

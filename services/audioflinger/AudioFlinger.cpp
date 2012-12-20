@@ -850,8 +850,9 @@ status_t AudioFlinger::setMasterMute(bool muted)
     }
 
     Mutex::Autolock _l(mLock);
+    // This is an optimization, so PlaybackThread doesn't have to look at the one from AudioFlinger
     mMasterMute = muted;
-    for (uint32_t i = 0; i < mPlaybackThreads.size(); i++)
+    for (size_t i = 0; i < mPlaybackThreads.size(); i++)
        mPlaybackThreads.valueAt(i)->setMasterMute(muted);
 
     return NO_ERROR;
@@ -1934,10 +1935,10 @@ status_t AudioFlinger::PlaybackThread::setMasterVolume(float value)
     return NO_ERROR;
 }
 
-status_t AudioFlinger::PlaybackThread::setMasterMute(bool muted)
+void AudioFlinger::PlaybackThread::setMasterMute(bool muted)
 {
-    mMasterMute = muted;
-    return NO_ERROR;
+    Mutex::Autolock _l(mLock);
+    setMasterMute_l(muted);
 }
 
 float AudioFlinger::PlaybackThread::masterVolume() const

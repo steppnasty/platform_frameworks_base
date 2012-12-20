@@ -834,6 +834,9 @@
         <!-- Default style for the Switch widget. -->
         <attr name="switchStyle" format="reference" />
 
+        <!-- Default style for the MediaRouteButton widget. -->
+        <attr name="mediaRouteButtonStyle" format="reference" />
+
         <!-- ============== -->
         <!-- Pointer styles -->
         <!-- ============== -->
@@ -858,6 +861,9 @@
     </ul>
         -->
     <attr name="textSize" format="dimension" />
+
+    <!-- Default font family. -->
+    <attr name="fontFamily" format="string" />
 
     <!-- Default text typeface. -->
     <attr name="typeface">
@@ -2067,6 +2073,21 @@
             <!-- The paragraph direction is right to left. -->
             <enum name="rtl" value="5" />
         </attr>
+
+        <!-- Controls how this View is important for accessibility which is if it fires
+             accessibility events and if it is reported to accessibility services that
+             query the screen. Note: While not recommended, an accessibility service may
+             decide to ignore this attribute and operate on all views in the view tree. -->
+        <attr name="importantForAccessibility" format="integer">
+            <!-- The system determines whether the view is important for accessibility - default
+                (recommended). -->
+            <enum name="auto" value="0" />
+            <!-- The view is important for accessibility. -->
+            <enum name="yes" value="1" />
+            <!-- The view is not important for accessibility. -->
+            <enum name="no" value="2" />
+        </attr>
+
     </declare-styleable>
 
     <!-- Attributes that can be used with a {@link android.view.ViewGroup} or any
@@ -2920,6 +2941,8 @@
         <attr name="textStyle" />
         <!-- Typeface (normal, sans, serif, monospace) for the text. -->
         <attr name="typeface" />
+        <!-- Font family (named by string) for the text. -->
+        <attr name="fontFamily" />
         <!-- Color of the text selection highlight. -->
         <attr name="textColorHighlight" />
         <!-- Color of the hint text. -->
@@ -2965,6 +2988,8 @@
         <attr name="typeface" />
         <!-- Style (bold, italic, bolditalic) for the text. -->
         <attr name="textStyle" />
+        <!-- Font family (named by string) for the text. -->
+        <attr name="fontFamily" />
         <!-- Text color for links. -->
         <attr name="textColorLink" />
         <!-- Makes the cursor visible (the default) or invisible. -->
@@ -5486,6 +5511,42 @@
          entry. -->
     <declare-styleable name="TextToSpeechEngine">
         <attr name="settingsActivity" />
+    </declare-styleable>
+
+    <!-- Use <code>keyboard-layouts</code as the root tag of the XML resource that
+         describes a collection of keyboard layouts provided by an application.
+         Each keyboard layout is declared by a <code>keyboard-layout</code> tag
+         with these attributes.
+
+         The XML resource that contains the keyboard layouts must be referenced from its
+         {@link android.hardware.input.InputManager#META_DATA_KEYBOARD_LAYOUTS}. -->
+    <declare-styleable name="KeyboardLayout">
+        <!-- The name of the keyboard layout, must be unique in the receiver. -->
+        <attr name="name" />
+        <!-- The display label of the keyboard layout. -->
+        <attr name="label" />
+        <!-- The key character map file resource. -->
+        <attr name="keyboardLayout" format="reference" />
+    </declare-styleable>
+
+    <declare-styleable name="MediaRouteButton">
+        <!-- This drawable is a state list where the "activated" state
+             indicates active media routing. Non-activated indicates
+             that media is playing to the local device only.
+             @hide -->
+        <attr name="externalRouteEnabledDrawable" format="reference" />
+
+        <!-- The types of media routes the button and its resulting
+             chooser will filter by. -->
+        <attr name="mediaRouteTypes" format="integer">
+            <!-- Allow selection of live audio routes. -->
+            <enum name="liveAudio" value="0x1" />
+            <!-- Allow selection of user (app-specified) routes. -->
+            <enum name="user" value="0x800000" />
+        </attr>
+
+        <attr name="minWidth" />
+        <attr name="minHeight" />
     </declare-styleable>
 
 </resources>

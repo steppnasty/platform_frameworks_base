@@ -1533,6 +1533,16 @@ public final class Settings {
         public static final String ALWAYS_FINISH_ACTIVITIES =
                 "always_finish_activities";
 
+        /**
+         * Volume Overlay Mode. This is the style of the volume overlay panel.
+         *      0 - Single
+         *      1 - Expandable (default)
+         *      2 - Expanded
+         *      3 - None
+         *
+         * @hide
+         */
+        public static final String MODE_VOLUME_OVERLAY = "mode_volume_overlay";
 
         /**
          * Ringer mode. This is used internally, changing this value will not
@@ -1601,6 +1611,19 @@ public final class Settings {
          * not change the volume. See AudioManager.
          */
         public static final String VOLUME_BLUETOOTH_SCO = "volume_bluetooth_sco";
+
+        /**
+         * Master volume (float in the range 0.0f to 1.0f).
+         * @hide
+         */
+        public static final String VOLUME_MASTER = "volume_master";
+
+        /**
+         * Master volume mute (int 1 = mute, 0 = not muted).
+         *
+         * @hide
+         */
+        public static final String VOLUME_MASTER_MUTE = "volume_master_mute";
 
         /**
          * Whether the notifications should use the ring volume (value of 1) or a separate
@@ -1857,6 +1880,13 @@ public final class Settings {
         public static final String TTY_MODE = "tty_mode";
 
         /**
+         * Whether noise suppression is enabled. The value is
+         * boolean (1 or 0).
+         * @hide
+         */
+        public static final String NOISE_SUPPRESSION = "noise_suppression";
+
+        /**
          * Whether the sounds effects (key clicks, lid open ...) are enabled. The value is
          * boolean (1 or 0).
          */
@@ -2035,6 +2065,14 @@ public final class Settings {
          *
          * @hide
          */
+
+        /**
+         * Boolean value to link ringtone and notification volumes
+         * 
+         * @hide
+         */
+        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
+  
         public static final String[] SETTINGS_TO_BACKUP = {
             STAY_ON_WHILE_PLUGGED_IN,
             WIFI_USE_STATIC_IP,
@@ -2084,6 +2122,7 @@ public final class Settings {
             CALL_AUTO_RETRY,
             HEARING_AID,
             TTY_MODE,
+            NOISE_SUPPRESSION,
             SOUND_EFFECTS_ENABLED,
             HAPTIC_FEEDBACK_ENABLED,
             POWER_SOUNDS_ENABLED,

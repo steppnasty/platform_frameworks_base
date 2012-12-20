@@ -483,7 +483,9 @@ status_t AudioPolicyService::initStreamVolume(audio_stream_type_t stream,
     return NO_ERROR;
 }
 
-status_t AudioPolicyService::setStreamVolumeIndex(audio_stream_type_t stream, int index)
+status_t AudioPolicyService::setStreamVolumeIndex(audio_stream_type_t stream,
+                                                  int index,
+                                                  audio_devices_t device)
 {
     if (mpAudioPolicy == NULL) {
         return NO_INIT;
@@ -491,19 +493,21 @@ status_t AudioPolicyService::setStreamVolumeIndex(audio_stream_type_t stream, in
     if (!checkPermission()) {
         return PERMISSION_DENIED;
     }
-    if (stream < 0 || stream >= AUDIO_STREAM_CNT) {
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT) {
         return BAD_VALUE;
     }
 
     return mpAudioPolicy->set_stream_volume_index(mpAudioPolicy, stream, index);
 }
 
-status_t AudioPolicyService::getStreamVolumeIndex(audio_stream_type_t stream, int *index)
+status_t AudioPolicyService::getStreamVolumeIndex(audio_stream_type_t stream,
+                                                  int *index,
+                                                  audio_devices_t device)
 {
     if (mpAudioPolicy == NULL) {
         return NO_INIT;
     }
-    if (stream < 0 || stream >= AUDIO_STREAM_CNT) {
+    if (uint32_t(stream) >= AUDIO_STREAM_CNT) {
         return BAD_VALUE;
     }
     return mpAudioPolicy->get_stream_volume_index(mpAudioPolicy, stream, index);

@@ -186,6 +186,14 @@
         <enum name="signatureOrSystem" value="3" />
     </attr>
     
+    <!-- Flags indicating more context for a permission group. @hide -->
+    <attr name="permissionGroupFlags">
+        <!-- Set to indicate that this permission group contains permissions
+             protecting access to some information that is considered
+             personal to the user (such as contacts, e-mails, etc). -->
+        <flag name="personalInfo" value="0x0001" />
+    </attr>
+
     <!-- Specified the name of a group that this permission is associated
          with.  The group must have been defined with the
          {@link android.R.styleable#AndroidManifestPermissionGroup permission-group} tag. -->
@@ -727,6 +735,9 @@
         <flag name="splitActionBarWhenNarrow" value="1" />
     </attr>
 
+    <!-- The name of the logical parent of the activity as it appears in the manifest. -->
+    <attr name="parentActivityName" format="string" />
+
     <!-- The <code>manifest</code> tag is the root of an
          <code>AndroidManifest.xml</code> file,
          describing the contents of an Android package (.apk) file.  One
@@ -1235,6 +1246,10 @@
              when the user remove a task rooted in an activity owned by
              the application.  The default is false. -->
         <attr name="stopWithTask" format="boolean" />
+        <!-- If set to true, this service will run under a special process
+             that is isolated from the rest of the system.  The only communication
+             with it is through the Service API (binding and starting). -->
+        <attr name="isolatedProcess" format="boolean" />
     </declare-styleable>
     
     <!-- The <code>receiver</code> tag declares an

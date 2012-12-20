@@ -707,6 +707,11 @@
   <public type="string" name="VideoView_error_text_unknown" id="0x01040011" />
   <public type="string" name="VideoView_error_title" id="0x01040012" />
   <public type="string" name="yes" id="0x01040013" />
+  <public type="string" name="default_audio_route_name"  id="0x01040018" />
+  <public type="string" name="default_audio_route_name_headphones" id="0x01040019" />
+  <public type="string" name="default_audio_route_name_dock_speakers" id="0x0104001a" />
+  <public type="string" name="default_audio_route_name_hdmi" id="0x0104001b" />
+  <public type="string" name="default_audio_route_category_name" id="0x0104001c" />
 
   <public type="dimen" name="app_icon_size" id="0x01050000" />
   <public type="dimen" name="thumbnail_height" id="0x01050001" />
@@ -898,7 +903,8 @@
   <public type="drawable" name="ic_dialog_info" id="0x0108009b" />
   <public type="drawable" name="ic_menu_sort_alphabetically" id="0x0108009c" />
   <public type="drawable" name="ic_menu_sort_by_size" id="0x0108009d" />
-
+  <public type="drawable" name="ic_media_route_on_holo_dark" id="0x01080103" />
+  <public type="drawable" name="ic_media_route_disabled_holo_dark" id="0x01080104" />
   <public type="layout" name="activity_list_item" id="0x01090000" />
   <public type="layout" name="expandable_list_content" id="0x01090001" />
   <public type="layout" name="preference_category" id="0x01090002" />
@@ -1974,4 +1980,34 @@
   <public type="color" name="holo_orange_dark" id="0x01060019" />
   <public type="color" name="holo_purple" id="0x0106001a" />
   <public type="color" name="holo_blue_bright" id="0x0106001b" />
+
+<!-- ==============================================================
+   Resources added in version 16 of the platform (Jelly Bean)
+   =============================================================== -->
+  <eat-comment />
+  <public type="attr" name="parentActivityName" id="0x010103a7" />
+  <public type="attr" name="permissionGroupFlags" id="0x010103a8" />
+  <public type="attr" name="isolatedProcess" id="0x010103a9" />
+  <public type="attr" name="importantForAccessibility" id="0x010103aa" />
+  <public type="attr" name="keyboardLayout" id="0x010103ab" />
+  <public type="attr" name="fontFamily" id="0x010103ac" />
+
+  <public type="attr" name="mediaRouteButtonStyle" id="0x010103ad" />
+  <public type="attr" name="mediaRouteTypes" id="0x010103ae" />
+  <public type="style" name="Widget.Holo.MediaRouteButton" id="0x010301d5" />
+  <public type="style" name="Widget.Holo.Light.MediaRouteButton" id="0x010301d6" />
+  <public type="style" name="Widget.DeviceDefault.MediaRouteButton" id="0x010301d7" />
+  <public type="style" name="Widget.DeviceDefault.Light.MediaRouteButton" id="0x010301d8" />
+
+<!-- ==============================================================
+   Other Resources added
+   =============================================================== -->
+  <eat-comment /> 
+  <public type="bool" name="config_useMasterVolume" id="0x010f0000" />
+  <public type="layout" name="media_route_chooser_layout" id="0x01090018" />
+  <public type="layout" name="media_route_list_item_top_header" id="0x01090019" />
+  <public type="layout" name="media_route_list_item_section_header" id="0x0109001a"      />
+  <public type="layout" name="media_route_list_item" id="0x0109001b" />
+  <public type="layout" name="media_route_list_item_checkable" id="0x0109001c" /> 
+  <public type="layout" name="media_route_list_item_collapse_group" id="0x0109001d"      />
 </resources>

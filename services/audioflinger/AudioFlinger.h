@@ -783,7 +783,7 @@ private:
         virtual     uint32_t    latency() const;
 
         virtual     status_t    setMasterVolume(float value);
-        virtual     status_t    setMasterMute(bool muted);
+                    void        setMasterMute(bool muted);
 
         virtual     float       masterVolume() const;
         virtual     bool        masterMute() const;
@@ -846,7 +846,13 @@ private:
         int16_t*                        mMixBuffer;
         int                             mSuspended;
         int                             mBytesWritten;
+    private:
+        // mMasterMute is in both PlaybackThread and in AudioFlinger.  When a
+        // PlaybackThread needs to find out if master-muted, it checks it's local
+        // copy rather than the one in AudioFlinger.  This optimization saves a lock.
         bool                            mMasterMute;
+        void                            setMasterMute_l(bool muted) { mMasterMute = muted; }
+    protected:
         SortedVector< wp<Track> >       mActiveTracks;
 
         virtual int             getTrackName_l() = 0;

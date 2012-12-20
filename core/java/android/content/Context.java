@@ -1432,6 +1432,8 @@ public abstract class Context {
      * @see android.net.wifi.WifiManager
      * @see #AUDIO_SERVICE
      * @see android.media.AudioManager
+     * @see MEDIA_ROUTER_SERVICE
+     * @see android.media.MediaRouter
      * @see #TELEPHONY_SERVICE
      * @see android.telephony.TelephonyManager
      * @see #INPUT_METHOD_SERVICE
@@ -1510,6 +1512,18 @@ public abstract class Context {
      * @see android.app.NotificationManager
      */
     public static final String NOTIFICATION_SERVICE = "notification";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link android.app.ProfileManager} for setting
+     * notification profiles.
+     * 
+     * @see #getSystemService
+     * @see android.app.ProfileManager
+     * 
+     * @hide
+     */
+    public static final String PROFILE_SERVICE = "profile";
 
     /**
      * Use with {@link #getSystemService} to retrieve a
@@ -1670,6 +1684,16 @@ public abstract class Context {
      * @see android.media.AudioManager
      */
     public static final String AUDIO_SERVICE = "audio";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link android.media.MediaRouter} for controlling and managing
+     * routing of media.
+     * 
+     * @see #getSystemService
+     * @see android.media.MediaRouter
+     */
+    public static final String MEDIA_ROUTER_SERVICE = "media_router";
 
     /**
      * Use with {@link #getSystemService} to retrieve a

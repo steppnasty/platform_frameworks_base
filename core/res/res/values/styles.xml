@@ -236,6 +236,7 @@ please see styles_device_defaults.xml.
     </style>
     <style name="TextAppearance.StatusBar.EventContent.Title">
         <item name="android:textColor">?android:attr/textColorPrimary</item>
+        <item name="android:fontFamily">sans-serif-light</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
     </style>
@@ -2447,4 +2448,19 @@ please see styles_device_defaults.xml.
         <item name="android:pointerIconSpotTouch">@android:drawable/pointer_spot_touch_icon</item>
         <item name="android:pointerIconSpotAnchor">@android:drawable/pointer_spot_anchor_icon</item>
     </style>
+
+    <style name="Widget.Holo.MediaRouteButton">
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:externalRouteEnabledDrawable">@drawable/ic_media_route_holo_dark</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+
+    <style name="Widget.Holo.Light.MediaRouteButton">
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:externalRouteEnabledDrawable">@drawable/ic_media_route_holo_light</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+
 </resources>
