@@ -5441,7 +5441,7 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
     audio_stream_out_t *outStream = NULL;
     audio_hw_device_t *outHwDev;
 
-    ALOGV("openOutput(), Device %x, SamplingRate %d, Format %d, Channels %x, flags %x",
+    ALOGV("openOutput(), Module %d, Device %x, SamplingRate %d, Format %d, Channels %x, flags %x",
             module,
 	    (pDevices != NULL) ? (int)*pDevices : 0,
             config.sample_rate,
@@ -5821,7 +5821,7 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
 #endif
     ALOGV("openInput() openInputStream returned input %p, SamplingRate %d, Format %d, Channels %x, status %d",
             inStream,
-            config.sample_rate
+            config.sample_rate,
             config.format,
             config.channel_mask,
             status);
