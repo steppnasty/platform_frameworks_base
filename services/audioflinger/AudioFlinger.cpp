@@ -689,9 +689,17 @@ void AudioFlinger::applyEffectsOn(int16_t *inBuffer, int16_t *outBuffer, int siz
 }
 #endif
 
-uint32_t AudioFlinger::sampleRate(int output) const
+uint32_t AudioFlinger::sampleRate(audio_io_handle_t output) const
 {
     Mutex::Autolock _l(mLock);
+#ifdef QCOM_HARDWARE
+    if (!mDirectAudioTracks.isEmpty()) {
+        AudioSessionDescriptor *desc = mDirectAudioTracks.valueFor(output);
+        if(desc !=NULL) {
+            return desc->stream->common.get_sample_rate(&desc->stream->common);
+        }
+    }
+#endif
     PlaybackThread *thread = checkPlaybackThread_l(output);
     if (thread == NULL) {
         ALOGW("sampleRate() unknown thread %d", output);
@@ -722,18 +730,26 @@ audio_format_t AudioFlinger::format(audio_io_handle_t output) const
     return thread->format();
 }
 
-size_t AudioFlinger::frameCount(int output) const
+size_t AudioFlinger::frameCount(audio_io_handle_t output) const
 {
     Mutex::Autolock _l(mLock);
+#ifdef QCOM_HARDWARE
+    AudioSessionDescriptor *desc = mDirectAudioTracks.valueFor(output);
+    if (desc != NULL) {
+        return desc->stream->common.get_buffer_size(&desc->stream->common);
+    }
+#endif
     PlaybackThread *thread = checkPlaybackThread_l(output);
     if (thread == NULL) {
         ALOGW("frameCount() unknown thread %d", output);
         return 0;
     }
+    // FIXME currently returns the normal mixer's frame count to avoid confusing legacy
+    // callers; should examine all callers and fix them to handle smaller counts
     return thread->frameCount();
 }
 
-uint32_t AudioFlinger::latency(int output) const
+uint32_t AudioFlinger::latency(audio_io_handle_t output) const
 {
     Mutex::Autolock _l(mLock);
     PlaybackThread *thread = checkPlaybackThread_l(output);
@@ -6054,13 +6070,9 @@ void AudioFlinger::purgeStaleEffects_l() {
 }
 
 // checkPlaybackThread_l() must be called with AudioFlinger::mLock held
-AudioFlinger::PlaybackThread *AudioFlinger::checkPlaybackThread_l(int output) const
+AudioFlinger::PlaybackThread *AudioFlinger::checkPlaybackThread_l(audio_io_handle_t output) const
 {
-    PlaybackThread *thread = NULL;
-    if (mPlaybackThreads.indexOfKey(output) >= 0) {
-        thread = (PlaybackThread *)mPlaybackThreads.valueFor(output).get();
-    }
-    return thread;
+    return mPlaybackThreads.valueFor(output).get();
 }
 
 // checkMixerThread_l() must be called with AudioFlinger::mLock held

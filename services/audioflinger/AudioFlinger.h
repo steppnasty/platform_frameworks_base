@@ -973,7 +973,7 @@ private:
                     uint32_t    mWaitTimeMs;
     };
 
-              PlaybackThread *checkPlaybackThread_l(int output) const;
+              PlaybackThread *checkPlaybackThread_l(audio_io_handle_t output) const;
               MixerThread *checkMixerThread_l(int output) const;
               RecordThread *checkRecordThread_l(int input) const;
               // no range check, AudioFlinger::mLock held
