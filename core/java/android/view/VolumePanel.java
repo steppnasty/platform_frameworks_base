@@ -144,7 +144,7 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
                 R.string.volume_icon_description_ringer,
                 R.drawable.ic_audio_ring_notif,
                 R.drawable.ic_audio_ring_notif_mute,
-                false),
+                true),
         VoiceStream(AudioManager.STREAM_VOICE_CALL,
                 R.string.volume_icon_description_incall,
                 R.drawable.ic_audio_phone,
@@ -154,7 +154,7 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
                 R.string.volume_alarm,
                 R.drawable.ic_audio_alarm,
                 R.drawable.ic_audio_alarm_mute,
-                false),
+                true),
         MediaStream(AudioManager.STREAM_MUSIC,
                 R.string.volume_icon_description_media,
                 R.drawable.ic_audio_vol,
@@ -421,6 +421,7 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
             sc.iconRes = streamRes.iconRes;
             sc.iconMuteRes = streamRes.iconMuteRes;
             sc.icon.setImageResource(sc.iconRes);
+            sc.icon.setOnClickListener(this);
             sc.seekbarView = (SeekBar) sc.group.findViewById(R.id.seekbar);
             int plusOne = (streamType == AudioSystem.STREAM_BLUETOOTH_SCO ||
                     streamType == AudioSystem.STREAM_VOICE_CALL) ? 1 : 0;
@@ -799,6 +800,28 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
     }
 
     /**
+     * Handler for MSG_SLIDER_VISIBILITY_CHANGED
+     * Hide or show a slider
+     * @param streamType can be a valid stream type value, or VolumePanel.STREAM_MASTER,
+     *                   or AudioService.STREAM_REMOTE_MUSIC
+     * @param visible
+     */
+    synchronized protected void onSliderVisibilityChanged(int streamType, int visible) {
+        if (LOGD) Log.d(TAG, "onSliderVisibilityChanged(stream="+streamType+", visi="+visible+")");
+        boolean isVisible = (visible == 1);
+        for (int i = STREAMS.length - 1 ; i >= 0 ; i--) {
+            StreamResources streamRes = STREAMS[i];
+            if (streamRes.streamType == streamType) {
+                streamRes.show = isVisible;
+                if (!isVisible && (mActiveStreamType == streamType)) {
+                    mActiveStreamType = -1;
+                }
+                break;
+            }
+        }
+    }   
+
+    /**
      * Lock on this VolumePanel instance as long as you use the returned ToneGenerator.
      */
     private ToneGenerator getOrCreateToneGenerator(int streamType) {
@@ -852,6 +875,11 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
                 break;
             }
 
+            case MSG_MUTE_CHANGED: {
+                onMuteChanged(msg.arg1, msg.arg2);
+                break;
+            }
+
             case MSG_FREE_RESOURCES: {
                 onFreeResources();
                 break;
@@ -885,6 +913,10 @@ public class VolumePanel extends Handler implements OnSeekBarChangeListener, Vie
                 }
                 break;
             }
+
+            case MSG_SLIDER_VISIBILITY_CHANGED:
+                onSliderVisibilityChanged(msg.arg1, msg.arg2);
+                break;
         }
     }
 
