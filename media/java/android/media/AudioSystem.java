@@ -219,6 +219,9 @@ public class AudioSystem
     public static final int DEVICE_OUT_ALL_A2DP = (DEVICE_OUT_BLUETOOTH_A2DP |
                                                    DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
                                                    DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER);
+    public static final int DEVICE_OUT_ALL_SCO = (DEVICE_OUT_BLUETOOTH_SCO |
+                                                  DEVICE_OUT_BLUETOOTH_SCO_HEADSET |
+                                                  DEVICE_OUT_BLUETOOTH_SCO_CARKIT);
 
     // input devices
     public static final int DEVICE_IN_COMMUNICATION = 0x10000;

@@ -15,7 +15,7 @@
  */
 
 #define LOG_TAG "AudioSystem"
-//#define LOG_NDEBUG 0
+//define LOG_NDEBUG 0
 
 #include <utils/Log.h>
 #include <binder/IServiceManager.h>
@@ -572,33 +572,9 @@ audio_io_handle_t AudioSystem::getOutput(audio_stream_type_t stream,
                                     uint32_t channels,
                                     audio_output_flags_t flags)
 {
-    audio_io_handle_t output = 0;
-    // Do not use stream to output map cache if the direct output
-    // flag is set or if we are likely to use a direct output
-    // (e.g voice call stream @ 8kHz could use BT SCO device and be routed to
-    // a direct output on some platforms).
-    // TODO: the output cache and stream to output mapping implementation needs to
-    // be reworked for proper operation with direct outputs. This code is too specific
-    // to the first use case we want to cover (Voice Recognition and Voice Dialer over
-    // Bluetooth SCO
-    if ((flags & AUDIO_POLICY_OUTPUT_FLAG_DIRECT) == 0 &&
-        ((stream != AUDIO_STREAM_VOICE_CALL && stream != AUDIO_STREAM_BLUETOOTH_SCO) ||
-         channels != AUDIO_CHANNEL_OUT_MONO ||
-         (samplingRate != 8000 && samplingRate != 16000))) {
-        Mutex::Autolock _l(gLock);
-        output = AudioSystem::gStreamOutputMap.valueFor(stream);
-        ALOGV_IF((output != 0), "getOutput() read %d from cache for stream %d", output, stream);
-    }
-    if (output == 0) {
-        const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
-        if (aps == 0) return 0;
-        output = aps->getOutput(stream, samplingRate, format, channels, flags);
-        if ((flags & AUDIO_POLICY_OUTPUT_FLAG_DIRECT) == 0) {
-            Mutex::Autolock _l(gLock);
-            AudioSystem::gStreamOutputMap.add(stream, output);
-        }
-    }
-    return output;
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return 0;
+    return aps->getOutput(stream, samplingRate, format, channels, flags);
 }
 
 #ifdef WITH_QCOM_LPA
