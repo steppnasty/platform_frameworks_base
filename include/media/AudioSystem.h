@@ -94,6 +94,8 @@ public:
 
     // DEPRECATED
     static status_t getOutputFrameCount(int* frameCount, int stream = AUDIO_STREAM_DEFAULT);
+    // DEPRECATED
+    static status_t getOutputLatency(uint32_t* latency, int stream = AUDIO_STREAM_DEFAULT);
 
     static bool routedToA2dpOutput(audio_stream_type_t streamType);
 

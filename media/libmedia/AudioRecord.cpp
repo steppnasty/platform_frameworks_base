@@ -102,6 +102,24 @@ AudioRecord::AudioRecord(
             frameCount, flags, cbf, user, notificationFrames, sessionId);
 }
 
+// DEPRECATED
+AudioRecord::AudioRecord(
+        int inputSource,
+        uint32_t sampleRate,
+        int format,
+        uint32_t channelMask,
+        int frameCount,
+        uint32_t flags,
+        callback_t cbf,
+        void* user,
+        int notificationFrames,
+        int sessionId)
+    : mStatus(NO_INIT), mSessionId(0)
+{
+    mStatus = set((audio_source_t)inputSource, sampleRate, (audio_format_t)format, channelMask,
+            frameCount, flags, cbf, user, notificationFrames, sessionId);
+}
+
 #ifdef USE_KINETO_COMPATIBILITY
 // Really dirty hack to give a Froyo-compatible constructor
 extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_ii(
@@ -109,7 +127,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_ii(
         int inputSource,
         uint32_t sampleRate,
         int format,
-        uint32_t channels,
+        uint32_t channelMask,
         int frameCount,
         uint32_t flags,
         AudioRecord::callback_t cbf,
@@ -121,7 +139,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_i(
         int inputSource,
         uint32_t sampleRate,
         int format,
-        uint32_t channels,
+        uint32_t channelMask,
         int frameCount,
         uint32_t flags,
         AudioRecord::callback_t cbf,
@@ -129,7 +147,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_i(
         int notificationFrames)
 {
     return _ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_ii(This,
-        inputSource, sampleRate, format, channels,
+        inputSource, sampleRate, format, channelMask,
         frameCount, flags, cbf, user, notificationFrames, 0);
 }
 #endif

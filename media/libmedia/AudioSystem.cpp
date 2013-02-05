@@ -309,6 +309,11 @@ status_t AudioSystem::getOutputLatency(uint32_t* latency, audio_stream_type_t st
     return NO_ERROR;
 }
 
+// DEPRECATED
+status_t AudioSystem::getOutputLatency(uint32_t* latency, int streamType) {
+    return getOutputLatency(latency, (audio_stream_type_t) streamType);
+}
+
 status_t AudioSystem::getInputBufferSize(uint32_t sampleRate, audio_format_t format, int channelCount,
     size_t* buffSize)
 {
@@ -835,6 +840,11 @@ extern "C" bool _ZN7android11AudioSystem15isLowVisibilityENS0_11stream_typeE(aud
     } else {
         return false;
     }
+}
+
+extern "C" status_t _ZN7android11AudioSystem16getOutputLatencyEPji(uint32_t* latency, int streamType)
+{
+    return getOutputLatency(latency, (audio_stream_type_t) streamType);
 }
 
 #endif // AUDIO_LEGACY
