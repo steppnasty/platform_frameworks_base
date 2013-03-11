@@ -1264,6 +1264,19 @@ public class AudioManager {
     }
 
     /**
+     * @hide
+     * Signals whether remote submix audio rerouting is enabled.
+     */
+    public void setRemoteSubmixOn(boolean on, int address) {
+        IAudioService service = getService();
+        try {
+            service.setRemoteSubmixOn(on, address);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Dead object in setRemoteSubmixOn", e);
+        }
+    }
+
+    /**
      * Sets audio routing to the wired headset on or off.
      *
      * @param on set <var>true</var> to route audio to/from wired
@@ -1466,6 +1479,24 @@ public class AudioManager {
      */
     public boolean isMusicActive() {
         return AudioSystem.isStreamActive(STREAM_MUSIC, 0);
+    }
+
+    /**
+     * @hide
+     * If the stream is active locally or remotely, adjust its volume according to the enforced
+     * priority rules.
+     * Note: only AudioManager.STREAM_MUSIC is supported at the moment
+     */
+    public void adjustLocalOrRemoteStreamVolume(int streamType, int direction) {
+        if (streamType != STREAM_MUSIC) {
+            Log.w(TAG, "adjustLocalOrRemoteStreamVolume() doesn't support stream " + streamType);
+        }
+        IAudioService service = getService();
+        try {
+            service.adjustLocalOrRemoteStreamVolume(streamType, direction);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Dead object in adjustLocalOrRemoteStreamVolume", e);
+        }
     }
 
     /*

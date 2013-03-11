@@ -3,26 +3,27 @@ include $(CLEAR_VARS)
 
 LOCAL_C_INCLUDES += $(JNI_H_INCLUDE)
 
-LOCAL_SRC_FILES:=                     \
-        OMX.cpp                       \
-        OMXComponentBase.cpp          \
-        OMXMaster.cpp                 \
-        OMXNodeInstance.cpp           \
-        SimpleSoftOMXComponent.cpp    \
-        SoftOMXComponent.cpp          \
-        SoftOMXPlugin.cpp             \
+LOCAL_SRC_FILES:=                   \
+        OMX.cpp                     \
+        OMXComponentBase.cpp        \
+        OMXMaster.cpp               \
+        OMXNodeInstance.cpp         \
+        SimpleSoftOMXComponent.cpp  \
+        SoftOMXComponent.cpp        \
+        SoftOMXPlugin.cpp           \
 
-LOCAL_C_INCLUDES += \
-        frameworks/base/media/libstagefright \
+LOCAL_C_INCLUDES +=                                               \
+        $(TOP)/frameworks/base/media/libstagefright               \
+        $(TOP)/frameworks/base/include/media/hardware             \
         $(TOP)/frameworks/base/include/media/stagefright/openmax
 
-LOCAL_SHARED_LIBRARIES :=               \
-        libbinder                       \
-        libmedia                        \
-        libutils                        \
-        libui                           \
-        libcutils                       \
-        libstagefright_foundation       \
+LOCAL_SHARED_LIBRARIES :=          \
+        libbinder                  \
+        libmedia                   \
+        libutils                   \
+        libui                      \
+        libcutils                  \
+        libstagefright_foundation  \
         libdl
 
 LOCAL_MODULE:= libstagefright_omx

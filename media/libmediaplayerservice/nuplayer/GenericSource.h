@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,30 @@
  * limitations under the License.
  */
 
-#ifndef HTTP_LIVE_SOURCE_H_
+#ifndef GENERIC_SOURCE_H_
 
-#define HTTP_LIVE_SOURCE_H_
+#define GENERIC_SOURCE_H_
 
 #include "NuPlayer.h"
 #include "NuPlayerSource.h"
 
+#include "ATSParser.h"
+
 namespace android {
 
-struct ATSParser;
-struct LiveSession;
+struct AnotherPacketSource;
+struct ARTSPController;
+struct DataSource;
+struct MediaSource;
 
-struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
-    HTTPLiveSource(
+struct NuPlayer::GenericSource : public NuPlayer::Source {
+    GenericSource(
             const char *url,
             const KeyedVector<String8, String8> *headers,
             bool uidValid = false,
             uid_t uid = 0);
+
+    GenericSource(int fd, int64_t offset, int64_t length);
 
     virtual void start();
 
@@ -42,38 +48,34 @@ struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
     virtual status_t getDuration(int64_t *durationUs);
     virtual status_t seekTo(int64_t seekTimeUs);
 
-    virtual bool isSeekable();
-    virtual status_t getNewSeekTime(int64_t *newSeek);
-
-    virtual void notifyRenderingPosition(int64_t nRenderingTS);
+    virtual uint32_t flags() const;
 
 protected:
-    virtual ~HTTPLiveSource();
+    virtual ~GenericSource();
 
     virtual sp<MetaData> getFormatMeta(bool audio);
+
 private:
-    enum Flags {
-        // Don't log any URLs.
-        kFlagIncognito = 1,
+    struct Track {
+        sp<MediaSource> mSource;
+        sp<AnotherPacketSource> mPackets;
     };
 
-    AString mURL;
-    KeyedVector<String8, String8> mExtraHeaders;
-    bool mUIDValid;
-    uid_t mUID;
-    uint32_t mFlags;
-    status_t mFinalResult;
-    off64_t mOffset;
-    sp<ALooper> mLiveLooper;
-    sp<LiveSession> mLiveSession;
-    sp<ATSParser> mTSParser;
+    Track mAudioTrack;
+    Track mVideoTrack;
 
-    int64_t mNewSeekTime;
-    int64_t mCurrentPlayingTime;
+    int64_t mDurationUs;
+    bool mAudioIsVorbis;
 
-    DISALLOW_EVIL_CONSTRUCTORS(HTTPLiveSource);
+    void initFromDataSource(const sp<DataSource> &dataSource);
+
+    void readBuffer(
+            bool audio,
+            int64_t seekTimeUs = -1ll, int64_t *actualTimeUs = NULL);
+
+    DISALLOW_EVIL_CONSTRUCTORS(GenericSource);
 };
 
 }  // namespace android
 
-#endif  // HTTP_LIVE_SOURCE_H_
+#endif  // GENERIC_SOURCE_H_

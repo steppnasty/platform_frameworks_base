@@ -39,7 +39,7 @@
 #include "android_util_Binder.h"
 #include <binder/Parcel.h>
 #include <gui/ISurfaceTexture.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 
@@ -273,7 +273,7 @@ setVideoSurface(JNIEnv *env, jobject thiz, jobject jsurface, jboolean mediaPlaye
 
     sp<ISurfaceTexture> new_st;
     if (jsurface) {
-        sp<Surface> surface(Surface_getSurface(env, jsurface));
+        sp<Surface> surface(android_view_Surface_getSurface(env, jsurface));
         if (surface != NULL) {
             new_st = surface->getSurfaceTexture();
             new_st->incStrong(thiz);

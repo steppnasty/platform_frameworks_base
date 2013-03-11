@@ -27,7 +27,7 @@
 #include <media/stagefright/MetaData.h>
 #include <camera/Camera.h>
 #include <camera/CameraParameters.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <utils/String8.h>
 #include <cutils/properties.h>
 
@@ -569,11 +569,6 @@ status_t CameraSource::initWithCameraAccess(
     mMeta->setInt32(kKeyStride,      mVideoSize.width);
     mMeta->setInt32(kKeySliceHeight, mVideoSize.height);
     mMeta->setInt32(kKeyFrameRate,   mVideoFrameRate);
-    mMeta->setInt32(kKeyHFR, hfr);
-
-    if (want3D) {
-        mMeta->setInt32(kKey3D, !0);
-    }
     return OK;
 }
 

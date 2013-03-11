@@ -23,8 +23,7 @@
 #include <binder/MemoryHeapPmem.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MetaData.h>
-#include <surfaceflinger/Surface.h>
-#include <ui/android_native_buffer.h>
+#include <system/window.h>
 #include <ui/GraphicBufferMapper.h>
 #include <gui/ISurfaceTexture.h>
 
@@ -134,12 +133,10 @@ void SoftwareRenderer::render(
         const void *data, size_t size, void *platformPrivate) {
     ANativeWindowBuffer *buf;
     int err;
-    if ((err = mNativeWindow->dequeueBuffer(mNativeWindow.get(), &buf)) != 0) {
+    if ((err = native_window_dequeue_buffer_and_wait(mNativeWindow.get(), &buf)) != 0) {
         ALOGW("Surface::dequeueBuffer returned error %d", err);
         return;
     }
-
-    CHECK_EQ(0, mNativeWindow->lockBuffer(mNativeWindow.get(), buf));
 
     GraphicBufferMapper &mapper = GraphicBufferMapper::get();
 
@@ -224,7 +221,7 @@ void SoftwareRenderer::render(
 
     CHECK_EQ(0, mapper.unlock(buf->handle));
 
-    if ((err = mNativeWindow->queueBuffer(mNativeWindow.get(), buf)) != 0) {
+    if ((err = mNativeWindow->queueBuffer(mNativeWindow.get(), buf, -1)) != 0) {
         ALOGW("Surface::queueBuffer returned error %d", err);
     }
     buf = NULL;

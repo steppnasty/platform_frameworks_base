@@ -35,7 +35,7 @@ class OMX : public BnOMX,
 public:
     OMX();
 
-    virtual bool livesLocally(pid_t pid);
+    virtual bool livesLocally(node_id node, pid_t pid);
 
     virtual status_t listNodes(List<ComponentInfo> *list);
 

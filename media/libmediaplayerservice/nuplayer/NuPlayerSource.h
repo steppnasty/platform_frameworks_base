@@ -25,6 +25,11 @@ namespace android {
 struct ABuffer;
 
 struct NuPlayer::Source : public RefBase {
+    enum Flags {
+        FLAG_SEEKABLE           = 1,
+        FLAG_DYNAMIC_DURATION   = 2,
+    };
+
     Source() {}
 
     virtual void start() = 0;
@@ -34,7 +39,7 @@ struct NuPlayer::Source : public RefBase {
     // an error or ERROR_END_OF_STREAM if not.
     virtual status_t feedMoreTSData() = 0;
 
-    virtual sp<MetaData> getFormat(bool audio) = 0;
+    virtual sp<AMessage> getFormat(bool audio);
 
     virtual status_t dequeueAccessUnit(
             bool audio, sp<ABuffer> *accessUnit) = 0;
@@ -57,6 +62,8 @@ struct NuPlayer::Source : public RefBase {
 
 protected:
     virtual ~Source() {}
+
+    virtual sp<MetaData> getFormatMeta(bool audio) { return NULL; }
 
 private:
     DISALLOW_EVIL_CONSTRUCTORS(Source);

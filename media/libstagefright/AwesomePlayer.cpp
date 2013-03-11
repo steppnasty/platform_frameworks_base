@@ -51,7 +51,7 @@
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/OMXCodec.h>
 
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <gui/ISurfaceTexture.h>
 #include <gui/SurfaceTextureClient.h>
 #include <surfaceflinger/ISurfaceComposer.h>
@@ -138,7 +138,7 @@ struct AwesomeNativeWindowRenderer : public AwesomeRenderer {
         CHECK(buffer->meta_data()->findInt64(kKeyTime, &timeUs));
         native_window_set_buffers_timestamp(mNativeWindow.get(), timeUs * 1000);
         status_t err = mNativeWindow->queueBuffer(
-                mNativeWindow.get(), buffer->graphicBuffer().get());
+                mNativeWindow.get(), buffer->graphicBuffer().get(), -1);
         if (err != 0) {
             ALOGE("queueBuffer failed with error %s (%d)", strerror(-err),
                     -err);
@@ -1874,11 +1874,6 @@ void AwesomePlayer::onVideoEvent() {
         }
     }
 
-    if (mFlags & NOTIFY_ATTRIBUTES) {
-        modifyFlags(NOTIFY_ATTRIBUTES, CLEAR);
-        notifyVideoAttributes_l();
-    }
-
     int64_t timeUs;
     CHECK(mVideoBuffer->meta_data()->findInt64(kKeyTime, &timeUs));
 
@@ -2516,27 +2511,6 @@ status_t AwesomePlayer::setParameter(int key, const Parcel &request) {
         {
             return setCacheStatCollectFreq(request);
         }
-        case KEY_PARAMETER_3D_ATTRIBUTES:
-        {
-            if(mVideoSource!=NULL) {
-                int32_t format3D = 0;
-                sp<MetaData> meta = mVideoSource->getFormat();
-
-                request.readInt32(&format3D);
-
-                //Validate it, but client really shouldn't be messing with this
-                CHECK(!(format3D & ~(HAL_3D_OUT_SIDE_BY_SIDE |
-                                     HAL_3D_OUT_TOP_BOTTOM |
-                                     HAL_3D_IN_SIDE_BY_SIDE_R_L |
-                                     HAL_3D_IN_SIDE_BY_SIDE_L_R |
-                                     HAL_3D_IN_TOP_BOTTOM)));
-
-                meta->setInt32(kKey3D, format3D);
-                return OK;
-            }
-            else
-                return ERROR_UNSUPPORTED;
-        }
         default:
         {
             return ERROR_UNSUPPORTED;
@@ -2728,17 +2702,6 @@ inline int64_t AwesomePlayer::getTimeOfDayUs() {
     gettimeofday(&tv, NULL);
 
     return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
-void AwesomePlayer::notifyVideoAttributes_l() {
-    sp<MetaData> meta = mVideoSource->getFormat();
-    int format3D = 0;
-
-    if (!meta->findInt32(kKey3D, &format3D))
-        format3D = 0;
-
-    notifyListener_l(MEDIA_INFO,
-                     KEY_PARAMETER_3D_ATTRIBUTES, format3D);
 }
 
 }  // namespace android

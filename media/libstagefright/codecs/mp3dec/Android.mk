@@ -1,6 +1,4 @@
 LOCAL_PATH:= $(call my-dir)
-
-ifeq ($(TARGET_USES_QCOM_LPA),true)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
@@ -56,8 +54,6 @@ LOCAL_CFLAGS := \
 LOCAL_MODULE := libstagefright_mp3dec
 
 include $(BUILD_STATIC_LIBRARY)
-
-endif
 
 #LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)

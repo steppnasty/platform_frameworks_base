@@ -7,6 +7,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=               \
+    ActivityManager.cpp         \
     MediaRecorderClient.cpp     \
     MediaPlayerService.cpp      \
     MetadataRetrieverClient.cpp \

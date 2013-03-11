@@ -27,6 +27,7 @@
 #include "NuPlayerSource.h"
 #include "RTSPSource.h"
 #include "StreamingSource.h"
+#include "GenericSource.h"
 
 #include "ATSParser.h"
 
@@ -38,11 +39,13 @@
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <gui/ISurfaceTexture.h>
 #include <cutils/properties.h>
 
 #include "avc_utils.h"
+
+#include <media/stagefright/Utils.h>
 
 namespace android {
 
@@ -89,39 +92,37 @@ void NuPlayer::setDataSource(const sp<IStreamSource> &source) {
     msg->post();
 }
 
-status_t NuPlayer::setDataSource(
+static bool IsHTTPLiveURL(const char *url) {
+    if (!strncasecmp("http://", url, 7)
+            || !strncasecmp("https://", url, 8)) {
+        size_t len = strlen(url);
+        if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
+            return true;
+        }
+
+        if (strstr(url,"m3u8")) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void NuPlayer::setDataSource(
         const char *url, const KeyedVector<String8, String8> *headers) {
     sp<AMessage> msg = new AMessage(kWhatSetDataSource, id());
 
-    status_t nRet = OK;
-    String8 mUri(url);
-    size_t len = strlen(url);
-
-    if (!strncasecmp(url, "rtsp://", 7)) {
-           msg->setObject(
-                "source", new RTSPSource(url, headers, mUIDValid, mUID));
-           mLiveSourceType = kRtspSource;
+    sp<Source> source;
+    if (IsHTTPLiveURL(url)) {
+        source = new HTTPLiveSource(url, headers, mUIDValid, mUID);
+    } else if (!strncasecmp(url, "rtsp://", 7)) {
+        source = new RTSPSource(url, headers, mUIDValid, mUID);
     } else {
-       if (!strncasecmp(mUri.string(), "http://", 7) && (len >= 4 && !strcasecmp(".mpd", &url[len - 4]))) {
-           /* Load the DASH HTTP Live source librery here */
-           ALOGV("NuPlayer setDataSource url sting %s",mUri.string());
-           sp<NuPlayer::Source> DashHttpLiveSource = LoadCreateDashHttpSource(url, headers, mUIDValid, mUID);
-           if (DashHttpLiveSource != NULL) {
-              mLiveSourceType = kHttpDashSource;
-              msg->setObject("source", DashHttpLiveSource);
-           } else {
-             ALOGE("Error creating DASH source");
-             return UNKNOWN_ERROR;
-           }
-       } else {
-           msg->setObject(
-                "source", new HTTPLiveSource(url, headers, mUIDValid, mUID));
-           mLiveSourceType = kHttpLiveSource;
-       }
+        source = new GenericSource(url, headers, mUIDValid, mUID);
     }
-    msg->post();
 
-    return nRet;
+    msg->setObject("source", source);
+    msg->post();
 }
 
 void NuPlayer::setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture) {
@@ -744,21 +745,16 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<Decoder> *decoder) {
         return OK;
     }
 
-    sp<MetaData> meta = mSource->getFormat(audio);
+    sp<AMessage> format = mSource->getFormat(audio);
 
-    if (meta == NULL) {
+    if (format == NULL) {
         return -EWOULDBLOCK;
     }
 
     if (!audio) {
-        const char *mime;
-        CHECK(meta->findCString(kKeyMIMEType, &mime));
-        mVideoIsAVC = !strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC, mime);
-        if (mVideoIsAVC &&
-           ((mLiveSourceType == kHttpLiveSource) || (mLiveSourceType == kHttpDashSource))) {
-            ALOGV("Set Enable smooth streaming in meta data ");
-            meta->setInt32(kKeySmoothStreaming, 1);
-        }
+        AString mime;
+        CHECK(format->findString("mime", &mime));
+        mVideoIsAVC = !strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC, mime.c_str());
     }
 
     sp<AMessage> notify =
@@ -769,23 +765,7 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<Decoder> *decoder) {
                        new Decoder(notify, mNativeWindow);
     looper()->registerHandler(*decoder);
 
-    char value[PROPERTY_VALUE_MAX] = {0};
-    if (mLiveSourceType == kHttpLiveSource || mLiveSourceType == kHttpDashSource){
-        //Set flushing state to none
-        Mutex::Autolock autoLock(mLock);
-        if( audio ) {
-            mFlushingAudio = NONE;
-        } else {
-            mFlushingVideo = NONE;
-
-        }
-    } else if (audio && mLiveSourceType == kRtspSource &&
-               property_get("ro.product.device", value, "0") &&
-               !strncmp(value, "msm7627a", sizeof("msm7627a") - 1)) {
-        meta->setInt32(kKeyUseSWDec, true);
-    }
-
-    (*decoder)->configure(meta);
+    (*decoder)->configure(format);
 
     int64_t durationUs;
     if (mDriver != NULL && mSource->getDuration(&durationUs) == OK) {
@@ -1023,6 +1003,22 @@ void NuPlayer::flushDecoder(bool audio, bool needShutdown) {
     }
     ALOGV("flushDecoder end states Audio %d, Video %d", mFlushingAudio, mFlushingVideo);
 }
+
+sp<AMessage> NuPlayer::Source::getFormat(bool audio) {
+    sp<MetaData> meta = getFormatMeta(audio);
+
+    if (meta == NULL) {
+        return NULL;
+    }
+
+    sp<AMessage> msg = new AMessage;
+
+    if(convertMetaDataToMessage(meta, &msg) == OK) {
+        return msg;
+    }
+    return NULL;
+}
+
 sp<NuPlayer::Source> NuPlayer::LoadCreateDashHttpSource(const char * uri, const KeyedVector<String8, String8> *headers, bool uidValid, uid_t uid)
 {
    const char* DASH_HTTP_LIVE_LIB = "libmmipstreamaal.so";

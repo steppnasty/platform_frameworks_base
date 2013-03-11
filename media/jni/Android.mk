@@ -14,22 +14,26 @@ LOCAL_SRC_FILES:= \
     android_mtp_MtpDevice.cpp \
     android_mtp_MtpServer.cpp \
 
-LOCAL_SHARED_LIBRARIES := \
-    libandroid_runtime \
-    libnativehelper \
-    libutils \
-    libbinder \
-    libmedia \
-    libskia \
-    libui \
-    libcutils \
-    libgui \
-    libstagefright \
-    libcamera_client \
-    libsqlite \
-    libmtp \
-    libusbhost \
-    libexif
+LOCAL_SHARED_LIBRARIES :=        \
+    libandroid_runtime           \
+    libnativehelper              \
+    libutils                     \
+    libbinder                    \
+    libmedia                     \
+    libskia                      \
+    libui                        \
+    libcutils                    \
+    libgui                       \
+    libstagefright               \
+    libcamera_client             \
+    libsqlite                    \
+    libmtp                       \
+    libusbhost                   \
+    libexif                      \
+    libstagefright_amrnb_common
+
+LOCAL_STATIC_LIBRARIES := \
+    libstagefright_amrnbenc
 
 LOCAL_C_INCLUDES += \
     external/jhead \

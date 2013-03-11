@@ -427,22 +427,8 @@ VideoFrame *StagefrightMetadataRetriever::getFrameAtTime(
         ALOGV("Software decoder failed to extract thumbnail, "
              "trying hardware decoder.");
 
-#ifdef QCOM_HARDWARE
-        char value[PROPERTY_VALUE_MAX];
-        int32_t flags = 0;
-        if (property_get("ro.board.platform", value, "0")
-            && (!strncmp(value, "msm8660", sizeof("msm8660") - 1) ||
-                !strncmp(value, "msm8960", sizeof("msm8960") - 1) ||
-                !strncmp(value, "msm7x30", sizeof("msm7x30") - 1) )) {
-            flags |= OMXCodec::kEnableThumbnailMode | OMXCodec::kHardwareCodecsOnly;
-            frame = extractVideoFrameWithCodecFlags(&mClient, trackMeta,
-                        source, flags,
-                        timeUs, option);
-        }
-#else
         frame = extractVideoFrameWithCodecFlags(&mClient, trackMeta, source, 0,
                         timeUs, option);
-#endif
     }
 
     return frame;

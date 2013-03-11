@@ -71,6 +71,9 @@ LOCAL_C_INCLUDES := \
 LOCAL_CFLAGS := \
         -DOSCL_UNUSED_ARG=
 
+LOCAL_SHARED_LIBRARIES := \
+        libstagefright_amnrb_common
+
 LOCAL_MODULE := libstagefright_amrnbenc
 
 include $(BUILD_STATIC_LIBRARY)

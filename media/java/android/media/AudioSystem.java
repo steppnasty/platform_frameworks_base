@@ -187,6 +187,8 @@ public class AudioSystem
      * AudioPolicyService methods
      */
 
+    // reserved bits
+    public static final int DEVICE_BIT_IN = 0x80000000;
     // output devices, be sure to update AudioManager.java also
     public static final int DEVICE_OUT_EARPIECE = 0x1;
     public static final int DEVICE_OUT_SPEAKER = 0x2;
@@ -201,6 +203,7 @@ public class AudioSystem
     public static final int DEVICE_OUT_AUX_DIGITAL = 0x400;
     public static final int DEVICE_OUT_ANLG_DOCK_HEADSET = 0x800;
     public static final int DEVICE_OUT_DGTL_DOCK_HEADSET = 0x1000;
+    public static final int DEVICE_OUT_REMOTE_SUBMIX = 0x2000;
     public static final int DEVICE_OUT_DEFAULT = 0x8000;
     public static final int DEVICE_OUT_ALL = (DEVICE_OUT_EARPIECE |
                                               DEVICE_OUT_SPEAKER |
@@ -215,6 +218,7 @@ public class AudioSystem
                                               DEVICE_OUT_AUX_DIGITAL |
                                               DEVICE_OUT_ANLG_DOCK_HEADSET |
                                               DEVICE_OUT_DGTL_DOCK_HEADSET |
+                                              DEVICE_OUT_REMOTE_SUBMIX |
                                               DEVICE_OUT_DEFAULT);
     public static final int DEVICE_OUT_ALL_A2DP = (DEVICE_OUT_BLUETOOTH_A2DP |
                                                    DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
@@ -232,6 +236,7 @@ public class AudioSystem
     public static final int DEVICE_IN_BLUETOOTH_SCO_HEADSET = 0x200000;
     public static final int DEVICE_IN_WIRED_HEADSET = 0x400000;
     public static final int DEVICE_IN_AUX_DIGITAL = 0x800000;
+    public static final int DEVICE_IN_REMOTE_SUBMIX = DEVICE_BIT_IN | 0x80;
     public static final int DEVICE_IN_DEFAULT = 0x80000000;
 
     // device states, must match AudioSystem::device_connection_state

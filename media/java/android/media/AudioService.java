@@ -20,16 +20,19 @@ import static android.media.AudioManager.RINGER_MODE_NORMAL;
 import static android.media.AudioManager.RINGER_MODE_SILENT;
 import static android.media.AudioManager.RINGER_MODE_VIBRATE;
 
+import android.app.Activity;
 import android.app.ActivityManagerNative;
 import android.app.KeyguardManager;
 import android.app.PendingIntent;
 import android.app.PendingIntent.CanceledException;
+import android.app.PendingIntent.OnFinished;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothProfile;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
@@ -47,6 +50,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
+import android.os.PowerManager;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -54,6 +58,7 @@ import android.os.SystemProperties;
 import android.os.Vibrator;
 import android.provider.Settings;
 import android.provider.Settings.System;
+import android.speech.RecognizerIntent;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -88,7 +93,7 @@ import java.util.Stack;
  *
  * @hide
  */
-public class AudioService extends IAudioService.Stub {
+public class AudioService extends IAudioService.Stub implements OnFinished {
 
     private static final String TAG = "AudioService";
 
@@ -138,6 +143,7 @@ public class AudioService extends IAudioService.Stub {
     private static final int MSG_REEVALUATE_REMOTE = 17;
     private static final int MSG_RCC_NEW_PLAYBACK_INFO = 18;
     private static final int MSG_RCC_NEW_VOLUME_OBS = 19;
+    private static final int MSG_SET_RSX_CONNECTION_STATE = 20; // change remote submix connection
 
     // flags for MSG_PERSIST_VOLUME indicating if current and/or last audible volume should be
     // persisted
@@ -292,10 +298,6 @@ public class AudioService extends IAudioService.Stub {
 
     // Broadcast receiver for device connections intent broadcasts
     private final BroadcastReceiver mReceiver = new AudioServiceBroadcastReceiver();
-
-    //  Broadcast receiver for media button broadcasts (separate from mReceiver to
-    //  independently change its priority)
-    private final BroadcastReceiver mMediaButtonReceiver = new MediaButtonBroadcastReceiver();
 
     // Used to alter media button redirection when the phone is ringing.
     private boolean mIsRinging = false;
@@ -461,7 +463,6 @@ public class AudioService extends IAudioService.Stub {
         // Workaround for bug on priority setting
         //intentFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
         intentFilter.setPriority(Integer.MAX_VALUE);
-        context.registerReceiver(mMediaButtonReceiver, intentFilter);
 
         // Register for phone state monitoring
         TelephonyManager tmgr = (TelephonyManager)
@@ -618,6 +619,17 @@ streamType]],
     /** @see AudioManager#adjustVolume(int, int) */
     public void adjustVolume(int direction, int flags) {
         adjustSuggestedStreamVolume(direction, AudioManager.USE_DEFAULT_STREAM_TYPE, flags);
+    }
+
+    /** @see AudioManager#adjustLocalOrRemoteStreamVolume(int, int) with current assumption
+     *  on streamType: fixed to STREAM_MUSIC */
+    public void adjustLocalOrRemoteStreamVolume(int streamType, int direction) {
+        if (DEBUG_VOL) Log.d(TAG, "adjustLocalOrRemoteStreamVolume(dir="+direction+")");
+        if (checkUpdateRemoteStateIfActive(AudioSystem.STREAM_MUSIC)) {
+            adjustRemoteVolume(AudioSystem.STREAM_MUSIC, direction, 0);
+        } else if (AudioSystem.isStreamActive(AudioSystem.STREAM_MUSIC, 0)) {
+            adjustStreamVolume(AudioSystem.STREAM_MUSIC, direction, 0);
+        }
     }
 
     /** @see AudioManager#adjustVolume(int, int, int) */
@@ -1978,6 +1990,26 @@ streamType]],
         }
     };
 
+    /** see AudioManager.setRemoteSubmixOn(boolean on) */
+    public void setRemoteSubmixOn(boolean on, int address) {
+        sendMsg(mAudioHandler, MSG_SET_RSX_CONNECTION_STATE,
+                SENDMSG_REPLACE /* replace with QUEUE when multiple addresses are supported */,
+                on ? 1 : 0 /*arg1*/,
+                address /*arg2*/,
+                null/*obj*/, 0/*delay*/);
+    }
+
+    private void onSetRsxConnectionState(int available, int address) {
+        AudioSystem.setDeviceConnectionState(AudioSystem.DEVICE_IN_REMOTE_SUBMIX,
+                available == 1 ?
+                        AudioSystem.DEVICE_STATE_AVAILABLE : AudioSystem.DEVICE_STATE_UNAVAILABLE,
+                String.valueOf(address) /*device_address*/);
+        AudioSystem.setDeviceConnectionState(AudioSystem.DEVICE_OUT_REMOTE_SUBMIX,
+                available == 1 ?
+                        AudioSystem.DEVICE_STATE_AVAILABLE : AudioSystem.DEVICE_STATE_UNAVAILABLE,
+                String.valueOf(address) /*device_address*/);
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // Internal methods
     ///////////////////////////////////////////////////////////////////////////
@@ -2900,6 +2932,10 @@ streamType]],
                     onRegisterVolumeObserverForRcc(msg.arg1 /* rccId */,
                             (IRemoteVolumeObserver)msg.obj /* rvo */);
                     break;
+
+                case MSG_SET_RSX_CONNECTION_STATE:
+                    onSetRsxConnectionState(msg.arg1/*available*/, msg.arg2/*address*/);
+                    break;
             }
         }
     }
@@ -3326,6 +3362,25 @@ streamType]],
         }
     }
 
+    private void remoteVolumeChanged(final int streamType, final int flags) {
+        if (mUiContext != null && mVolumePanel != null) {
+            mVolumePanel.postRemoteVolumeChanged(streamType, flags);
+        } else {
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (mUiContext == null) {
+                        mUiContext = ThemeUtils.createUiContext(mContext);
+                    }
+
+                    final Context context = mUiContext != null ? mUiContext : mContext;
+                    mVolumePanel = new VolumePanel(context, AudioService.this);
+                    mVolumePanel.postRemoteVolumeChanged(streamType, flags);
+                }
+            });
+        }
+    }
+
     //==========================================================================================
     // AudioFocus
     //==========================================================================================
@@ -3643,53 +3698,283 @@ streamType]],
     //==========================================================================================
     // RemoteControl
     //==========================================================================================
-    /**
-     * Receiver for media button intents. Handles the dispatching of the media button event
-     * to one of the registered listeners, or if there was none, resumes the intent broadcast
-     * to the rest of the system.
-     */
-    private class MediaButtonBroadcastReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (!Intent.ACTION_MEDIA_BUTTON.equals(action)) {
-                return;
-            }
-            KeyEvent event = (KeyEvent) intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
-            if (event != null) {
-                // if in a call or ringing, do not break the current phone app behavior
-                // TODO modify this to let the phone app specifically get the RC focus
-                //      add modify the phone app to take advantage of the new API
-                synchronized(mRingingLock) {
-                    if (mIsRinging || (getMode() == AudioSystem.MODE_IN_CALL) ||
-                            (getMode() == AudioSystem.MODE_IN_COMMUNICATION) ||
-                            (getMode() == AudioSystem.MODE_RINGTONE) ) {
-                        return;
-                    }
+    public void dispatchMediaKeyEvent(KeyEvent keyEvent) {
+        filterMediaKeyEvent(keyEvent, false /*needWakeLock*/);
+    }
+
+    public void dispatchMediaKeyEventUnderWakelock(KeyEvent keyEvent) {
+        filterMediaKeyEvent(keyEvent, true /*needWakeLock*/);
+    }
+
+    private void filterMediaKeyEvent(KeyEvent keyEvent, boolean needWakeLock) {
+        // sanity check on the incoming key event
+        if (!isValidMediaKeyEvent(keyEvent)) {
+            Log.e(TAG, "not dispatching invalid media key event " + keyEvent);
+            return;
+        }
+        // event filtering for telephony
+        synchronized(mRingingLock) {
+            synchronized(mRCStack) {
+                if ((mMediaReceiverForCalls != null) &&
+                        (mIsRinging || (getMode() == AudioSystem.MODE_IN_CALL))) {
+                    dispatchMediaKeyEventForCalls(keyEvent, needWakeLock);
+                    return;
                 }
-                synchronized(mRCStack) {
-                    if (!mRCStack.empty()) {
-                        // create a new intent to fill in the extras of the registered PendingIntent
-                        Intent targetedIntent = new Intent(Intent.ACTION_MEDIA_BUTTON);
-                        Bundle extras = intent.getExtras();
-                        if (extras != null) {
-                            targetedIntent.putExtras(extras);
-                            // trap the current broadcast
-                            abortBroadcast();
-                            //Log.v(TAG, " Sending intent" + targetedIntent);
-                            // send the intent that was registered by the client
-                            try {
-                                mRCStack.peek().mMediaIntent.send(context, 0, targetedIntent);
-                            } catch (CanceledException e) {
-                                Log.e(TAG, "Error sending pending intent " + mRCStack.peek());
-                                e.printStackTrace();
-                            }
-                        }
-                    }
+            }
+        }
+        // event filtering based on voice-based interactions
+        if (isValidVoiceInputKeyCode(keyEvent.getKeyCode())) {
+            filterVoiceInputKeyEvent(keyEvent, needWakeLock);
+        } else {
+            dispatchMediaKeyEvent(keyEvent, needWakeLock);
+        }
+    }
+
+    /**
+     * Handles the dispatching of the media button events to the telephony package.
+     * Precondition: mMediaReceiverForCalls != null
+     * @param keyEvent a non-null KeyEvent whose key code is one of the supported media buttons
+     * @param needWakeLock true if a PARTIAL_WAKE_LOCK needs to be held while this key event
+     *     is dispatched.
+     */
+    private void dispatchMediaKeyEventForCalls(KeyEvent keyEvent, boolean needWakeLock) {
+        Intent keyIntent = new Intent(Intent.ACTION_MEDIA_BUTTON, null);
+        keyIntent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent);
+        keyIntent.setPackage(mMediaReceiverForCalls.getPackageName());
+        if (needWakeLock) {
+            mMediaEventWakeLock.acquire();
+            keyIntent.putExtra(EXTRA_WAKELOCK_ACQUIRED, WAKELOCK_RELEASE_ON_FINISHED);
+        }
+        final long ident = Binder.clearCallingIdentity();
+        try {
+            mContext.sendOrderedBroadcast(keyIntent, null, mKeyEventDone, 
+                    mAudioHandler, Activity.RESULT_OK, null, null);
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
+    }
+
+    /**
+     * Handles the dispatching of the media button events to one of the registered listeners,
+     * or if there was none, broadcast an ACTION_MEDIA_BUTTON intent to the rest of the system.
+     * @param keyEvent a non-null KeyEvent whose key code is one of the supported media buttons
+     * @param needWakeLock true if a PARTIAL_WAKE_LOCK needs to be held while this key event
+     *     is dispatched.
+     */
+    private void dispatchMediaKeyEvent(KeyEvent keyEvent, boolean needWakeLock) {
+        if (needWakeLock) {
+            mMediaEventWakeLock.acquire();
+        }
+        Intent keyIntent = new Intent(Intent.ACTION_MEDIA_BUTTON, null);
+        keyIntent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent);
+        synchronized(mRCStack) {
+            if (!mRCStack.empty()) {
+                // send the intent that was registered by the client
+                try {
+                    mRCStack.peek().mMediaIntent.send(mContext,
+                            needWakeLock ? WAKELOCK_RELEASE_ON_FINISHED : 0 /*code*/,
+                            keyIntent, AudioService.this, mAudioHandler);
+                } catch (CanceledException e) {
+                    Log.e(TAG, "Error sending pending intent " + mRCStack.peek());
+                    e.printStackTrace();
+                }
+            } else {
+                // legacy behavior when nobody registered their media button event receiver
+                //    through AudioManager
+                if (needWakeLock) {
+                    keyIntent.putExtra(EXTRA_WAKELOCK_ACQUIRED, WAKELOCK_RELEASE_ON_FINISHED);
+                }
+                final long ident = Binder.clearCallingIdentity();
+                try {
+                    mContext.sendOrderedBroadcast(keyIntent, null, mKeyEventDone,
+                            mAudioHandler, Activity.RESULT_OK, null, null);
+                } finally {
+                    Binder.restoreCallingIdentity(ident);
                 }
             }
         }
     }
+
+    /**
+     * The different actions performed in response to a voice button key event.
+     */
+    private final static int VOICEBUTTON_ACTION_DISCARD_CURRENT_KEY_PRESS = 1;
+    private final static int VOICEBUTTON_ACTION_START_VOICE_INPUT = 2;
+    private final static int VOICEBUTTON_ACTION_SIMULATE_KEY_PRESS = 3;
+
+    private final Object mVoiceEventLock = new Object();
+    private boolean mVoiceButtonDown;
+    private boolean mVoiceButtonHandled;
+
+    /**
+     * Filter key events that may be used for voice-based interactions
+     * @param keyEvent a non-null KeyEvent whose key code is that of one of the supported
+     *    media buttons that can be used to trigger voice-based interactions.
+     * @param needWakeLock true if a PARTIAL_WAKE_LOCK needs to be held while this key event
+     *     is dispatched.
+     */
+    private void filterVoiceInputKeyEvent(KeyEvent keyEvent, boolean needWakeLock) {
+        if (DEBUG_RC) {
+            Log.v(TAG, "voice input key event: " + keyEvent + ", needWakeLock=" + needWakeLock);
+        }
+
+        int voiceButtonAction = VOICEBUTTON_ACTION_DISCARD_CURRENT_KEY_PRESS;
+        int keyAction = keyEvent.getAction();
+        synchronized (mVoiceEventLock) {
+            if (keyAction == KeyEvent.ACTION_DOWN) {
+                if (keyEvent.getRepeatCount() == 0) {
+                    // initial down
+                    mVoiceButtonDown = true;
+                    mVoiceButtonHandled = false;
+                } else if (mVoiceButtonDown && !mVoiceButtonHandled
+                        && (keyEvent.getFlags() & KeyEvent.FLAG_LONG_PRESS) != 0) {
+                    // long-press, start voice-based interactions
+                    mVoiceButtonHandled = true;
+                    voiceButtonAction = VOICEBUTTON_ACTION_START_VOICE_INPUT;
+                }
+            } else if (keyAction == KeyEvent.ACTION_UP) {
+                if (mVoiceButtonDown) {
+                    // voice button up
+                    mVoiceButtonDown = false;
+                    if (!mVoiceButtonHandled && !keyEvent.isCanceled()) {
+                        voiceButtonAction = VOICEBUTTON_ACTION_SIMULATE_KEY_PRESS;
+                    }
+                }
+            }
+        }//synchronized (mVoiceEventLock)
+
+        // take action after media button event filtering for voice-based interactions
+        switch (voiceButtonAction) {
+            case VOICEBUTTON_ACTION_DISCARD_CURRENT_KEY_PRESS:
+                if (DEBUG_RC) Log.v(TAG, "   ignore key event");
+                break;
+            case VOICEBUTTON_ACTION_START_VOICE_INPUT:
+                if (DEBUG_RC) Log.v(TAG, "   start voice-based interactions");
+                // then start the voice-based interactions
+                startVoiceBasedInteractions(needWakeLock);
+                break;
+            case VOICEBUTTON_ACTION_SIMULATE_KEY_PRESS:
+                if (DEBUG_RC) Log.v(TAG, "   send simulated key event, wakelock=" + needWakeLock);
+                sendSimulatedMediaButtonEvent(keyEvent, needWakeLock);
+                break;
+        }
+    }
+
+    private void sendSimulatedMediaButtonEvent(KeyEvent originalKeyEvent, boolean needWakeLock) {
+        // send DOWN event
+        KeyEvent keyEvent = KeyEvent.changeAction(originalKeyEvent, KeyEvent.ACTION_DOWN);
+        dispatchMediaKeyEvent(keyEvent, needWakeLock);
+        // send UP event
+        keyEvent = KeyEvent.changeAction(originalKeyEvent, KeyEvent.ACTION_UP);
+        dispatchMediaKeyEvent(keyEvent, needWakeLock);
+
+    }
+
+    private static boolean isValidMediaKeyEvent(KeyEvent keyEvent) {
+        if (keyEvent == null) {
+            return false;
+        }
+        final int keyCode = keyEvent.getKeyCode();
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_MUTE:
+            case KeyEvent.KEYCODE_HEADSETHOOK:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_RECORD:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_CLOSE:
+            case KeyEvent.KEYCODE_MEDIA_EJECT:
+                break;
+            default:
+                return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks whether the given key code is one that can trigger the launch of voice-based
+     *   interactions.
+     * @param keyCode the key code associated with the key event
+     * @return true if the key is one of the supported voice-based interaction triggers
+     */
+    private static boolean isValidVoiceInputKeyCode(int keyCode) {
+        if (keyCode == KeyEvent.KEYCODE_HEADSETHOOK) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Tell the system to start voice-based interactions / voice commands
+     */
+    private void startVoiceBasedInteractions(boolean needWakeLock) {
+        Intent voiceIntent = null;
+        // select which type of search to launch:
+        // - screen on and device unlocked: action is ACTION_WEB_SEARCH
+        // - device locked or screen off: action is ACTION_VOICE_SEARCH_HANDS_FREE
+        //    with EXTRA_SECURE set to true if the device is securely locked
+        PowerManager pm = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
+        boolean isLocked = mKeyguardManager != null && mKeyguardManager.isKeyguardLocked();
+        if (!isLocked && pm.isScreenOn()) {
+            voiceIntent = new Intent(android.speech.RecognizerIntent.ACTION_WEB_SEARCH);
+        } else {
+            voiceIntent = new Intent(RecognizerIntent.ACTION_VOICE_SEARCH_HANDS_FREE);
+            voiceIntent.putExtra(RecognizerIntent.EXTRA_SECURE,
+                    isLocked && mKeyguardManager.isKeyguardSecure());
+        }
+        // start the search activity
+        if (needWakeLock) {
+            mMediaEventWakeLock.acquire();
+        }
+        try {
+            if (voiceIntent != null) {
+                voiceIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                mContext.startActivity(voiceIntent);
+            }
+        } catch (ActivityNotFoundException e) {
+            Log.w(TAG, "No activity for search: " + e);
+        } finally {
+            if (needWakeLock) {
+                mMediaEventWakeLock.release();
+            }
+        }
+    }
+
+    private PowerManager.WakeLock mMediaEventWakeLock;
+
+    private static final int WAKELOCK_RELEASE_ON_FINISHED = 1980; //magic number
+
+    private static final String EXTRA_WAKELOCK_ACQUIRED = 
+            "android.media.AudioService.WAKELOCK_ACQUIRED";
+
+    public void onSendFinished(PendingIntent pendingIntent, Intent intent,
+            int resultCode, String resultData, Bundle resultExtras) {
+        if (resultCode == WAKELOCK_RELEASE_ON_FINISHED) {
+            mMediaEventWakeLock.release();
+        }
+    }
+
+    BroadcastReceiver mKeyEventDone = new BroadcastReceiver() {
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) {
+                return;
+            }
+            Bundle extras = intent.getExtras();
+            if (extras == null) {
+                return;
+            }
+            if (extras.containsKey(EXTRA_WAKELOCK_ACQUIRED)) {
+                mMediaEventWakeLock.release();
+            }
+        }
+    };
 
     private final Object mCurrentRcLock = new Object();
     /**
@@ -3759,7 +4044,7 @@ streamType]],
     
     /**
      * Internal cache for the playback information of the RemoteControlClient whose volume gets to
-     * be controlled by the volume keys ("main"), so we don't have to iterate over the RC stack 
+     * be controlled by the volume keys ("main"), so we don't have to iterate over the RC stack
      * every time we need this info.
      */
     private RemotePlaybackState mMainRemote;
@@ -3834,7 +4119,13 @@ streamType]],
      *  synchronized on mRCStack, but also BEFORE on mFocusLock as any change in either
      *  stack, audio focus or RC, can lead to a change in the remote control display
      */
-    private Stack<RemoteControlStackEntry> mRCStack = new Stack<RemoteControlStackEntry>();
+    private final Stack<RemoteControlStackEntry> mRCStack = new Stack<RemoteControlStackEntry>();
+
+    /**
+     * The component the telephony package can register so telephony calls have priority to
+     * handle media button events
+     */
+    private ComponentName mMediaReceiverForCalls = null;
 
     /**
      * Helper function:
@@ -4495,7 +4786,7 @@ streamType]],
                             
 
     public void registerRemoteVolumeObserverForRcc(int rccId, IRemoteVolumeObserver rvo) {
-        sendMsg(mAudioHandler,  MSG_RCC_NEW_VOLUME_OBS, SENDMSG_QUEUE,
+        sendMsg(mAudioHandler, MSG_RCC_NEW_VOLUME_OBS, SENDMSG_QUEUE,
                 rccId /* arg1 */, 0, rvo /* obj */, 0 /* delay */);
     }
 
@@ -4511,6 +4802,39 @@ streamType]],
                 }
             }
         }
+    }
+
+    /**
+     * Checks if a remote client is active on the supplied stream type. Update the remote stream
+     * volume state if found and playing
+     * @param streamType
+     * @return false if no remote playing is currently playing
+     */
+    private boolean checkUpdateRemoteStateIfActive(int streamType) {
+        synchronized(mRCStack) {
+            Iterator<RemoteControlStackEntry> stackIterator = mRCStack.iterator();
+            while(stackIterator.hasNext()) {
+                RemoteControlStackEntry rcse = stackIterator.next();
+                if ((rcse.mPlaybackType == RemoteControlClient.PLAYBACK_TYPE_REMOTE)
+                        && isPlaystateActive(rcse.mPlaybackState)
+                        && (rcse.mPlaybackStream == streamType)) {
+                    if (DEBUG_RC) Log.d(TAG, "remote playback active on stream " + streamType
+                            + ", vol =" + rcse.mPlaybackVolume);
+                    synchronized (mMainRemote) {
+                        mMainRemote.mRccId = rcse.mRccId;
+                        mMainRemote.mVolume = rcse.mPlaybackVolume;
+                        mMainRemote.mVolumeMax = rcse.mPlaybackVolumeMax;
+                        mMainRemote.mVolumeHandling = rcse.mPlaybackVolumeHandling;
+                        mMainRemoteIsActive = true;
+                    }
+                    return true;
+                }
+            }
+        }
+        synchronized (mMainRemote) {
+            mMainRemoteIsActive = false;
+        }
+        return false;
     }
 
     /**
@@ -4530,6 +4854,56 @@ streamType]],
                 return true;
             default:
                 return false;
+        }
+    }
+
+    private void adjustRemoteVolume(int streamType, int direction, int flags) {
+        int rccId = RemoteControlClient.RCSE_ID_UNREGISTERED;
+        boolean volFixed = false;
+        synchronized (mMainRemote) {
+            if (!mMainRemoteIsActive) {
+                if (DEBUG_VOL) Log.w(TAG, "adjustRemoteVolume didn't find an active client");
+                return;
+            }
+            rccId = mMainRemote.mRccId;
+            volFixed = (mMainRemote.mVolumeHandling ==
+                    RemoteControlClient.PLAYBACK_VOLUME_FIXED);
+        }
+        // unlike "local" stream volumes, we can't compute the new volume based on the direction,
+        // we can only notify the remote that volume needs to be updated, and we'll get an async'
+        // update through setPlaybackInfoForRcc()
+        if (!volFixed) {
+            sendVolumeUpdateToRemote(rccId, direction);
+        }
+
+        // fire up the UI
+        remoteVolumeChanged(streamType, flags);
+    }
+
+    private void sendVolumeUpdateToRemote(int rccId, int direction) {
+        if (DEBUG_VOL) { Log.d(TAG, "sendVolumeUpdateToRemote(rccId="+rccId+" , dir="+direction); }
+        if (direction == 0) {
+            // only handling discrete events
+            return;
+        }
+        IRemoteVolumeObserver rvo = null;
+        synchronized (mRCStack) {
+            Iterator<RemoteControlStackEntry> stackIterator = mRCStack.iterator();
+            while(stackIterator.hasNext()) {
+                RemoteControlStackEntry rcse = stackIterator.next();
+                //FIXME OPTIMIZE store this info in mMainRemote so we don't have to iterate?
+                if (rcse.mRccId == rccId) {
+                    rvo = rcse.mRemoteVolumeObs;
+                    break;
+                }
+            }
+        }
+        if (rvo != null) {
+            try {
+                rvo.dispatchRemoteVolumeUpdate(direction, -1);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error dispatching relative volume update", e);
+            }
         }
     }
 

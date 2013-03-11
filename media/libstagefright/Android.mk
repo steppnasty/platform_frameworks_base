@@ -58,6 +58,7 @@ LOCAL_SRC_FILES:=                         \
         MPEG4Writer.cpp                   \
         MediaBuffer.cpp                   \
         MediaBufferGroup.cpp              \
+        MediaCodecList.cpp                \
         MediaDefs.cpp                     \
         MediaExtractor.cpp                \
         MediaSource.cpp                   \
@@ -69,6 +70,7 @@ LOCAL_SRC_FILES:=                         \
         OggExtractor.cpp                  \
         SampleIterator.cpp                \
         SampleTable.cpp                   \
+        SkipCutBuffer.cpp                 \
         StagefrightMediaScanner.cpp       \
         StagefrightMetadataRetriever.cpp  \
         SurfaceMediaSource.cpp            \
@@ -105,57 +107,69 @@ endif # TARGET_USES_QCOM_LPA
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-        $(TOP)/frameworks/base/include/media/stagefright/openmax \
         $(TOP)/external/flac/include \
         $(TOP)/external/tremolo \
         $(TOP)/external/openssl/include \
         $(TOP)/external/alsa-lib/include/sound \
         $(TOP)/hardware/qcom/display/libgralloc \
         $(TOP)/hardware/qcom/display/libqcomui \
-        $(TOP)/vendor/qcom/opensource/omx/mm-core/omxcore/inc \
         $(TOP)/system/core/include \
-        $(TOP)/hardware/libhardware_legacy/include
+        $(TOP)/hardware/libhardware_legacy/include \
+        $(TOP)/frameworks/base/include/media/hardware
 
-LOCAL_SHARED_LIBRARIES += \
-        libbinder         \
-        libmedia          \
-        libutils          \
-        libcutils         \
-        libui             \
-        libsonivox        \
-        libvorbisidec     \
-        libstagefright_yuv \
-        libcamera_client \
-        libdrmframework  \
-        libcrypto        \
-        libssl           \
-        libgui           \
-        libhardware_legacy \
+ifneq ($(TI_CUSTOM_DOMX_PATH),)
+LOCAL_C_INCLUDES += $(TI_CUSTOM_DOMX_PATH)/omx_core/inc
+LOCAL_CPPFLAGS += -DUSE_TI_CUSTOM_DOMX
+else
+LOCAL_C_INCLUDES += $(TOP)/frameworks/base/include/media/stagefright/openmax
+endif
+
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+LOCAL_SRC_FILES += \
+        QCMediaDefs.cpp                        \
+        QCOMXCodec.cpp
+
+LOCAL_C_INCLUDES += \
+        $(TOP)/hardware/qcom/media/mm-core/inc
+endif
+
+LOCAL_SHARED_LIBRARIES +=               \
+        libbinder                       \
+        libmedia                        \
+        libutils                        \
+        libcutils                       \
+        libexpat                        \
+        libgui                          \
+        libsonivox                      \
+        libvorbisidec                   \
+        libstagefright_yuv              \
+        libsync                         \
+        libcamera_client                \
+        libdrmframework                 \
+        libcrypto                       \
+        libssl                          \
+        libui                           \
+        libhardware_legacy              \
         libpowermanager
 
-LOCAL_STATIC_LIBRARIES := \
+LOCAL_STATIC_LIBRARIES :=               \
         libstagefright_color_conversion \
-        libstagefright_aacenc \
-        libstagefright_amrnbenc \
-        libstagefright_amrwbenc \
-        libstagefright_avcenc \
-        libstagefright_m4vh263enc \
-        libstagefright_matroska \
-        libstagefright_timedtext \
-        libvpx \
-        libstagefright_mpeg2ts \
-        libstagefright_httplive \
-        libstagefright_id3 \
-        libFLAC \
+        libstagefright_mp3dec           \
+        libstagefright_aacenc           \
+        libstagefright_amrnbenc         \
+        libstagefright_amrwbenc         \
+        libstagefright_avcenc           \
+        libstagefright_m4vh263enc       \
+        libstagefright_matroska         \
+        libstagefright_timedtext        \
+        libvpx                          \
+        libstagefright_mpeg2ts          \
+        libstagefright_httplive         \
+        libstagefright_id3              \
+        libFLAC                         \
 
-LOCAL_SHARED_LIBRARIES += \
+LOCAL_SHARED_LIBRARIES +=               \
         libhardware_legacy
-
-ifeq ($(TARGET_USES_QCOM_LPA),true)
-LOCAL_STATIC_LIBRARIES += \
-        libstagefright_aacdec \
-        libstagefright_mp3dec
-endif
 
 ################################################################################
 

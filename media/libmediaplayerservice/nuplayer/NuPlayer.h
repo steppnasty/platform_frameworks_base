@@ -22,7 +22,7 @@
 #include <media/stagefright/foundation/AHandler.h>
 #include <media/stagefright/NativeWindowWrapper.h>
 #include <gui/SurfaceTextureClient.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 
 namespace android {
 
@@ -39,7 +39,7 @@ struct NuPlayer : public AHandler {
 
     void setDataSource(const sp<IStreamSource> &source);
 
-    status_t setDataSource(
+    void setDataSource(
             const char *url, const KeyedVector<String8, String8> *headers);
 
     void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
@@ -62,12 +62,15 @@ protected:
 
     virtual void onMessageReceived(const sp<AMessage> &msg);
 
+public:
+    struct Source;
+
 private:
     struct Decoder;
+    struct GenericSource;
     struct HTTPLiveSource;
     struct NuPlayerStreamListener;
     struct Renderer;
-    struct Source;
     struct StreamingSource;
     struct RTSPSource;
 

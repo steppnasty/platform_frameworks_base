@@ -27,7 +27,7 @@ Copyright (c) 2011, Code Aurora Forum. All rights reserved.
 #include <OMX_Component.h>
 
 #include <binder/IMemory.h>
-#include <media/stagefright/HardwareAPI.h>
+#include <HardwareAPI.h>
 #include <media/stagefright/MediaDebug.h>
 #include <media/stagefright/MediaErrors.h>
 
