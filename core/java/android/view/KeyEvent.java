@@ -591,8 +591,11 @@ public class KeyEvent extends InputEvent implements Parcelable {
     /** Key code constant: Calculator special function key.
      * Used to launch a calculator application. */
     public static final int KEYCODE_CALCULATOR      = 210;
+    /** Key code constant: Assist key.
+     * Launches the global assist activity.  Not delivered to applications. */
+    public static final int KEYCODE_ASSIST          = 211;
 
-    private static final int LAST_KEYCODE           = KEYCODE_CALCULATOR;
+    private static final int LAST_KEYCODE           = KEYCODE_ASSIST;
 
     // NOTE: If you add a new keycode here you must also add it to:
     //  isSystem()
@@ -825,6 +828,7 @@ public class KeyEvent extends InputEvent implements Parcelable {
         names.append(KEYCODE_CALENDAR, "KEYCODE_CALENDAR");
         names.append(KEYCODE_MUSIC, "KEYCODE_MUSIC");
         names.append(KEYCODE_CALCULATOR, "KEYCODE_CALCULATOR");
+        names.append(KEYCODE_ASSIST, "KEYCODE_ASSIST");
     };
 
     // Symbolic names of all metakeys in bit order from least significant to most significant.

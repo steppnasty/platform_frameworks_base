@@ -29,7 +29,6 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.WindowManagerImpl;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 
@@ -325,7 +324,7 @@ public class Toast {
         View mView;
         View mNextView;
         
-        WindowManagerImpl mWM;
+        WindowManager mWM;
 
         TN() {
             // XXX This should be changed to use a Dialog, with a Theme.Toast
@@ -365,7 +364,8 @@ public class Toast {
                 // remove the old view if necessary
                 handleHide();
                 mView = mNextView;
-                mWM = WindowManagerImpl.getDefault();
+                Context context = mView.getContext();
+                mWM = (WindowManager)context.getSystemService(Context.WINDOW_SERVICE);
                 final int gravity = mGravity;
                 mParams.gravity = gravity;
                 if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.FILL_HORIZONTAL) {

@@ -156,6 +156,12 @@ public class ActivityInfo extends ComponentInfo
      */
     public static final int FLAG_HARDWARE_ACCELERATED = 0x0200;
     /**
+     * Value for {@link #flags}: true when the application can be displayed over the lockscreen
+     * and consequently over all users' windows.
+     * @hide
+     */
+    public static final int FLAG_SHOW_ON_LOCK_SCREEN = 0x0400;
+    /**
      * @hide
      * Bit in {@link #flags} corresponding to an immersive activity
      * that wishes not to be interrupted by notifications.

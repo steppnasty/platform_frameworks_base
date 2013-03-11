@@ -39,6 +39,8 @@ import javax.microedition.khronos.egl.EGLSurface;
 import javax.microedition.khronos.opengles.GL;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static javax.microedition.khronos.egl.EGL10.*;
 
@@ -93,6 +95,36 @@ public abstract class HardwareRenderer {
     static final String DISABLE_VSYNC_PROPERTY = "hwui.disable_vsync";
 
     /**
+     * System property used to enable or disable hardware rendering profiling.
+     * The default value of this property is assumed to be false.
+     *
+     * When profiling is enabled, the adb shell dumpsys gfxinfo command will
+     * output extra information about the time taken to execute by the last
+     * frames.
+     *
+     * Possible values:
+     * "true", to enable profiling
+     * "false", to disable profiling
+     * 
+     * @hide
+     */
+    public static final String PROFILE_PROPERTY = "debug.hwui.profile";
+
+    /**
+     * System property used to specify the number of frames to be used
+     * when doing hardware rendering profiling.
+     * The default value of this property is #PROFILE_MAX_FRAMES.
+     *
+     * When profiling is enabled, the adb shell dumpsys gfxinfo command will
+     * output extra information about the time taken to execute by the last
+     * frames.
+     *
+     * Possible values:
+     * "60", to set the limit of frames to 60
+     */
+    static final String PROFILE_MAXFRAMES_PROPERTY = "debug.hwui.profile.maxframes";
+
+    /**
      * System property used to debug EGL configuration choice.
      * 
      * Possible values:
@@ -120,6 +152,16 @@ public abstract class HardwareRenderer {
      * @hide
      */
     public static boolean sSystemRendererDisabled = false;
+
+    /**
+     * Number of frames to profile.
+     */
+    private static final int PROFILE_MAX_FRAMES = 128;
+
+    /**
+     * Number of floats per profiled frame.
+     */
+    private static final int PROFILE_FRAME_DATA_COUNT = 3;
 
     private boolean mEnabled;
     private boolean mRequested = true;
@@ -233,6 +275,19 @@ public abstract class HardwareRenderer {
      * @return the current HardwareCanvas
      */
     abstract HardwareCanvas getCanvas();
+
+    /**
+     * Outputs extra debugging information in the specified file descriptor.
+     * @param pw
+     */
+    abstract void dumpGfxInfo(PrintWriter pw);
+
+    /**
+     * Outputs the total number of frames rendered (used for fps calculations)
+     *
+     * @return the number of frames rendered
+     */
+    abstract long getFrameCount();
 
     /**
      * Sets the directory to use as a persistent storage for hardware rendering
@@ -395,6 +450,26 @@ public abstract class HardwareRenderer {
     }
 
     /**
+     * Starts the process of trimming memory. Usually this call will setup
+     * hardware rendering context and reclaim memory.Extra cleanup might
+     * be required by calling {@link #endTrimMemory()}.
+     * 
+     * @param level Hint about the amount of memory that should be trimmed,
+     *              see {@link android.content.ComponentCallbacks}
+     */
+    static void startTrimMemory(int level) {
+        Gl20Renderer.startTrimMemory(level);
+    }
+
+    /**
+     * Finishes the process of trimming memory. This method will usually
+     * cleanup special resources used by the memory trimming process.
+     */
+    static void endTrimMemory() {
+        Gl20Renderer.endTrimMemory();
+    }
+
+    /**
      * Indicates whether hardware acceleration is currently enabled.
      * 
      * @return True if hardware acceleration is in use, false otherwise.
@@ -484,6 +559,11 @@ public abstract class HardwareRenderer {
 
         final boolean mVsyncDisabled;
 
+        final boolean mProfileEnabled;
+        final float[] mProfileData;
+        final ReentrantLock mProfileLock;
+        int mProfileCurrentFrame = -PROFILE_FRAME_DATA_COUNT;
+
         final int mGlVersion;
         final boolean mTranslucent;
 
@@ -495,11 +575,61 @@ public abstract class HardwareRenderer {
             mGlVersion = glVersion;
             mTranslucent = translucent;
 
+            String property;
+
             final String vsyncProperty = SystemProperties.get(DISABLE_VSYNC_PROPERTY, "false");
             mVsyncDisabled = "true".equalsIgnoreCase(vsyncProperty);
             if (mVsyncDisabled) {
                 Log.d(LOG_TAG, "Disabling v-sync");
             }
+
+            property = SystemProperties.get(PROFILE_PROPERTY, "false");
+            mProfileEnabled = "true".equalsIgnoreCase(property);
+            if (mProfileEnabled) {
+                Log.d(LOG_TAG, "Profiling hardware renderer");
+            }
+
+            if (mProfileEnabled) {
+                property = SystemProperties.get(PROFILE_MAXFRAMES_PROPERTY,
+                        Integer.toString(PROFILE_MAX_FRAMES));
+                int maxProfileFrames = Integer.valueOf(property);
+                mProfileData = new float[maxProfileFrames * PROFILE_FRAME_DATA_COUNT];
+                for (int i = 0; i < mProfileData.length; i += PROFILE_FRAME_DATA_COUNT) {
+                    mProfileData[i] = mProfileData[i + 1] = mProfileData[i + 2] = -1;
+                }
+
+                mProfileLock = new ReentrantLock();
+            } else {
+                mProfileData = null;
+                mProfileLock = null;
+            }
+        }
+
+        @Override
+        void dumpGfxInfo(PrintWriter pw) {
+            if (mProfileEnabled) {
+                pw.printf("\n\tDraw\tProcess\tExecute\n");
+
+                mProfileLock.lock();
+                try {
+                    for (int i = 0; i < mProfileData.length; i += PROFILE_FRAME_DATA_COUNT) {
+                        if (mProfileData[i] < 0) {
+                            break;
+                        }
+                        pw.printf("\t%3.2f\t%3.2f\t%3.2f\n", mProfileData[i], mProfileData[i + 1],
+                                mProfileData[i + 2]);
+                        mProfileData[i] = mProfileData[i + 1] = mProfileData[i + 2] = -1;
+                    }
+                    mProfileCurrentFrame = mProfileData.length;
+                } finally {
+                    mProfileLock.unlock();
+                }
+            }
+        }
+
+        @Override
+        long getFrameCount() {
+            return mFrameCount;
         }
 
         /**

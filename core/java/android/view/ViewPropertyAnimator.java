@@ -113,6 +113,7 @@ public class ViewPropertyAnimator {
      * on that list are added to the list of properties associated with that animator.
      */
     ArrayList<NameValuesHolder> mPendingAnimations = new ArrayList<NameValuesHolder>();
+    private Runnable mPendingOnEndAction;
 
     /**
      * Constants used to associate a property being requested and the mechanism used to set
@@ -199,6 +200,7 @@ public class ViewPropertyAnimator {
      */
     private HashMap<Animator, PropertyBundle> mAnimatorMap =
             new HashMap<Animator, PropertyBundle>();
+    private HashMap<Animator, Runnable> mAnimatorOnEndMap;
 
     /**
      * This is the information we need to set each property during the animation.
@@ -610,6 +612,35 @@ public class ViewPropertyAnimator {
      */
     public ViewPropertyAnimator alphaBy(float value) {
         animatePropertyBy(ALPHA, value);
+        return this;
+    }
+
+    /**
+     * Specifies an action to take place when the next animation ends. The action is only
+     * run if the animation ends normally; if the ViewPropertyAnimator is canceled during
+     * that animation, the runnable will not run.
+     * This method, along with {@link #withStartAction(Runnable)}, is intended to help facilitate
+     * choreographing ViewPropertyAnimator animations with other animations or actions
+     * in the application.
+     *
+     * <p>For example, the following code animates a view to x=200 and then back to 0:</p>
+     * <pre>
+     *     Runnable endAction = new Runnable() {
+     *         public void run() {
+     *             view.animate().x(0);
+     *         }
+     *     };
+     *     view.animate().x(200).onEnd(endAction);
+     * </pre>
+     *
+     * @param runnable The action to run when the next animation ends.
+     * @return This object, allowing calls to methods in this class to be chained.
+     */
+    public ViewPropertyAnimator withEndAction(Runnable runnable) {
+        mPendingOnEndAction = runnable;
+        if (runnable != null && mAnimatorOnEndMap == null) {
+            mAnimatorOnEndMap = new HashMap<Animator, Runnable>();
+        }
         return this;
     }
 

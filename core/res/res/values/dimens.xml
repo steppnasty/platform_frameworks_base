@@ -36,6 +36,8 @@
     <dimen name="system_bar_height">48dip</dimen>
     <!-- Height of the horizontal navigation bar on devices that require it -->
     <dimen name="navigation_bar_height">48dp</dimen>
+    <!-- Height of the bottom navigation bar in portrait; often the same as @dimen/navigation_bar_height -->
+    <dimen name="navigation_bar_height_landscape">48dp</dimen>
     <!-- Width of the vertical navigation bar on devices that require it -->
     <dimen name="navigation_bar_width">42dp</dimen>
     <!-- Height of notification icons in the status bar -->
@@ -69,14 +71,17 @@
     <!-- Size of lockscreen outerring on unsecure unlock LockScreen -->
     <dimen name="keyguard_lockscreen_outerring_diameter">270dp</dimen>
 
-    <!-- Default target placement radius for MultiWaveView -->
-    <dimen name="multiwaveview_target_placement_radius">135dip</dimen>
+    <!-- Default target placement radius for GlowPadView. Should be 1/2 of outerring diameter. -->
+    <dimen name="glowpadview_target_placement_radius">135dip</dimen>
 
-    <!-- Default distance beyond which MultiWaveView snaps to the target radius -->
-    <dimen name="multiwaveview_snap_margin">20dip</dimen>
+    <!-- Default glow radius for GlowPadView -->
+    <dimen name="glowpadview_glow_radius">75dip</dimen>
 
-    <!-- Default distance from each snap target that MultiWaveView considers a "hit" -->
-    <dimen name="multiwaveview_hit_radius">60dip</dimen>
+    <!-- Default distance beyond which GlowPadView snaps to the matching target -->
+    <dimen name="glowpadview_snap_margin">40dip</dimen>
+
+    <!-- Default distance from each snap target that GlowPadView considers a "hit" -->
+    <dimen name="glowpadview_inner_radius">15dip</dimen>
 
     <!-- Preference activity side margins -->
     <dimen name="preference_screen_side_margin">0dp</dimen>
@@ -201,4 +206,78 @@
 
     <!-- Minimum width for an action button in the menu area of an action bar -->
     <dimen name="action_button_min_width">56dip</dimen>
+
+    <!-- Size of notification text (see TextAppearance.StatusBar.EventContent) -->
+    <dimen name="notification_text_size">14dp</dimen>
+    <!-- Size of notification text titles (see TextAppearance.StatusBar.EventContent.Title) -->
+    <dimen name="notification_title_text_size">18dp</dimen>
+    <!-- Size of smaller notification text (see TextAppearance.StatusBar.EventContent.Line2, Info, Time) -->
+    <dimen name="notification_subtext_size">12dp</dimen>
+
+    <!-- Lockscreen target insets -->
+    <item type="dimen" name="lockscreen_target_inset">25dp</item>
+
+    <!-- Keyguard dimensions -->
+    <!-- TEMP -->
+    <dimen name="kg_security_panel_height">600dp</dimen>
+
+    <!-- Height of security view in keyguard. -->
+    <dimen name="kg_security_view_height">480dp</dimen>
+
+    <!-- Width of widget view in keyguard. -->
+    <dimen name="kg_widget_view_width">0dp</dimen>
+
+    <!-- Height of widget view in keyguard. -->
+    <dimen name="kg_widget_view_height">0dp</dimen>
+
+    <!-- Size of the clock font in keyguard's status view -->
+    <dimen name="kg_status_clock_font_size">75dp</dimen>
+
+    <!-- Size of the date font in keyguard's status view  -->
+    <dimen name="kg_status_date_font_size">15dp</dimen>
+
+    <!-- Size of the generic status lines keyguard's status view  -->
+    <dimen name="kg_status_line_font_size">13dp</dimen>
+
+    <!-- Size of margin on the right of keyguard's status view -->
+    <dimen name="kg_status_line_font_right_margin">16dp</dimen>
+
+    <!-- The height of the runway lights strip -->
+    <dimen name="kg_runway_lights_vertical_padding">2dp</dimen>
+
+    <!-- Horizontal padding for the widget pager -->
+    <dimen name="kg_widget_pager_horizontal_padding">16dp</dimen>
+
+    <!-- Top padding for the widget pager -->
+    <dimen name="kg_widget_pager_top_padding">0dp</dimen>
+
+    <!-- Bottom padding for the widget pager -->
+    <dimen name="kg_widget_pager_bottom_padding">64dp</dimen>
+
+    <!-- Touch slop for the global toggle accessibility gesture -->
+    <dimen name="accessibility_touch_slop">80dip</dimen>
+
+    <!-- Width of the sliding KeyguardSecurityContainer (includes 2x keyguard_security_view_margin) -->
+    <dimen name="keyguard_security_width">320dp</dimen>
+
+    <!-- Height of the sliding KeyguardSecurityContainer (includes 2x keyguard_security_view_margin) -->
+    <dimen name="keyguard_security_height">350dp</dimen>
+
+    <!-- Height of the sliding KeyguardSecurityContainer with hidden widget (includes 2x keyguard_security_view_margin) -->
+    <dimen name="keyguard_security_no_widget_height">450dp</dimen>
+
+    <!-- Margin around the various security views -->
+    <dimen name="keyguard_security_view_margin">8dp</dimen>
+
+    <!-- Size of the region along the edge of the screen that will accept
+         swipes to scroll the widget area. -->
+    <dimen name="kg_edge_swipe_region_size">24dp</dimen>
+
+    <!-- The height of widgets which do not support vertical resizing. This is only
+    used on tablets; on phones, this size is determined by the space left by the
+    security mode. -->
+    <dimen name="kg_small_widget_height">160dp</dimen>
+
+    <!-- Left padding of num pad key on keyguard -->
+    <dimen name="kg_num_pad_key_padding_left">10dp</dimen>
 </resources>

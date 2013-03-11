@@ -29,6 +29,7 @@ import android.os.ServiceManager;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.widget.RemoteViews;
+import android.widget.RemoteViews.OnClickHandler;
 
 import com.android.internal.appwidget.IAppWidgetHost;
 import com.android.internal.appwidget.IAppWidgetService;
@@ -41,7 +42,8 @@ public class AppWidgetHost {
 
     static final int HANDLE_UPDATE = 1;
     static final int HANDLE_PROVIDER_CHANGED = 2;
-    static final int HANDLE_VIEW_DATA_CHANGED = 3;
+    static final int HANDLE_PROVIDERS_CHANGED = 3;
+    static final int HANDLE_VIEW_DATA_CHANGED = 4;
 
     final static Object sServiceLock = new Object();
     static IAppWidgetService sService;
@@ -62,6 +64,11 @@ public class AppWidgetHost {
             Message msg = mHandler.obtainMessage(HANDLE_PROVIDER_CHANGED);
             msg.arg1 = appWidgetId;
             msg.obj = info;
+            msg.sendToTarget();
+        }
+
+        public void providersChanged() {
+            Message msg = mHandler.obtainMessage(HANDLE_PROVIDERS_CHANGED);
             msg.sendToTarget();
         }
 
@@ -101,12 +108,25 @@ public class AppWidgetHost {
     int mHostId;
     Callbacks mCallbacks = new Callbacks();
     final HashMap<Integer,AppWidgetHostView> mViews = new HashMap<Integer, AppWidgetHostView>();
+    private OnClickHandler mOnClickHandler;
 
     public AppWidgetHost(Context context, int hostId) {
+        this(context, hostId, null, context.getMainLooper());
+    }
+
+    /**
+     * @hide
+     */
+    public AppWidgetHost(Context context, int hostId, OnClickHandler handler, Looper looper) {
         mContext = context;
         mHostId = hostId;
-        mHandler = new UpdateHandler(context.getMainLooper());
+        mOnClickHandler = handler;
+        mHandler = new UpdateHandler(looper);
         mDisplayMetrics = context.getResources().getDisplayMetrics();
+        bindService();
+    }
+
+    private static void bindService() {
         synchronized (sServiceLock) {
             if (sService == null) {
                 IBinder b = ServiceManager.getService(Context.APPWIDGET_SERVICE);

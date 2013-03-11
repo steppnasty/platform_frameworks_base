@@ -50,6 +50,7 @@ import android.net.Uri;
 import android.os.Process;
 import android.os.RemoteException;
 import android.util.Log;
+import android.view.Display;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -698,7 +699,7 @@ final class ApplicationPackageManager extends PackageManager {
         }
         Resources r = mContext.mMainThread.getTopLevelResources(
             app.uid == Process.myUid() ? app.sourceDir
-            : app.publicSourceDir, mContext.mPackageInfo);
+            : app.publicSourceDir, Display.DEFAULT_DISPLAY, mContext.mPackageInfo);
         if (r != null) {
             return r;
         }

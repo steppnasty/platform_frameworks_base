@@ -27,6 +27,7 @@ import android.os.Message;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.UserId;
 import android.util.Log;
 import android.view.IWindow;
 import android.view.View;
@@ -78,6 +79,8 @@ public final class AccessibilityManager {
     private static final int DO_SET_STATE = 10;
 
     final IAccessibilityManager mService;
+
+    final int mUserId;
 
     final Handler mHandler;
 
@@ -131,17 +134,29 @@ public final class AccessibilityManager {
     /**
      * Get an AccessibilityManager instance (create one if necessary).
      *
+     * @param context Context in which this manager operates.
+     *
      * @hide
      */
     public static AccessibilityManager getInstance(Context context) {
         synchronized (sInstanceSync) {
             if (sInstance == null) {
-                IBinder iBinder = ServiceManager.getService(Context.ACCESSIBILITY_SERVICE);
-                IAccessibilityManager service = IAccessibilityManager.Stub.asInterface(iBinder);
-                sInstance = new AccessibilityManager(context, service);
+                createSingletonInstance(context, UserId.myUserId());
             }
         }
         return sInstance;
+    }
+
+    /**
+     * Creates the singleton instance.
+     *
+     * @param context Context in which this manager operates.
+     * @param userId The user id under which to operate.
+     */
+    private static void createSingletonInstance(Context context, int userId) {
+        IBinder iBinder = ServiceManager.getService(Context.ACCESSIBILITY_SERVICE);
+        IAccessibilityManager service = IAccessibilityManager.Stub.asInterface(iBinder);
+        sInstance = new AccessibilityManager(context, service, userId);
     }
 
     /**
@@ -152,12 +167,13 @@ public final class AccessibilityManager {
      *
      * @hide
      */
-    public AccessibilityManager(Context context, IAccessibilityManager service) {
+    public AccessibilityManager(Context context, IAccessibilityManager service, int userId) {
         mHandler = new MyHandler(context.getMainLooper());
         mService = service;
+        mUserId = userId;
 
         try {
-            final int stateFlags = mService.addClient(mClient);
+            final int stateFlags = mService.addClient(mClient, userId);
             setState(stateFlags);
         } catch (RemoteException re) {
             Log.e(LOG_TAG, "AccessibilityManagerService is dead", re);
@@ -216,7 +232,7 @@ public final class AccessibilityManager {
             // client using it is called through Binder from another process. Example: MMS
             // app adds a SMS notification and the NotificationManagerService calls this method
             long identityToken = Binder.clearCallingIdentity();
-            doRecycle = mService.sendAccessibilityEvent(event);
+            doRecycle = mService.sendAccessibilityEvent(event, mUserId);
             Binder.restoreCallingIdentity(identityToken);
             if (DEBUG) {
                 Log.i(LOG_TAG, event + " sent");
@@ -238,7 +254,7 @@ public final class AccessibilityManager {
             throw new IllegalStateException("Accessibility off. Did you forget to check that?");
         }
         try {
-            mService.interrupt();
+            mService.interrupt(mUserId);
             if (DEBUG) {
                 Log.i(LOG_TAG, "Requested interrupt from all services");
             }
@@ -274,7 +290,7 @@ public final class AccessibilityManager {
     public List<AccessibilityServiceInfo> getInstalledAccessibilityServiceList() {
         List<AccessibilityServiceInfo> services = null;
         try {
-            services = mService.getInstalledAccessibilityServiceList();
+            services = mService.getInstalledAccessibilityServiceList(mUserId);
             if (DEBUG) {
                 Log.i(LOG_TAG, "Installed AccessibilityServices " + services);
             }
@@ -301,7 +317,7 @@ public final class AccessibilityManager {
             int feedbackTypeFlags) {
         List<AccessibilityServiceInfo> services = null;
         try {
-            services = mService.getEnabledAccessibilityServiceList(feedbackTypeFlags);
+            services = mService.getEnabledAccessibilityServiceList(feedbackTypeFlags, mUserId);
             if (DEBUG) {
                 Log.i(LOG_TAG, "Installed AccessibilityServices " + services);
             }
@@ -379,7 +395,7 @@ public final class AccessibilityManager {
     public int addAccessibilityInteractionConnection(IWindow windowToken,
             IAccessibilityInteractionConnection connection) {
         try {
-            return mService.addAccessibilityInteractionConnection(windowToken, connection);
+            return mService.addAccessibilityInteractionConnection(windowToken, connection, mUserId);
         } catch (RemoteException re) {
             Log.e(LOG_TAG, "Error while adding an accessibility interaction connection. ", re);
         }

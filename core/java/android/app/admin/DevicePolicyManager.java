@@ -1155,6 +1155,26 @@ public class DevicePolicyManager {
             = "android.app.action.START_ENCRYPTION";
 
     /**
+     * Widgets are enabled in keyguard
+     */
+    public static final int KEYGUARD_DISABLE_FEATURES_NONE = 0;
+
+    /**
+     * Disable all keyguard widgets
+     */
+    public static final int KEYGUARD_DISABLE_WIDGETS_ALL = 1 << 0;
+
+    /**
+     * Disable the camera on secure keyguard screens (e.g. PIN/Pattern/Password)
+     */
+    public static final int KEYGUARD_DISABLE_SECURE_CAMERA = 1 << 1;
+
+    /**
+     * Disable all current and future keyguard customizations.
+     */
+    public static final int KEYGUARD_DISABLE_FEATURES_ALL = 0x7fffffff;
+
+    /**
      * Called by an application that is administering the device to
      * request that the storage system be encrypted.
      *
@@ -1281,6 +1301,18 @@ public class DevicePolicyManager {
             }
         }
         return false;
+    }
+
+     /**
+     * Determine whether or not features have been disabled in keyguard either by the current
+     * admin, if specified, or all admins.
+     * @param admin The name of the admin component to check, or null to check if any admins
+     * have disabled features in keyguard.
+     * @return bitfield of flags. See {@link #setKeyguardDisabledFeatures(ComponentName, int)}
+     * for a list.
+     */
+    public int getKeyguardDisabledFeatures(ComponentName admin) {
+        return getKeyguardDisabledFeatures(admin);
     }
 
     /**

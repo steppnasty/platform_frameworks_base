@@ -352,6 +352,58 @@ public class Handler {
     }
 
     /**
+     * Runs the specified task synchronously.
+     *
+     * If the current thread is the same as the handler thread, then the runnable
+     * runs immediately without being enqueued.  Otherwise, posts the runnable
+     * to the handler and waits for it to complete before returning.
+     *
+     * This method is dangerous!  Improper use can result in deadlocks.
+     * Never call this method while any locks are held or use it in a
+     * possibly re-entrant manner.
+     *
+     * This method is occasionally useful in situations where a background thread
+     * must synchronously await completion of a task that must run on the
+     * handler's thread.  However, this problem is often a symptom of bad design.
+     * Consider improving the design (if possible) before resorting to this method.
+     *
+     * One example of where you might want to use this method is when you just
+     * set up a Handler thread and need to perform some initialization steps on
+     * it before continuing execution.
+     *
+     * If timeout occurs then this method returns <code>false</code> but the runnable
+     * will remain posted on the handler and may already be in progress or
+     * complete at a later time.
+     *
+     * @param r The Runnable that will be executed synchronously.
+     * @param timeout The timeout in milliseconds, or 0 to wait indefinitely.
+     *
+     * @return Returns true if the Runnable was successfully executed.
+     *         Returns false on failure, usually because the
+     *         looper processing the message queue is exiting.
+     *
+     * @hide This method is prone to abuse and should probably not be in the API.
+     * If we ever do make it part of the API, we might want to rename it to something
+     * less funny like runUnsafe().
+     */
+    public final boolean runWithScissors(final Runnable r, long timeout) {
+        if (r == null) {
+            throw new IllegalArgumentException("runnable must not be null");
+        }
+        if (timeout < 0) {
+            throw new IllegalArgumentException("timeout must be non-negative");
+        }
+
+        if (Looper.myLooper() == mLooper) {
+            r.run();
+            return true;
+        }
+
+        BlockingRunnable br = new BlockingRunnable(r);
+        return br.postAndWait(this, timeout);
+    }
+
+    /**
      * Remove any pending posts of Runnable r that are in the message queue.
      */
     public final void removeCallbacks(Runnable r)
@@ -550,6 +602,16 @@ public class Handler {
         return mQueue.removeMessages(this, what, object, false);
     }
 
+    /**
+     * Check if there are any pending posts of messages with callback r in
+     * the message queue.
+     * 
+     * @hide
+     */
+    public final boolean hasCallbacks(Runnable r) {
+        return mQueue.hasMessages(this, r, null);
+    }
+
     // if we can get rid of this method, the handler need not remember its loop
     // we could instead export a getMessageQueue() method... 
     public final Looper getLooper() {
@@ -609,4 +671,55 @@ public class Handler {
     final Looper mLooper;
     final Callback mCallback;
     IMessenger mMessenger;
+
+    private static final class BlockingRunnable implements Runnable {
+        private final Runnable mTask;
+        private boolean mDone;
+
+        public BlockingRunnable(Runnable task) {
+            mTask = task;
+        }
+
+        @Override
+        public void run() {
+            try {
+                mTask.run();
+            } finally {
+                synchronized (this) {
+                    mDone = true;
+                    notifyAll();
+                }
+            }
+        }
+
+        public boolean postAndWait(Handler handler, long timeout) {
+            if (!handler.post(this)) {
+                return false;
+            }
+
+            synchronized (this) {
+                if (timeout > 0) {
+                    final long expirationTime = SystemClock.uptimeMillis() + timeout;
+                    while (!mDone) {
+                        long delay = expirationTime - SystemClock.uptimeMillis();
+                        if (delay <= 0) {
+                            return false; // timeout
+                        }
+                        try {
+                            wait(delay);
+                        } catch (InterruptedException ex) {
+                        }
+                    }
+                } else {
+                    while (!mDone) {
+                        try {
+                            wait();
+                        } catch (InterruptedException ex) {
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+    }
 }

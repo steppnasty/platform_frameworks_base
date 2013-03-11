@@ -71,7 +71,7 @@ static void signalExceptionForPriorityError(JNIEnv* env, jobject obj, int err)
     }
 }
 
-static void signalExceptionForGroupError(JNIEnv* env, jobject obj, int err)
+static void signalExceptionForGroupError(JNIEnv* env, int err)
 {
     switch (err) {
         case EINVAL:
@@ -171,10 +171,11 @@ jint android_os_Process_getGidForName(JNIEnv* env, jobject clazz, jstring name)
 
 void android_os_Process_setThreadGroup(JNIEnv* env, jobject clazz, int pid, jint grp)
 {
-    int res = androidSetThreadSchedulingGroup(pid, grp);
+    ALOGV("%s pid=%d grp=%d", __func__, pid, grp);
+    SchedPolicy sp = (SchedPolicy) grp;
+    int res = set_sched_policy(pid, sp);
     if (res != NO_ERROR) {
-        signalExceptionForGroupError(env, clazz, res == BAD_VALUE ? EINVAL : errno);
-        return;
+        signalExceptionForGroupError(env, -res);
     }
 }
 
@@ -185,10 +186,16 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
     char proc_path[255];
     struct dirent *de;
 
-    if (grp > ANDROID_TGROUP_MAX || grp < 0) {
-        signalExceptionForGroupError(env, clazz, EINVAL);
+    if ((grp == SP_FOREGROUND) || (grp > SP_MAX)) {
+        signalExceptionForGroupError(env, EINVAL);
         return;
     }
+    bool isDefault = false;
+    if (grp < 0) {
+        grp = SP_FOREGROUND;
+        isDefault = true;
+    }
+    SchedPolicy sp = (SchedPolicy) grp;
 
 #if POLICY_DEBUG
     char cmdline[32];
@@ -204,7 +211,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         close(fd);
     }
 
-    if (grp == ANDROID_TGROUP_BG_NONINTERACT) {
+    if (grp == SP_BACKGROUND) {
         ALOGD("setProcessGroup: vvv pid %d (%s)", pid, cmdline);
     } else {
         ALOGD("setProcessGroup: ^^^ pid %d (%s)", pid, cmdline);
@@ -214,7 +221,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
     if (!(d = opendir(proc_path))) {
         // If the process exited on us, don't generate an exception
         if (errno != ENOENT)
-            signalExceptionForGroupError(env, clazz, errno);
+            signalExceptionForGroupError(env, errno);
         return;
     }
 
@@ -233,14 +240,16 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
 
         t_pri = getpriority(PRIO_PROCESS, t_pid);
 
-        if (grp == ANDROID_TGROUP_DEFAULT &&
-            t_pri >= ANDROID_PRIORITY_BACKGROUND) {
-            // This task wants to stay at background
-            continue;
+        if (isDefault) {
+            if (t_pri >= ANDROID_PRIORITY_BACKGROUND) {
+                // This task wants to stay at background
+                continue;
+            }
         }
 
-        if (androidSetThreadSchedulingGroup(t_pid, grp) != NO_ERROR) {
-            signalExceptionForGroupError(env, clazz, errno);
+        int err = set_sched_policy(t_pid, sp);
+        if (err != NO_ERROR) {
+            signalExceptionForGroupError(env, -err);
             break;
         }
     }
@@ -287,7 +296,7 @@ void android_os_Process_setThreadPriority(JNIEnv* env, jobject clazz,
         if (rc == INVALID_OPERATION) {
             signalExceptionForPriorityError(env, clazz, errno);
         } else {
-            signalExceptionForGroupError(env, clazz, errno);
+            signalExceptionForGroupError(env, errno);
         }
     }
 

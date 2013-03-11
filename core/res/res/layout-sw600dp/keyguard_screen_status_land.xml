@@ -2,6 +2,7 @@
 <!--
 **
 ** Copyright 2010, The Android Open Source Project
+** Copyright 2012, The CyanogenMod Project (Weather, Calendar)
 **
 ** Licensed under the Apache License, Version 2.0 (the "License")
 ** you may not use this file except in compliance with the License.
@@ -23,7 +24,7 @@
         android:orientation="vertical"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:gravity="right">
+        android:gravity="end">
 
     <TextView
         android:id="@+id/carrier"
@@ -41,9 +42,7 @@
     <com.android.internal.widget.DigitalClock android:id="@+id/time"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dip"
-        android:layout_marginBottom="8dip"
-        >
+        android:layout_marginBottom="8dip" >
 
         <!-- Because we can't have multi-tone fonts, we render two TextViews, one on
         top of the other. Hence the redundant layout... -->
@@ -66,7 +65,7 @@
             android:textSize="@dimen/keyguard_pattern_unlock_clock_font_size"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:textColor="@color/lockscreen_clock_foreground"
-            android:layout_alignLeft="@id/timeDisplayBackground"
+            android:layout_alignStart="@id/timeDisplayBackground"
             android:layout_alignTop="@id/timeDisplayBackground"
             android:layout_marginBottom="6dip"
             />
@@ -91,7 +90,7 @@
             android:id="@+id/alarm_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="16dip"
+            android:layout_marginStart="16dip"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:drawablePadding="4dip"
             android:textSize="16sp"/>
@@ -109,7 +108,7 @@
         />
 
     <TextView
-        android:id="@+id/propertyOf"
+        android:id="@+id/owner_info"
         android:lineSpacingExtra="8dip"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -120,4 +119,5 @@
         android:textColor="@color/lockscreen_owner_info"
         android:visibility="invisible"
         />
+
 </LinearLayout>

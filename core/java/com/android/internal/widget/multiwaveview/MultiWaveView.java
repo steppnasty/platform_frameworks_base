@@ -720,7 +720,7 @@ public class MultiWaveView extends View {
                     float dx = limitX - target.getX();
                     float dy = limitY - target.getY();
                     float dist2 = dx*dx + dy*dy;
-                    if (target.isValid() && dist2 < hitRadius2 && dist2 < best) {
+                    if (target.isEnabled() && dist2 < hitRadius2 && dist2 < best) {
                         activeTarget = i;
                         best = dist2;
                     }

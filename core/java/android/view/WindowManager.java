@@ -49,6 +49,19 @@ public interface WindowManager extends ViewManager {
     }
 
     /**
+     * Exception that is thrown when calling {@link #addView} to a secondary display that cannot
+     * be found. See {@link android.app.Presentation} for more information on secondary displays.
+     */
+    public static class InvalidDisplayException extends RuntimeException {
+        public InvalidDisplayException() {
+        }
+
+        public InvalidDisplayException(String name) {
+            super(name);
+        }
+    }
+
+    /**
      * Use this method to get the default Display object.
      * 
      * @return default Display object
@@ -64,14 +77,6 @@ public interface WindowManager extends ViewManager {
      * @param view The view to be removed.
      */
     public void removeViewImmediate(View view);
-    
-    /**
-     * Return true if this window manager is configured to request hardware
-     * accelerated windows.  This does <em>not</em> guarantee that they will
-     * actually be accelerated, since that depends on the device supporting them.
-     * @hide
-     */
-    public boolean isHardwareAccelerated();
     
     public static class LayoutParams extends ViewGroup.LayoutParams
             implements Parcelable {
@@ -185,7 +190,10 @@ public interface WindowManager extends ViewManager {
             @ViewDebug.IntToString(from = TYPE_POINTER, to = "TYPE_POINTER"),
             @ViewDebug.IntToString(from = TYPE_NAVIGATION_BAR, to = "TYPE_NAVIGATION_BAR"),
             @ViewDebug.IntToString(from = TYPE_VOLUME_OVERLAY, to = "TYPE_VOLUME_OVERLAY"),
-            @ViewDebug.IntToString(from = TYPE_BOOT_PROGRESS, to = "TYPE_BOOT_PROGRESS")
+            @ViewDebug.IntToString(from = TYPE_BOOT_PROGRESS, to = "TYPE_BOOT_PROGRESS"),
+            @ViewDebug.IntToString(from = TYPE_NAVIGATION_BAR_PANEL, to = "TYPE_NAVIGATION_BAR_PANEL"),
+            @ViewDebug.IntToString(from = TYPE_DISPLAY_OVERLAY, to = "TYPE_DISPLAY_OVERLAY"),
+            @ViewDebug.IntToString(from = TYPE_MAGNIFICATION_OVERLAY, to = "TYPE_MAGNIFICATION_OVERLAY")
         })
         public int type;
     
@@ -213,7 +221,7 @@ public interface WindowManager extends ViewManager {
          * this is used by the system to display something until the
          * application can show its own windows.
          */
-        public static final int TYPE_APPLICATION_STARTING = 3;
+        public static final int TYPE_APPLICATION_STARTING = 3;       
     
         /**
          * End of types of application windows.
@@ -421,6 +429,43 @@ public interface WindowManager extends ViewManager {
          * @hide
          */
         public static final int TYPE_HIDDEN_NAV_CONSUMER = FIRST_SYSTEM_WINDOW+22;
+
+        /**
+         * Window type: Navigation bar panel (when navigation bar is distinct from status bar)
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_NAVIGATION_BAR_PANEL = FIRST_SYSTEM_WINDOW+23;
+
+        /**
+         * Window type: Display overlay window.  Used to simulate secondary display devices.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_DISPLAY_OVERLAY = FIRST_SYSTEM_WINDOW+24;
+
+        /**
+         * Window type: Behind the universe of the real windows.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_UNIVERSE_BACKGROUND = FIRST_SYSTEM_WINDOW+25;
+
+        /**
+         * Window type: Magnification overlay window. Used to highlight the magnified
+         * portion of a display when accessibility magnification is enabled.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_MAGNIFICATION_OVERLAY = FIRST_SYSTEM_WINDOW+27;
+
+        /**
+         * Window type: Recents. Same layer as {@link #TYPE_SYSTEM_DIALOG} but only appears on
+         * one user's screen.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_RECENTS_OVERLAY = FIRST_SYSTEM_WINDOW+28;
 
         /**
          * End of types of system windows.
@@ -837,6 +882,14 @@ public interface WindowManager extends ViewManager {
          */
         public static final int PRIVATE_FLAG_SET_NEEDS_MENU_KEY = 0x00000008;
 
+        /** In a multiuser system if this flag is set and the owner is a system process then this
+         * window will appear on all user screens. This overrides the default behavior of window
+         * types that normally only appear on the owning user's screen. Refer to each window type
+         * to determine its default behavior.
+         *
+         * {@hide} */
+        public static final int PRIVATE_FLAG_SHOW_FOR_ALL_USERS = 0x00000010;
+
         /**
          * Control flags that are private to the platform.
          * @hide
@@ -1134,6 +1187,18 @@ public interface WindowManager extends ViewManager {
         public static final int INPUT_FEATURE_NO_INPUT_CHANNEL = 0x00000002;
 
         /**
+         * When this window has focus, does not call user activity for all input events so
+         * the application will have to do it itself.  Should only be used by
+         * the keyguard and phone app.
+         * <p>
+         * Should only be used by the keyguard and phone app.
+         * </p>
+         *
+         * @hide
+         */
+        public static final int INPUT_FEATURE_DISABLE_USER_ACTIVITY = 0x00000004;
+
+        /**
          * Control special features of the input subsystem.
          *
          * @see #INPUT_FEATURE_DISABLE_TOUCH_PAD_GESTURES
@@ -1141,6 +1206,21 @@ public interface WindowManager extends ViewManager {
          * @hide
          */
         public int inputFeatures;
+
+        /**
+         * Sets the number of milliseconds before the user activity timeout occurs
+         * when this window has focus.  A value of -1 uses the standard timeout.
+         * A value of 0 uses the minimum support display timeout.
+         * <p>
+         * This property can only be used to reduce the user specified display timeout;
+         * it can never make the timeout longer than it normally would be.
+         * </p><p>
+         * Should only be used by the keyguard and phone app.
+         * </p>
+         *
+         * @hide
+         */
+        public long userActivityTimeout = -1;
 
         public LayoutParams() {
             super(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);

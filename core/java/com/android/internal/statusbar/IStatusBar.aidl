@@ -28,12 +28,15 @@ oneway interface IStatusBar
     void updateNotification(IBinder key, in StatusBarNotification notification);
     void removeNotification(IBinder key);
     void disable(int state);
-    void animateExpand();
+    void animateExpandNotificationsPanel();
+    void animateExpandSettingsPanel();
     void animateCollapse();
-    void setSystemUiVisibility(int vis);
+    void setSystemUiVisibility(int vis, int mask);
     void topAppWindowChanged(boolean menuVisible);
     void setImeWindowStatus(in IBinder token, int vis, int backDisposition);
     void setHardKeyboardStatus(boolean available, boolean enabled);
     void toggleRecentApps();
+    void preloadRecentApps();
+    void cancelPreloadRecentApps();
 }
 

@@ -59,12 +59,14 @@ import android.util.Pools;
 import android.util.Slog;
 import android.util.SparseArray;
 import android.util.TypedValue;
+import android.view.View.AttachInfo;
 import android.view.View.MeasureSpec;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityInteractionClient;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityManager.AccessibilityStateChangeListener;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.accessibility.IAccessibilityInteractionConnection;
 import android.view.accessibility.IAccessibilityInteractionConnectionCallback;
 import android.view.animation.AccelerateDecelerateInterpolator;
@@ -73,6 +75,7 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Scroller;
 
+import com.android.internal.os.SomeArgs;
 import com.android.internal.policy.PolicyManager;
 import com.android.internal.view.BaseSurfaceHolder;
 import com.android.internal.view.IInputMethodCallback;
@@ -85,6 +88,7 @@ import java.io.PrintWriter;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
 
 /**
  * The top of a view hierarchy, implementing the needed protocol between View
@@ -139,6 +143,9 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     static final ArrayList<ComponentCallbacks> sConfigCallbacks
             = new ArrayList<ComponentCallbacks>();
 
+    final IWindowSession mWindowSession;
+    final Display mDisplay;
+
     long mLastTrackballTime = 0;
     final TrackballAxis mTrackballAxisX = new TrackballAxis();
     final TrackballAxis mTrackballAxisY = new TrackballAxis();
@@ -171,9 +178,13 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     View mView;
     View mFocusedView;
     View mRealFocusedView;  // this is not set to null in touch mode
+
     int mViewVisibility;
     boolean mAppVisible = true;
     int mOrigWindowType = -1;
+
+    View mAccessibilityFocusedHost;
+    AccessibilityNodeInfo mAccessibilityFocusedVirtualView;
 
     // Set to true if the owner of this window is in the stopped state,
     // so the window should no longer be active.
@@ -203,6 +214,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     InputQueue.Callback mInputQueueCallback;
     InputQueue mInputQueue;
     FallbackEventHandler mFallbackEventHandler;
+    Choreographer mChoreographer;
     
     final Rect mTempRect; // used in the transaction to not thrash the heap.
     final Rect mVisRect; // used to retrieve visible rect of focused view.
@@ -294,6 +306,8 @@ public final class ViewRootImpl extends Handler implements ViewParent,
 
     SendWindowContentChangedAccessibilityEvent mSendWindowContentChangedAccessibilityEvent;
 
+    HashSet<View> mTempHashSet;
+
     private final int mDensity;
 
     /**
@@ -303,21 +317,6 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             InputEventConsistencyVerifier.isInstrumentationEnabled() ?
                     new InputEventConsistencyVerifier(this, 0) : null;
 
-    public static IWindowSession getWindowSession(Looper mainLooper) {
-        synchronized (mStaticInit) {
-            if (!mInitialized) {
-                try {
-                    InputMethodManager imm = InputMethodManager.getInstance(mainLooper);
-                    sWindowSession = Display.getWindowManager().openSession(
-                            imm.getClient(), imm.getInputContext());
-                    mInitialized = true;
-                } catch (RemoteException e) {
-                }
-            }
-            return sWindowSession;
-        }
-    }
-
     static final class SystemUiVisibilityInfo {
         int seq;
         int globalVisibility;
@@ -325,7 +324,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         int localChanges;
     }
     
-    public ViewRootImpl(Context context) {
+    public ViewRootImpl(Context context, Display display) {
         super();
 
         if (MEASURE_LATENCY) {
@@ -337,7 +336,8 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         // Initialize the statics when this class is first instantiated. This is
         // done here instead of in the static block because Zygote does not
         // allow the spawning of threads.
-        getWindowSession(context.getMainLooper());
+        mWindowSession = WindowManagerGlobal.getWindowSession(context.getMainLooper());
+        mDisplay = display;
 
         mThread = Thread.currentThread();
         mLocation = new WindowLeaked(null);
@@ -361,7 +361,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             new AccessibilityInteractionConnectionManager();
         mAccessibilityManager.addAccessibilityStateChangeListener(
                 mAccessibilityInteractionConnectionManager);
-        mAttachInfo = new View.AttachInfo(sWindowSession, mWindow, this, this);
+        mAttachInfo = new View.AttachInfo(sWindowSession, mWindow, this, mHandler, this);
         mViewConfiguration = ViewConfiguration.get(context);
         mDensity = context.getResources().getDisplayMetrics().densityDpi;
         mFallbackEventHandler = PolicyManager.makeNewFallbackEventHandler(context);
@@ -501,42 +501,46 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                 mPendingContentInsets.set(mAttachInfo.mContentInsets);
                 mPendingVisibleInsets.set(0, 0, 0, 0);
                 if (DEBUG_LAYOUT) Log.v(TAG, "Added window " + mWindow);
-                if (res < WindowManagerImpl.ADD_OKAY) {
+                if (res < WindowManagerGlobal.ADD_OKAY) {
                     mView = null;
                     mAttachInfo.mRootView = null;
                     mAdded = false;
                     mFallbackEventHandler.setView(null);
                     unscheduleTraversals();
                     switch (res) {
-                        case WindowManagerImpl.ADD_BAD_APP_TOKEN:
-                        case WindowManagerImpl.ADD_BAD_SUBWINDOW_TOKEN:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_BAD_APP_TOKEN:
+                        case WindowManagerGlobal.ADD_BAD_SUBWINDOW_TOKEN:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window -- token " + attrs.token
                                 + " is not valid; is your activity running?");
-                        case WindowManagerImpl.ADD_NOT_APP_TOKEN:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_NOT_APP_TOKEN:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window -- token " + attrs.token
                                 + " is not for an application");
-                        case WindowManagerImpl.ADD_APP_EXITING:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_APP_EXITING:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window -- app for token " + attrs.token
                                 + " is exiting");
-                        case WindowManagerImpl.ADD_DUPLICATE_ADD:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_DUPLICATE_ADD:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window -- window " + mWindow
                                 + " has already been added");
-                        case WindowManagerImpl.ADD_STARTING_NOT_NEEDED:
+                        case WindowManagerGlobal.ADD_STARTING_NOT_NEEDED:
                             // Silently ignore -- we would have just removed it
                             // right away, anyway.
                             return;
-                        case WindowManagerImpl.ADD_MULTIPLE_SINGLETON:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_MULTIPLE_SINGLETON:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window " + mWindow +
                                 " -- another window of this type already exists");
-                        case WindowManagerImpl.ADD_PERMISSION_DENIED:
-                            throw new WindowManagerImpl.BadTokenException(
+                        case WindowManagerGlobal.ADD_PERMISSION_DENIED:
+                            throw new WindowManager.BadTokenException(
                                 "Unable to add window " + mWindow +
                                 " -- permission denied for this window type");
+                        case WindowManagerGlobal.ADD_INVALID_DISPLAY:
+                            throw new WindowManager.InvalidDisplayException(
+                                "Unable to add window " + mWindow +
+                                " -- the specified display can not be found");
                     }
                     throw new RuntimeException(
                         "Unable to add window -- unknown error code " + res);
@@ -557,8 +561,8 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                 }
 
                 view.assignParent(this);
-                mAddedTouchMode = (res&WindowManagerImpl.ADD_FLAG_IN_TOUCH_MODE) != 0;
-                mAppVisible = (res&WindowManagerImpl.ADD_FLAG_APP_VISIBLE) != 0;
+                mAddedTouchMode = (res&WindowManagerGlobal.ADD_FLAG_IN_TOUCH_MODE) != 0;
+                mAppVisible = (res&WindowManagerGlobal.ADD_FLAG_APP_VISIBLE) != 0;
 
                 if (mAccessibilityManager.isEnabled()) {
                     mAccessibilityInteractionConnectionManager.ensureConnection();
@@ -754,6 +758,16 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         scheduleTraversals();
     }
 
+    void invalidateWorld(View view) {
+        view.invalidate();
+        if (view instanceof ViewGroup) {
+            ViewGroup parent = (ViewGroup) view;
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                invalidateWorld(parent.getChildAt(i));
+            }
+        }
+    }
+
     void setStopped(boolean stopped) {
         if (mStopped != stopped) {
             mStopped = stopped;
@@ -915,9 +929,8 @@ public final class ViewRootImpl extends Handler implements ViewParent,
 
             if (lp.type == WindowManager.LayoutParams.TYPE_STATUS_BAR_PANEL) {
                 // NOTE -- system code, won't try to do compat mode.
-                Display disp = WindowManagerImpl.getDefault().getDefaultDisplay();
                 Point size = new Point();
-                disp.getRealSize(size);
+                mDisplay.getRealSize(size);
                 desiredWindowWidth = size.x;
                 desiredWindowHeight = size.y;
             } else {
@@ -1002,9 +1015,8 @@ public final class ViewRootImpl extends Handler implements ViewParent,
 
                     if (lp.type == WindowManager.LayoutParams.TYPE_STATUS_BAR_PANEL) {
                         // NOTE -- system code, won't try to do compat mode.
-                        Display disp = WindowManagerImpl.getDefault().getDefaultDisplay();
                         Point size = new Point();
-                        disp.getRealSize(size);
+                        mDisplay.getRealSize(size);
                         desiredWindowWidth = size.x;
                         desiredWindowHeight = size.y;
                     } else {
@@ -1426,7 +1438,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
 
             if (!mStopped) {
                 boolean focusChangedDueToTouchMode = ensureTouchModeLocally(
-                        (relayoutResult&WindowManagerImpl.RELAYOUT_RES_IN_TOUCH_MODE) != 0);
+                        (relayoutResult&WindowManagerGlobal.RELAYOUT_RES_IN_TOUCH_MODE) != 0);
                 if (focusChangedDueToTouchMode || mWidth != host.getMeasuredWidth()
                         || mHeight != host.getMeasuredHeight() || contentInsetsChanged) {
                     childWidthMeasureSpec = getRootMeasureSpec(mWidth, lp.width);
@@ -1538,7 +1550,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             attachInfo.mTreeObserver.dispatchOnGlobalLayout();
 
             if (AccessibilityManager.getInstance(host.mContext).isEnabled()) {
-                postSendWindowContentChangedCallback();
+                postSendWindowContentChangedCallback(mView);
             }
         }
 
@@ -1637,7 +1649,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                 mLastDrawDurationNanos = System.nanoTime() - drawStartTime;
             }
 
-            if ((relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0
+            if ((relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0
                     || mReportNextDraw) {
                 if (LOCAL_LOGV) {
                     Log.v(TAG, "FINISHED DRAWING: " + mWindowAttributes.getTitle());
@@ -1670,7 +1682,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             }
             // We were supposed to report when we are done drawing. Since we canceled the
             // draw, remember it here.
-            if ((relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0) {
+            if ((relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0) {
                 mReportNextDraw = true;
             }
             if (fullRedrawNeeded) {
@@ -2177,6 +2189,53 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         return handled;
     }
 
+    /**
+     * @hide
+     */
+    public View getAccessibilityFocusedHost() {
+        return mAccessibilityFocusedHost;
+    }
+
+    void setAccessibilityFocus(View view, AccessibilityNodeInfo node) {
+        // If we have a virtual view with accessibility focus we need
+        // to clear the focus and invalidate the virtual view bounds.
+        if (mAccessibilityFocusedVirtualView != null) {
+
+            AccessibilityNodeInfo focusNode = mAccessibilityFocusedVirtualView;
+            View focusHost = mAccessibilityFocusedHost;
+            focusHost.clearAccessibilityFocusNoCallbacks();
+
+            // Wipe the state of the current accessibility focus since
+            // the call into the provider to clear accessibility focus
+            // will fire an accessibility event which will end up calling
+            // this method and we want to have clean state when this
+            // invocation happens.
+            mAccessibilityFocusedHost = null;
+            mAccessibilityFocusedVirtualView = null;
+
+            AccessibilityNodeProvider provider = focusHost.getAccessibilityNodeProvider();
+            if (provider != null) {
+                // Invalidate the area of the cleared accessibility focus.
+                focusNode.getBoundsInParent(mTempRect);
+                focusHost.invalidate(mTempRect);
+                // Clear accessibility focus in the virtual node.
+                final int virtualNodeId = AccessibilityNodeInfo.getVirtualDescendantId(
+                        focusNode.getSourceNodeId());
+                provider.performAction(virtualNodeId,
+                        AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS, null);
+            }
+            focusNode.recycle();
+        }
+        if (mAccessibilityFocusedHost != null) {
+            // Clear accessibility focus in the view.
+            mAccessibilityFocusedHost.clearAccessibilityFocusNoCallbacks();
+        }
+
+        // Set the new focus host and node.
+        mAccessibilityFocusedHost = view;
+        mAccessibilityFocusedVirtualView = node;
+    }
+
     public void requestChildFocus(View child, View focused) {
         checkThread();
         if (mFocusedView != focused) {
@@ -2205,6 +2264,10 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         }
     }
 
+    @Override
+    public ViewParent getParentForAccessibility() {
+        return null;
+    }
 
     public void focusableViewAvailable(View v) {
         checkThread();
@@ -2313,7 +2376,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     /**
      * Return true if child is an ancestor of parent, (or equal to the parent).
      */
-    private static boolean isViewDescendantOf(View child, View parent) {
+    public static boolean isViewDescendantOf(View child, View parent) {
         if (child == parent) {
             return true;
         }
@@ -2333,6 +2396,12 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         }
     }
 
+    private final static int MSG_RESIZED = 4;
+    private final static int MSG_RESIZED_REPORT = 5;
+    private final static int MSG_DISPATCH_SCREEN_STATE = 20;
+    private final static int MSG_DISPATCH_DONE_ANIMATING = 23;
+    private final static int MSG_INVALIDATE_WORLD = 24;
+    private final static int MSG_WINDOW_MOVED = 25;
     public final static int DO_TRAVERSAL = 1000;
     public final static int DIE = 1001;
     public final static int RESIZED = 1002;
@@ -2353,308 +2422,308 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     public final static int DISPATCH_SYSTEM_UI_VISIBILITY = 1017;
     public final static int DISPATCH_GENERIC_MOTION = 1018;
     public final static int UPDATE_CONFIGURATION = 1019;
-    public final static int DO_PERFORM_ACCESSIBILITY_ACTION = 1020;
-    public final static int DO_FIND_ACCESSIBLITY_NODE_INFO_BY_ACCESSIBILITY_ID = 1021;
-    public final static int DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_ID = 1022;
-    public final static int DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_TEXT = 1023;
-    public final static int PROCESS_INPUT_EVENTS = 1024;
+    public final static int PROCESS_INPUT_EVENTS = 1020;
 
-    @Override
-    public String getMessageName(Message message) {
-        switch (message.what) {
-            case DO_TRAVERSAL:
-                return "DO_TRAVERSAL";
-            case DIE:
-                return "DIE";
-            case RESIZED:
-                return "RESIZED";
-            case RESIZED_REPORT:
-                return "RESIZED_REPORT";
-            case WINDOW_FOCUS_CHANGED:
-                return "WINDOW_FOCUS_CHANGED";
-            case DISPATCH_KEY:
-                return "DISPATCH_KEY";
-            case DISPATCH_POINTER:
-                return "DISPATCH_POINTER";
-            case DISPATCH_TRACKBALL:
-                return "DISPATCH_TRACKBALL";
-            case DISPATCH_APP_VISIBILITY:
-                return "DISPATCH_APP_VISIBILITY";
-            case DISPATCH_GET_NEW_SURFACE:
-                return "DISPATCH_GET_NEW_SURFACE";
-            case FINISHED_EVENT:
-                return "FINISHED_EVENT";
-            case DISPATCH_KEY_FROM_IME:
-                return "DISPATCH_KEY_FROM_IME";
-            case FINISH_INPUT_CONNECTION:
-                return "FINISH_INPUT_CONNECTION";
-            case CHECK_FOCUS:
-                return "CHECK_FOCUS";
-            case CLOSE_SYSTEM_DIALOGS:
-                return "CLOSE_SYSTEM_DIALOGS";
-            case DISPATCH_DRAG_EVENT:
-                return "DISPATCH_DRAG_EVENT";
-            case DISPATCH_DRAG_LOCATION_EVENT:
-                return "DISPATCH_DRAG_LOCATION_EVENT";
-            case DISPATCH_SYSTEM_UI_VISIBILITY:
-                return "DISPATCH_SYSTEM_UI_VISIBILITY";
-            case DISPATCH_GENERIC_MOTION:
-                return "DISPATCH_GENERIC_MOTION";
-            case UPDATE_CONFIGURATION:
-                return "UPDATE_CONFIGURATION";
-            case DO_PERFORM_ACCESSIBILITY_ACTION:
-                return "DO_PERFORM_ACCESSIBILITY_ACTION";
-            case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_ACCESSIBILITY_ID:
-                return "DO_FIND_ACCESSIBLITY_NODE_INFO_BY_ACCESSIBILITY_ID";
-            case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_ID:
-                return "DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_ID";
-            case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_TEXT:
-                return "DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_TEXT";
-            case PROCESS_INPUT_EVENTS:
-                return "PROCESS_INPUT_EVENTS";
+    final class ViewRootHandler extends Handler {
+        @Override
+        public String getMessageName(Message message) {
+            switch (message.what) {
+                case MSG_RESIZED:
+                    return "MSG_RESIZED";
+                case MSG_RESIZED_REPORT:
+                    return "MSG_RESIZED_REPORT";
+                case MSG_DISPATCH_SCREEN_STATE:
+                    return "MSG_DISPATCH_SCREEN_STATE";
+                case MSG_DISPATCH_DONE_ANIMATING:
+                    return "MSG_DISPATCH_DONE_ANIMATING";
+                case MSG_WINDOW_MOVED:
+                    return "MSG_WINDOW_MOVED";
+                case DO_TRAVERSAL:
+                    return "DO_TRAVERSAL";
+                case DIE:
+                    return "DIE";
+                case RESIZED:
+                    return "RESIZED";
+                case RESIZED_REPORT:
+                    return "RESIZED_REPORT";
+                case WINDOW_FOCUS_CHANGED:
+                    return "WINDOW_FOCUS_CHANGED";
+                case DISPATCH_KEY:
+                    return "DISPATCH_KEY";
+                case DISPATCH_POINTER:
+                    return "DISPATCH_POINTER";
+                case DISPATCH_TRACKBALL:
+                    return "DISPATCH_TRACKBALL";
+                case DISPATCH_APP_VISIBILITY:
+                    return "DISPATCH_APP_VISIBILITY";
+                case DISPATCH_GET_NEW_SURFACE:
+                    return "DISPATCH_GET_NEW_SURFACE";
+                case FINISHED_EVENT:
+                    return "FINISHED_EVENT";
+                case DISPATCH_KEY_FROM_IME:
+                    return "DISPATCH_KEY_FROM_IME";
+                case FINISH_INPUT_CONNECTION:
+                    return "FINISH_INPUT_CONNECTION";
+                case CHECK_FOCUS:
+                    return "CHECK_FOCUS";
+                case CLOSE_SYSTEM_DIALOGS:
+                    return "CLOSE_SYSTEM_DIALOGS";
+                case DISPATCH_DRAG_EVENT:
+                    return "DISPATCH_DRAG_EVENT";
+                case DISPATCH_DRAG_LOCATION_EVENT:
+                    return "DISPATCH_DRAG_LOCATION_EVENT";
+                case DISPATCH_SYSTEM_UI_VISIBILITY:
+                    return "DISPATCH_SYSTEM_UI_VISIBILITY";
+                case DISPATCH_GENERIC_MOTION:
+                    return "DISPATCH_GENERIC_MOTION";
+                case UPDATE_CONFIGURATION:
+                    return "UPDATE_CONFIGURATION";
+                case PROCESS_INPUT_EVENTS:
+                    return "PROCESS_INPUT_EVENTS";
 
+            }
+            return super.getMessageName(message);
         }
-        return super.getMessageName(message);
-    }
 
-    @Override
-    public void handleMessage(Message msg) {
-        switch (msg.what) {
-        case View.AttachInfo.INVALIDATE_MSG:
-            ((View) msg.obj).invalidate();
-            break;
-        case View.AttachInfo.INVALIDATE_RECT_MSG:
-            final View.AttachInfo.InvalidateInfo info = (View.AttachInfo.InvalidateInfo) msg.obj;
-            info.target.invalidate(info.left, info.top, info.right, info.bottom);
-            info.release();
-            break;
-        case DO_TRAVERSAL:
-            if (mProfile) {
-                Debug.startMethodTracing("ViewAncestor");
-            }
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+            case MSG_WINDOW_MOVED:
+                if (mAdded) {
+                    final int w = mWinFrame.width();
+                    final int h = mWinFrame.height();
+                    final int l = msg.arg1;
+                    final int t = msg.arg2;
+                    mWinFrame.left = l;
+                    mWinFrame.right = l + w;
+                    mWinFrame.top = t;
+                    mWinFrame.bottom = t + h;
 
-            final long traversalStartTime;
-            if (ViewDebug.DEBUG_LATENCY) {
-                traversalStartTime = System.nanoTime();
-                mLastDrawDurationNanos = 0;
-            }
-
-            performTraversals();
-
-            if (ViewDebug.DEBUG_LATENCY) {
-                long now = System.nanoTime();
-                Log.d(TAG, "Latency: Spent "
-                        + ((now - traversalStartTime) * 0.000001f)
-                        + "ms in performTraversals(), with "
-                        + (mLastDrawDurationNanos * 0.000001f)
-                        + "ms of that time in draw()");
-                mLastTraversalFinishedTimeNanos = now;
-            }
-
-            if (mProfile) {
-                Debug.stopMethodTracing();
-                mProfile = false;
-            }
-            break;
-        case FINISHED_EVENT:
-            handleFinishedEvent(msg.arg1, msg.arg2 != 0);
-            break;
-        case DISPATCH_KEY:
-            deliverKeyEvent((KeyEvent)msg.obj, msg.arg1 != 0);
-            break;
-        case DISPATCH_POINTER:
-            deliverPointerEvent((MotionEvent) msg.obj, msg.arg1 != 0);
-            break;
-        case DISPATCH_TRACKBALL:
-            deliverTrackballEvent((MotionEvent) msg.obj, msg.arg1 != 0);
-            break;
-        case DISPATCH_GENERIC_MOTION:
-            deliverGenericMotionEvent((MotionEvent) msg.obj, msg.arg1 != 0);
-            break;
-        case PROCESS_INPUT_EVENTS:
-            processInputEvents(false);
-            break;
-        case DISPATCH_APP_VISIBILITY:
-            handleAppVisibility(msg.arg1 != 0);
-            break;
-        case DISPATCH_GET_NEW_SURFACE:
-            handleGetNewSurface();
-            break;
-        case RESIZED:
-            ResizedInfo ri = (ResizedInfo)msg.obj;
-
-            if (mWinFrame.width() == msg.arg1 && mWinFrame.height() == msg.arg2
-                    && mPendingContentInsets.equals(ri.coveredInsets)
-                    && mPendingVisibleInsets.equals(ri.visibleInsets)
-                    && ((ResizedInfo)msg.obj).newConfig == null) {
+                    if (mView != null) {
+                        forceLayout(mView);
+                    }
+                    requestLayout();
+                }
                 break;
-            }
-            // fall through...
-        case RESIZED_REPORT:
-            if (mAdded) {
-                Configuration config = ((ResizedInfo)msg.obj).newConfig;
-                if (config != null) {
-                    updateConfiguration(config, false);
-                }
-                mWinFrame.left = 0;
-                mWinFrame.right = msg.arg1;
-                mWinFrame.top = 0;
-                mWinFrame.bottom = msg.arg2;
-                mPendingContentInsets.set(((ResizedInfo)msg.obj).coveredInsets);
-                mPendingVisibleInsets.set(((ResizedInfo)msg.obj).visibleInsets);
-                if (msg.what == RESIZED_REPORT) {
-                    mReportNextDraw = true;
+            case View.AttachInfo.INVALIDATE_MSG:
+                ((View) msg.obj).invalidate();
+                break;
+            case View.AttachInfo.INVALIDATE_RECT_MSG:
+                final View.AttachInfo.InvalidateInfo info = (View.AttachInfo.InvalidateInfo) msg.obj;
+                info.target.invalidate(info.left, info.top, info.right, info.bottom);
+                info.release();
+                break;
+            case DO_TRAVERSAL:
+                if (mProfile) {
+                    Debug.startMethodTracing("ViewAncestor");
                 }
 
-                if (mView != null) {
-                    forceLayout(mView);
+                final long traversalStartTime;
+                if (ViewDebug.DEBUG_LATENCY) {
+                    traversalStartTime = System.nanoTime();
+                    mLastDrawDurationNanos = 0;
                 }
-                requestLayout();
-            }
-            break;
-        case WINDOW_FOCUS_CHANGED: {
-            if (mAdded) {
-                boolean hasWindowFocus = msg.arg1 != 0;
-                mAttachInfo.mHasWindowFocus = hasWindowFocus;
+
+                performTraversals();
+
+                if (ViewDebug.DEBUG_LATENCY) {
+                    long now = System.nanoTime();
+                    Log.d(TAG, "Latency: Spent "
+                            + ((now - traversalStartTime) * 0.000001f)
+                            + "ms in performTraversals(), with "
+                            + (mLastDrawDurationNanos * 0.000001f)
+                            + "ms of that time in draw()");
+                    mLastTraversalFinishedTimeNanos = now;
+                }
+
+                if (mProfile) {
+                    Debug.stopMethodTracing();
+                    mProfile = false;
+                }
+                break;
+            case FINISHED_EVENT:
+                handleFinishedEvent(msg.arg1, msg.arg2 != 0);
+                break;
+            case DISPATCH_KEY:
+                deliverKeyEvent((KeyEvent)msg.obj, msg.arg1 != 0);
+                break;
+            case DISPATCH_POINTER:
+                deliverPointerEvent((MotionEvent) msg.obj, msg.arg1 != 0);
+                break;
+            case DISPATCH_TRACKBALL:
+                deliverTrackballEvent((MotionEvent) msg.obj, msg.arg1 != 0);
+                break;
+            case DISPATCH_GENERIC_MOTION:
+                deliverGenericMotionEvent((MotionEvent) msg.obj, msg.arg1 != 0);
+                break;
+            case PROCESS_INPUT_EVENTS:
+                processInputEvents(false);
+                break;
+            case DISPATCH_APP_VISIBILITY:
+                handleAppVisibility(msg.arg1 != 0);
+                break;
+            case DISPATCH_GET_NEW_SURFACE:
+                handleGetNewSurface();
+                break;
+            case RESIZED:
+                ResizedInfo ri = (ResizedInfo)msg.obj;
+
+                if (mWinFrame.width() == msg.arg1 && mWinFrame.height() == msg.arg2
+                        && mPendingContentInsets.equals(ri.coveredInsets)
+                        && mPendingVisibleInsets.equals(ri.visibleInsets)
+                        && ((ResizedInfo)msg.obj).newConfig == null) {
+                    break;
+                }
+                // fall through...
+            case RESIZED_REPORT:
+                if (mAdded) {
+                    Configuration config = ((ResizedInfo)msg.obj).newConfig;
+                    if (config != null) {
+                        updateConfiguration(config, false);
+                    }
+                    mWinFrame.left = 0;
+                    mWinFrame.right = msg.arg1;
+                    mWinFrame.top = 0;
+                    mWinFrame.bottom = msg.arg2;
+                    mPendingContentInsets.set(((ResizedInfo)msg.obj).coveredInsets);
+                    mPendingVisibleInsets.set(((ResizedInfo)msg.obj).visibleInsets);
+                    if (msg.what == RESIZED_REPORT) {
+                        mReportNextDraw = true;
+                    }
+
+                    if (mView != null) {
+                        forceLayout(mView);
+                    }
+                    requestLayout();
+                }
+                break;
+            case WINDOW_FOCUS_CHANGED: {
+                if (mAdded) {
+                    boolean hasWindowFocus = msg.arg1 != 0;
+                    mAttachInfo.mHasWindowFocus = hasWindowFocus;
                 
-                profileRendering(hasWindowFocus);
+                    profileRendering(hasWindowFocus);
 
-                if (hasWindowFocus) {
-                    boolean inTouchMode = msg.arg2 != 0;
-                    ensureTouchModeLocally(inTouchMode);
+                    if (hasWindowFocus) {
+                        boolean inTouchMode = msg.arg2 != 0;
+                        ensureTouchModeLocally(inTouchMode);
 
-                    if (mAttachInfo.mHardwareRenderer != null &&
-                            mSurface != null && mSurface.isValid()) {
-                        mFullRedrawNeeded = true;
-                        try {
-                            mAttachInfo.mHardwareRenderer.initializeIfNeeded(mWidth, mHeight,
-                                    mAttachInfo, mHolder);
-                        } catch (Surface.OutOfResourcesException e) {
-                            Log.e(TAG, "OutOfResourcesException locking surface", e);
+                        if (mAttachInfo.mHardwareRenderer != null &&
+                                mSurface != null && mSurface.isValid()) {
+                            mFullRedrawNeeded = true;
                             try {
-                                if (!sWindowSession.outOfMemory(mWindow)) {
-                                    Slog.w(TAG, "No processes killed for memory; killing self");
-                                    Process.killProcess(Process.myPid());
+                                mAttachInfo.mHardwareRenderer.initializeIfNeeded(mWidth, mHeight,
+                                        mAttachInfo, mHolder);
+                            } catch (Surface.OutOfResourcesException e) {
+                                Log.e(TAG, "OutOfResourcesException locking surface", e);
+                                try {
+                                    if (!sWindowSession.outOfMemory(mWindow)) {
+                                        Slog.w(TAG, "No processes killed for memory; killing self");
+                                        Process.killProcess(Process.myPid());
+                                    }
+                                } catch (RemoteException ex) {
                                 }
-                            } catch (RemoteException ex) {
+                                // Retry in a bit.
+                                sendMessageDelayed(obtainMessage(msg.what, msg.arg1, msg.arg2), 500);
+                                return;
                             }
-                            // Retry in a bit.
-                            sendMessageDelayed(obtainMessage(msg.what, msg.arg1, msg.arg2), 500);
-                            return;
                         }
                     }
-                }
 
-                mLastWasImTarget = WindowManager.LayoutParams
-                        .mayUseInputMethod(mWindowAttributes.flags);
+                    mLastWasImTarget = WindowManager.LayoutParams
+                              .mayUseInputMethod(mWindowAttributes.flags);
 
-                InputMethodManager imm = InputMethodManager.peekInstance();
-                if (mView != null) {
-                    if (hasWindowFocus && imm != null && mLastWasImTarget) {
-                        imm.startGettingWindowFocus(mView);
+                    InputMethodManager imm = InputMethodManager.peekInstance();
+                    if (mView != null) {
+                        if (hasWindowFocus && imm != null && mLastWasImTarget) {
+                            imm.startGettingWindowFocus(mView);
+                        }
+                        mAttachInfo.mKeyDispatchState.reset();
+                        mView.dispatchWindowFocusChanged(hasWindowFocus);
                     }
-                    mAttachInfo.mKeyDispatchState.reset();
-                    mView.dispatchWindowFocusChanged(hasWindowFocus);
-                }
 
-                // Note: must be done after the focus change callbacks,
-                // so all of the view state is set up correctly.
-                if (hasWindowFocus) {
-                    if (imm != null && mLastWasImTarget) {
-                        imm.onWindowFocus(mView, mView.findFocus(),
-                                mWindowAttributes.softInputMode,
-                                !mHasHadWindowFocus, mWindowAttributes.flags);
-                    }
-                    // Clear the forward bit.  We can just do this directly, since
-                    // the window manager doesn't care about it.
-                    mWindowAttributes.softInputMode &=
-                            ~WindowManager.LayoutParams.SOFT_INPUT_IS_FORWARD_NAVIGATION;
-                    ((WindowManager.LayoutParams)mView.getLayoutParams())
-                            .softInputMode &=
+                    // Note: must be done after the focus change callbacks,
+                    // so all of the view state is set up correctly.
+                    if (hasWindowFocus) {
+                        if (imm != null && mLastWasImTarget) {
+                            imm.onWindowFocus(mView, mView.findFocus(),
+                                    mWindowAttributes.softInputMode,
+                                    !mHasHadWindowFocus, mWindowAttributes.flags);
+                        }
+                        // Clear the forward bit.  We can just do this directly, since
+                        // the window manager doesn't care about it.
+                        mWindowAttributes.softInputMode &=
                                 ~WindowManager.LayoutParams.SOFT_INPUT_IS_FORWARD_NAVIGATION;
-                    mHasHadWindowFocus = true;
-                }
+                        ((WindowManager.LayoutParams)mView.getLayoutParams())
+                                .softInputMode &=
+                                    ~WindowManager.LayoutParams.SOFT_INPUT_IS_FORWARD_NAVIGATION;
+                        mHasHadWindowFocus = true;
+                    }
 
-                if (hasWindowFocus && mView != null) {
-                    sendAccessibilityEvents();
+                    if (hasWindowFocus && mView != null) {
+                        sendAccessibilityEvents();
+                    }
                 }
+            } break;
+            case DIE:
+                doDie();
+                break;
+            case DISPATCH_KEY_FROM_IME: {
+                if (LOCAL_LOGV) Log.v(
+                    TAG, "Dispatching key "
+                    + msg.obj + " from IME to " + mView);
+                KeyEvent event = (KeyEvent)msg.obj;
+                if ((event.getFlags()&KeyEvent.FLAG_FROM_SYSTEM) != 0) {
+                    // The IME is trying to say this event is from the
+                    // system!  Bad bad bad!
+                    //noinspection UnusedAssignment
+                    event = KeyEvent.changeFlags(event, event.getFlags() & ~KeyEvent.FLAG_FROM_SYSTEM);
+                }
+                deliverKeyEventPostIme((KeyEvent)msg.obj, false);
+            } break;
+            case FINISH_INPUT_CONNECTION: {
+                InputMethodManager imm = InputMethodManager.peekInstance();
+                if (imm != null) {
+                    imm.reportFinishInputConnection((InputConnection)msg.obj);
+                }
+            } break;
+            case CHECK_FOCUS: {
+                InputMethodManager imm = InputMethodManager.peekInstance();
+                if (imm != null) {
+                    imm.checkFocus();
+                }
+            } break;
+            case CLOSE_SYSTEM_DIALOGS: {
+                if (mView != null) {
+                    mView.onCloseSystemDialogs((String)msg.obj);
+                }
+            } break;
+            case DISPATCH_DRAG_EVENT:
+            case DISPATCH_DRAG_LOCATION_EVENT: {
+                DragEvent event = (DragEvent)msg.obj;
+                event.mLocalState = mLocalDragState;    // only present when this app called startDrag()
+                handleDragEvent(event);
+            } break;
+            case DISPATCH_SYSTEM_UI_VISIBILITY: {
+                handleDispatchSystemUiVisibilityChanged((SystemUiVisibilityInfo)msg.obj);
+            } break;
+            case UPDATE_CONFIGURATION: {
+                Configuration config = (Configuration)msg.obj;
+                if (config.isOtherSeqNewer(mLastConfiguration)) {
+                    config = mLastConfiguration;
+                }
+                updateConfiguration(config, false);
+            } break;
+            case MSG_INVALIDATE_WORLD: {
+                    if (mView != null) {
+                        invalidateWorld(mView);
+                    }
+                } break;
             }
-        } break;
-        case DIE:
-            doDie();
-            break;
-        case DISPATCH_KEY_FROM_IME: {
-            if (LOCAL_LOGV) Log.v(
-                TAG, "Dispatching key "
-                + msg.obj + " from IME to " + mView);
-            KeyEvent event = (KeyEvent)msg.obj;
-            if ((event.getFlags()&KeyEvent.FLAG_FROM_SYSTEM) != 0) {
-                // The IME is trying to say this event is from the
-                // system!  Bad bad bad!
-                //noinspection UnusedAssignment
-                event = KeyEvent.changeFlags(event, event.getFlags() & ~KeyEvent.FLAG_FROM_SYSTEM);
-            }
-            deliverKeyEventPostIme((KeyEvent)msg.obj, false);
-        } break;
-        case FINISH_INPUT_CONNECTION: {
-            InputMethodManager imm = InputMethodManager.peekInstance();
-            if (imm != null) {
-                imm.reportFinishInputConnection((InputConnection)msg.obj);
-            }
-        } break;
-        case CHECK_FOCUS: {
-            InputMethodManager imm = InputMethodManager.peekInstance();
-            if (imm != null) {
-                imm.checkFocus();
-            }
-        } break;
-        case CLOSE_SYSTEM_DIALOGS: {
-            if (mView != null) {
-                mView.onCloseSystemDialogs((String)msg.obj);
-            }
-        } break;
-        case DISPATCH_DRAG_EVENT:
-        case DISPATCH_DRAG_LOCATION_EVENT: {
-            DragEvent event = (DragEvent)msg.obj;
-            event.mLocalState = mLocalDragState;    // only present when this app called startDrag()
-            handleDragEvent(event);
-        } break;
-        case DISPATCH_SYSTEM_UI_VISIBILITY: {
-            handleDispatchSystemUiVisibilityChanged((SystemUiVisibilityInfo)msg.obj);
-        } break;
-        case UPDATE_CONFIGURATION: {
-            Configuration config = (Configuration)msg.obj;
-            if (config.isOtherSeqNewer(mLastConfiguration)) {
-                config = mLastConfiguration;
-            }
-            updateConfiguration(config, false);
-        } break;
-        case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_ACCESSIBILITY_ID: {
-            if (mView != null) {
-                getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfoByAccessibilityIdUiThread(msg);
-            }
-        } break;
-        case DO_PERFORM_ACCESSIBILITY_ACTION: {
-            if (mView != null) {
-                getAccessibilityInteractionController()
-                    .perfromAccessibilityActionUiThread(msg);
-            }
-        } break;
-        case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_ID: {
-            if (mView != null) {
-                getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfoByViewIdUiThread(msg);
-            }
-        } break;
-        case DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_TEXT: {
-            if (mView != null) {
-                getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfosByViewTextUiThread(msg);
-            }
-        } break;
         }
     }
+
+    final ViewRootHandler mHandler = new ViewRootHandler();
 
     private void startInputEvent(InputQueue.FinishedCallback finishedCallback) {
         if (mFinishedCallback != null) {
@@ -2719,7 +2788,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         mFinishedCallback.finished(handled);
         mFinishedCallback = null;
     }
-    
+
     /**
      * Something in the current window tells us we need to change the touch mode.  For
      * example, we are not in touch mode, and the user touches the screen.
@@ -3555,7 +3624,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                     + " called when there is no mView");
         }
         if (mAccessibilityInteractionController == null) {
-            mAccessibilityInteractionController = new AccessibilityInteractionController();
+            mAccessibilityInteractionController = new AccessibilityInteractionController(this);
         }
         return mAccessibilityInteractionController;
     }
@@ -3587,7 +3656,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                 mWindow, mSeq, params,
                 (int) (mView.getMeasuredWidth() * appScale + 0.5f),
                 (int) (mView.getMeasuredHeight() * appScale + 0.5f),
-                viewVisibility, insetsPending ? WindowManagerImpl.RELAYOUT_INSETS_PENDING : 0,
+                viewVisibility, insetsPending ? WindowManagerGlobal.RELAYOUT_INSETS_PENDING : 0,
                 mWinFrame, mPendingContentInsets, mPendingVisibleInsets,
                 mPendingConfiguration, mSurface);
         //Log.d(TAG, "<<<<<< BACK FROM relayout");
@@ -3665,11 +3734,10 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         mView.debug();
     }
     
-    public void dumpGfxInfo(PrintWriter pw, int[] info) {
+    public void dumpGfxInfo(int[] info) {
+        info[0] = info[1] = 0;
         if (mView != null) {
             getGfxInfo(mView, info);
-        } else {
-            info[0] = info[1] = 0;
         }
     }
 
@@ -3718,7 +3786,7 @@ public final class ViewRootImpl extends Handler implements ViewParent,
                     // animation info.
                     try {
                         if ((relayoutWindow(mWindowAttributes, viewVisibility, false)
-                                & WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0) {
+                                & WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0) {
                             sWindowSession.finishDrawing(mWindow);
                         }
                     } catch (RemoteException e) {
@@ -3733,6 +3801,17 @@ public final class ViewRootImpl extends Handler implements ViewParent,
     public void requestUpdateConfiguration(Configuration config) {
         Message msg = obtainMessage(UPDATE_CONFIGURATION, config);
         sendMessage(msg);
+    }
+
+    public void loadSystemProperties() {
+        boolean layout = SystemProperties.getBoolean(
+                View.DEBUG_LAYOUT_PROPERTY, false);
+        if (layout != mAttachInfo.mDebugLayout) {
+            mAttachInfo.mDebugLayout = layout;
+            if (!mHandler.hasMessages(MSG_INVALIDATE_WORLD)) {
+                mHandler.sendEmptyMessageDelayed(MSG_INVALIDATE_WORLD, 200);
+            }
+        }
     }
 
     private void destroyHardwareRenderer() {
@@ -3750,27 +3829,38 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         sendMessage(msg);
     }
 
-    public void dispatchResized(int w, int h, Rect coveredInsets,
+    public void dispatchResized(Rect frame, Rect contentInsets,
             Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
-        if (DEBUG_LAYOUT) Log.v(TAG, "Resizing " + this + ": w=" + w
-                + " h=" + h + " coveredInsets=" + coveredInsets.toShortString()
+        if (DEBUG_LAYOUT) Log.v(TAG, "Resizing " + this + ": frame=" + frame.toShortString()
+                + " contentInsets=" + contentInsets.toShortString()
                 + " visibleInsets=" + visibleInsets.toShortString()
                 + " reportDraw=" + reportDraw);
-        Message msg = obtainMessage(reportDraw ? RESIZED_REPORT :RESIZED);
+        Message msg = mHandler.obtainMessage(reportDraw ? MSG_RESIZED_REPORT : MSG_RESIZED);
         if (mTranslator != null) {
-            mTranslator.translateRectInScreenToAppWindow(coveredInsets);
+            mTranslator.translateRectInScreenToAppWindow(frame);
+            mTranslator.translateRectInScreenToAppWindow(contentInsets);
             mTranslator.translateRectInScreenToAppWindow(visibleInsets);
-            w *= mTranslator.applicationInvertedScale;
-            h *= mTranslator.applicationInvertedScale;
         }
-        msg.arg1 = w;
-        msg.arg2 = h;
-        ResizedInfo ri = new ResizedInfo();
-        ri.coveredInsets = new Rect(coveredInsets);
-        ri.visibleInsets = new Rect(visibleInsets);
-        ri.newConfig = newConfig;
-        msg.obj = ri;
-        sendMessage(msg);
+        SomeArgs args = SomeArgs.obtain();
+        final boolean sameProcessCall = (Binder.getCallingPid() == android.os.Process.myPid());
+        args.arg1 = sameProcessCall ? new Rect(frame) : frame;
+        args.arg2 = sameProcessCall ? new Rect(contentInsets) : contentInsets;
+        args.arg3 = sameProcessCall ? new Rect(visibleInsets) : visibleInsets;
+        args.arg4 = sameProcessCall && newConfig != null ? new Configuration(newConfig) : newConfig;
+        msg.obj = args;
+        mHandler.sendMessage(msg);
+    }
+
+    public void dispatchMoved(int newX, int newY) {
+        if (DEBUG_LAYOUT) Log.v(TAG, "Window moved " + this + ": newX=" + newX + " newY=" + newY);
+        if (mTranslator != null) {
+            PointF point = new PointF(newX, newY);
+            mTranslator.translatePointInScreenToAppWindow(point);
+            newX = (int) (point.x + 0.5);
+            newY = (int) (point.y + 0.5);
+        }
+        Message msg = mHandler.obtainMessage(MSG_WINDOW_MOVED, newX, newY);
+        mHandler.sendMessage(msg);
     }
 
     private long mInputEventReceiveTimeNanos;
@@ -3862,6 +3952,95 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         sendEmptyMessageAtTime(PROCESS_INPUT_EVENTS, when);
     }
 
+    final class InvalidateOnAnimationRunnable implements Runnable {
+        private boolean mPosted;
+        private ArrayList<View> mViews = new ArrayList<View>();
+        private ArrayList<AttachInfo.InvalidateInfo> mViewRects =
+                new ArrayList<AttachInfo.InvalidateInfo>();
+        private View[] mTempViews;
+        private AttachInfo.InvalidateInfo[] mTempViewRects;
+
+        public void addView(View view) {
+            synchronized (this) {
+                mViews.add(view);
+                postIfNeededLocked();
+            }
+        }
+
+        public void addViewRect(AttachInfo.InvalidateInfo info) {
+            synchronized (this) {
+                mViewRects.add(info);
+                postIfNeededLocked();
+            }
+        }
+
+        public void removeView(View view) {
+            synchronized (this) {
+                mViews.remove(view);
+
+                for (int i = mViewRects.size(); i-- > 0; ) {
+                    AttachInfo.InvalidateInfo info = mViewRects.get(i);
+                    if (info.target == view) {
+                        mViewRects.remove(i);
+                        info.release();
+                    }
+                }
+
+                if (mPosted && mViews.isEmpty() && mViewRects.isEmpty()) {
+                    mChoreographer.removeCallbacks(Choreographer.CALLBACK_ANIMATION, this, null);
+                    mPosted = false;
+                }
+            }
+        }
+
+        @Override
+        public void run() {
+            final int viewCount;
+            final int viewRectCount;
+            synchronized (this) {
+                mPosted = false;
+
+                viewCount = mViews.size();
+                if (viewCount != 0) {
+                    mTempViews = mViews.toArray(mTempViews != null
+                            ? mTempViews : new View[viewCount]);
+                    mViews.clear();
+                }
+
+                viewRectCount = mViewRects.size();
+                if (viewRectCount != 0) {
+                    mTempViewRects = mViewRects.toArray(mTempViewRects != null
+                            ? mTempViewRects : new AttachInfo.InvalidateInfo[viewRectCount]);
+                    mViewRects.clear();
+                }
+            }
+
+            for (int i = 0; i < viewCount; i++) {
+                mTempViews[i].invalidate();
+                mTempViews[i] = null;
+            }
+
+            for (int i = 0; i < viewRectCount; i++) {
+                final View.AttachInfo.InvalidateInfo info = mTempViewRects[i];
+                info.target.invalidate(info.left, info.top, info.right, info.bottom);
+                info.release();
+            }
+        }
+
+        private void postIfNeededLocked() {
+            if (!mPosted) {
+                mChoreographer.postCallback(Choreographer.CALLBACK_ANIMATION, this, null);
+                mPosted = true;
+            }
+        }
+    }
+    final InvalidateOnAnimationRunnable mInvalidateOnAnimationRunnable =
+            new InvalidateOnAnimationRunnable();
+
+    public void dispatchInvalidateOnAnimation(View view) {
+        mInvalidateOnAnimationRunnable.addView(view);
+    }
+
     public void dispatchKey(KeyEvent event) {
         dispatchKey(event, false);
     }
@@ -3927,6 +4106,12 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         sendMessage(msg);
     }
 
+    public void dispatchScreenStateChange(boolean on) {
+        Message msg = mHandler.obtainMessage(MSG_DISPATCH_SCREEN_STATE);
+        msg.arg1 = on ? 1 : 0;
+        mHandler.sendMessage(msg);
+    }
+
     public void dispatchGetNewSurface() {
         Message msg = obtainMessage(DISPATCH_GET_NEW_SURFACE);
         sendMessage(msg);
@@ -3969,6 +4154,10 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         sendMessage(obtainMessage(DISPATCH_SYSTEM_UI_VISIBILITY, args));
     }
 
+    public void dispatchDoneAnimating() {
+        mHandler.sendEmptyMessage(MSG_DISPATCH_DONE_ANIMATING);
+    }
+
     /**
      * The window is getting focus so if there is anything focused/selected
      * send an {@link AccessibilityEvent} to announce that.
@@ -3990,15 +4179,19 @@ public final class ViewRootImpl extends Handler implements ViewParent,
      * This event is send at most once every
      * {@link ViewConfiguration#getSendRecurringAccessibilityEventsInterval()}.
      */
-    private void postSendWindowContentChangedCallback() {
+    private void postSendWindowContentChangedCallback(View source) {
         if (mSendWindowContentChangedAccessibilityEvent == null) {
             mSendWindowContentChangedAccessibilityEvent =
                 new SendWindowContentChangedAccessibilityEvent();
         }
-        if (!mSendWindowContentChangedAccessibilityEvent.mIsPending) {
-            mSendWindowContentChangedAccessibilityEvent.mIsPending = true;
+        View oldSource = mSendWindowContentChangedAccessibilityEvent.mSource;
+        if (oldSource == null) {
+            mSendWindowContentChangedAccessibilityEvent.mSource = source;
             postDelayed(mSendWindowContentChangedAccessibilityEvent,
                     ViewConfiguration.getSendRecurringAccessibilityEventsInterval());
+        } else {
+            mSendWindowContentChangedAccessibilityEvent.mSource =
+                    getCommonPredecessor(oldSource, source);
         }
     }
 
@@ -4032,6 +4225,46 @@ public final class ViewRootImpl extends Handler implements ViewParent,
         }
         mAccessibilityManager.sendAccessibilityEvent(event);
         return true;
+    }
+
+    @Override
+    public void childAccessibilityStateChanged(View child) {
+        postSendWindowContentChangedCallback(child);
+    }
+
+    private View getCommonPredecessor(View first, View second) {
+        if (mAttachInfo != null) {
+            if (mTempHashSet == null) {
+                mTempHashSet = new HashSet<View>();
+            }
+            HashSet<View> seen = mTempHashSet;
+            seen.clear();
+            View firstCurrent = first;
+            while (firstCurrent != null) {
+                seen.add(firstCurrent);
+                ViewParent firstCurrentParent = firstCurrent.mParent;
+                if (firstCurrentParent instanceof View) {
+                    firstCurrent = (View) firstCurrentParent;
+                } else {
+                    firstCurrent = null;
+                }
+            }
+            View secondCurrent = second;
+            while (secondCurrent != null) {
+                if (seen.contains(secondCurrent)) {
+                    seen.clear();
+                    return secondCurrent;
+                }
+                ViewParent secondCurrentParent = secondCurrent.mParent;
+                if (secondCurrentParent instanceof View) {
+                    secondCurrent = (View) secondCurrentParent;
+                } else {
+                    secondCurrent = null;
+                }
+            }
+            seen.clear();
+        }
+        return null;
     }
 
     void checkThread() {
@@ -4116,12 +4349,20 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             mViewAncestor = new WeakReference<ViewRootImpl>(viewAncestor);
         }
 
-        public void resized(int w, int h, Rect coveredInsets, Rect visibleInsets,
-                boolean reportDraw, Configuration newConfig) {
+        public void resized(Rect frame, Rect contentInsets,
+                Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
             final ViewRootImpl viewAncestor = mViewAncestor.get();
             if (viewAncestor != null) {
-                viewAncestor.dispatchResized(w, h, coveredInsets, visibleInsets, reportDraw,
-                        newConfig);
+                viewAncestor.dispatchResized(frame, contentInsets,
+                        visibleInsets, reportDraw, newConfig);
+            }
+        }
+
+        @Override
+        public void moved(int newX, int newY) {
+            final ViewRootImpl viewAncestor = mViewAncestor.get();
+            if (viewAncestor != null) {
+                viewAncestor.dispatchMoved(newX, newY);
             }
         }
 
@@ -4129,6 +4370,13 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             final ViewRootImpl viewAncestor = mViewAncestor.get();
             if (viewAncestor != null) {
                 viewAncestor.dispatchAppVisibility(visible);
+            }
+        }
+
+        public void dispatchScreenState(boolean on) {
+            final ViewRootImpl viewAncestor = mViewAncestor.get();
+            if (viewAncestor != null) {
+                viewAncestor.dispatchScreenStateChange(on);
             }
         }
 
@@ -4227,6 +4475,13 @@ public final class ViewRootImpl extends Handler implements ViewParent,
             if (viewAncestor != null) {
                 viewAncestor.dispatchSystemUiVisibilityChanged(seq, globalVisibility,
                         localValue, localChanges);
+            }
+        }
+
+        public void doneAnimating() {
+            final ViewRootImpl viewAncestor = mViewAncestor.get();
+            if (viewAncestor != null) {
+                viewAncestor.dispatchDoneAnimating();
             }
         }
     }
@@ -4575,402 +4830,130 @@ public final class ViewRootImpl extends Handler implements ViewParent,
      */
     static final class AccessibilityInteractionConnection
             extends IAccessibilityInteractionConnection.Stub {
-        private final WeakReference<ViewRootImpl> mRootImpl;
+        private final WeakReference<ViewRootImpl> mViewRootImpl;
 
         AccessibilityInteractionConnection(ViewRootImpl viewAncestor) {
-            mRootImpl = new WeakReference<ViewRootImpl>(viewAncestor);
+            mViewRootImpl = new WeakReference<ViewRootImpl>(viewAncestor);
         }
 
-        public void findAccessibilityNodeInfoByAccessibilityId(int accessibilityId,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
+        @Override
+        public void findAccessibilityNodeInfoByAccessibilityId(long accessibilityNodeId,
+                int interactionId, IAccessibilityInteractionConnectionCallback callback, int flags,
                 int interrogatingPid, long interrogatingTid) {
-            ViewRootImpl viewRootImpl = mRootImpl.get();
-            if (viewRootImpl != null) {
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
                 viewRootImpl.getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfoByAccessibilityIdClientThread(accessibilityId,
-                        interactionId, callback, interrogatingPid, interrogatingTid);
+                    .findAccessibilityNodeInfoByAccessibilityIdClientThread(accessibilityNodeId,
+                            interactionId, callback, flags, interrogatingPid, interrogatingTid);
+            } else {
+                // We cannot make the call and notify the caller so it does not wait.
+                try {
+                    callback.setFindAccessibilityNodeInfosResult(null, interactionId);
+                } catch (RemoteException re) {
+                    /* best effort - ignore */
+                }
             }
         }
 
-        public void performAccessibilityAction(int accessibilityId, int action,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
+        @Override
+        public void performAccessibilityAction(long accessibilityNodeId, int action,
+                Bundle arguments, int interactionId,
+                IAccessibilityInteractionConnectionCallback callback, int flags,
                 int interogatingPid, long interrogatingTid) {
-            ViewRootImpl viewRootImpl = mRootImpl.get();
-            if (viewRootImpl != null) {
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
                 viewRootImpl.getAccessibilityInteractionController()
-                    .performAccessibilityActionClientThread(accessibilityId, action, interactionId,
-                            callback, interogatingPid, interrogatingTid);
+                    .performAccessibilityActionClientThread(accessibilityNodeId, action, arguments,
+                            interactionId, callback, flags, interogatingPid, interrogatingTid);
+            } else {
+                // We cannot make the call and notify the caller so it does not wait.
+                try {
+                    callback.setPerformAccessibilityActionResult(false, interactionId);
+                } catch (RemoteException re) {
+                    /* best effort - ignore */
+                }
             }
         }
 
-        public void findAccessibilityNodeInfoByViewId(int viewId,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
+        @Override
+        public void findAccessibilityNodeInfoByViewId(long accessibilityNodeId, int viewId,
+                int interactionId, IAccessibilityInteractionConnectionCallback callback, int flags,
                 int interrogatingPid, long interrogatingTid) {
-            ViewRootImpl viewRootImpl = mRootImpl.get();
-            if (viewRootImpl != null) {
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
                 viewRootImpl.getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfoByViewIdClientThread(viewId, interactionId, callback,
-                            interrogatingPid, interrogatingTid);
+                    .findAccessibilityNodeInfoByViewIdClientThread(accessibilityNodeId, viewId,
+                            interactionId, callback, flags, interrogatingPid, interrogatingTid);
+            } else {
+                // We cannot make the call and notify the caller so it does not wait.
+                try {
+                    callback.setFindAccessibilityNodeInfoResult(null, interactionId);
+                } catch (RemoteException re) {
+                    /* best effort - ignore */
+                }
             }
         }
 
-        public void findAccessibilityNodeInfosByViewText(String text, int accessibilityId,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
+        @Override
+        public void findAccessibilityNodeInfosByText(long accessibilityNodeId, String text,
+                int interactionId, IAccessibilityInteractionConnectionCallback callback, int flags,
                 int interrogatingPid, long interrogatingTid) {
-            ViewRootImpl viewRootImpl = mRootImpl.get();
-            if (viewRootImpl != null) {
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
                 viewRootImpl.getAccessibilityInteractionController()
-                    .findAccessibilityNodeInfosByViewTextClientThread(text, accessibilityId,
-                            interactionId, callback, interrogatingPid, interrogatingTid);
-            }
-        }
-    }
-
-    /**
-     * Class for managing accessibility interactions initiated from the system
-     * and targeting the view hierarchy. A *ClientThread method is to be
-     * called from the interaction connection this ViewAncestor gives the
-     * system to talk to it and a corresponding *UiThread method that is executed
-     * on the UI thread.
-     */
-    final class AccessibilityInteractionController {
-        private static final int POOL_SIZE = 5;
-
-        private ArrayList<AccessibilityNodeInfo> mTempAccessibilityNodeInfoList =
-            new ArrayList<AccessibilityNodeInfo>();
-
-        // Reusable poolable arguments for interacting with the view hierarchy
-        // to fit more arguments than Message and to avoid sharing objects between
-        // two messages since several threads can send messages concurrently.
-        private final Pool<SomeArgs> mPool = Pools.synchronizedPool(Pools.finitePool(
-                new PoolableManager<SomeArgs>() {
-                    public SomeArgs newInstance() {
-                        return new SomeArgs();
-                    }
-
-                    public void onAcquired(SomeArgs info) {
-                        /* do nothing */
-                    }
-
-                    public void onReleased(SomeArgs info) {
-                        info.clear();
-                    }
-                }, POOL_SIZE)
-        );
-
-        public class SomeArgs implements Poolable<SomeArgs> {
-            private SomeArgs mNext;
-            private boolean mIsPooled;
-
-            public Object arg1;
-            public Object arg2;
-            public int argi1;
-            public int argi2;
-            public int argi3;
-
-            public SomeArgs getNextPoolable() {
-                return mNext;
-            }
-
-            public boolean isPooled() {
-                return mIsPooled;
-            }
-
-            public void setNextPoolable(SomeArgs args) {
-                mNext = args;
-            }
-
-            public void setPooled(boolean isPooled) {
-                mIsPooled = isPooled;
-            }
-
-            private void clear() {
-                arg1 = null;
-                arg2 = null;
-                argi1 = 0;
-                argi2 = 0;
-                argi3 = 0;
+                    .findAccessibilityNodeInfosByTextClientThread(accessibilityNodeId, text,
+                            interactionId, callback, flags, interrogatingPid, interrogatingTid);
+            } else {
+                // We cannot make the call and notify the caller so it does not wait.
+                try {
+                    callback.setFindAccessibilityNodeInfosResult(null, interactionId);
+                } catch (RemoteException re) {
+                    /* best effort - ignore */
+                }
             }
         }
 
-        public void findAccessibilityNodeInfoByAccessibilityIdClientThread(int accessibilityId,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
+        @Override
+        public void findFocus(long accessibilityNodeId, int focusType, int interactionId,
+                IAccessibilityInteractionConnectionCallback callback, int flags,
                 int interrogatingPid, long interrogatingTid) {
-            Message message = Message.obtain();
-            message.what = DO_FIND_ACCESSIBLITY_NODE_INFO_BY_ACCESSIBILITY_ID;
-            message.arg1 = accessibilityId;
-            message.arg2 = interactionId;
-            message.obj = callback;
-            // If the interrogation is performed by the same thread as the main UI
-            // thread in this process, set the message as a static reference so
-            // after this call completes the same thread but in the interrogating
-            // client can handle the message to generate the result.
-            if (interrogatingPid == Process.myPid()
-                    && interrogatingTid == Looper.getMainLooper().getThread().getId()) {
-                message.setTarget(ViewRootImpl.this);
-                AccessibilityInteractionClient.getInstance().setSameThreadMessage(message);
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
+                viewRootImpl.getAccessibilityInteractionController()
+                    .findFocusClientThread(accessibilityNodeId, focusType, interactionId, callback,
+                            flags, interrogatingPid, interrogatingTid);
             } else {
-                sendMessage(message);
-            }
-        }
-
-        public void findAccessibilityNodeInfoByAccessibilityIdUiThread(Message message) {
-            final int accessibilityId = message.arg1;
-            final int interactionId = message.arg2;
-            final IAccessibilityInteractionConnectionCallback callback =
-                (IAccessibilityInteractionConnectionCallback) message.obj;
-
-            AccessibilityNodeInfo info = null;
-            try {
-                View target = findViewByAccessibilityId(accessibilityId);
-                if (target != null) {
-                    info = target.createAccessibilityNodeInfo();
-                }
-            } finally {
+                // We cannot make the call and notify the caller so it does not wait.
                 try {
-                    callback.setFindAccessibilityNodeInfoResult(info, interactionId);
+                    callback.setFindAccessibilityNodeInfoResult(null, interactionId);
                 } catch (RemoteException re) {
-                    /* ignore - the other side will time out */
+                    /* best effort - ignore */
                 }
             }
         }
 
-        public void findAccessibilityNodeInfoByViewIdClientThread(int viewId, int interactionId,
-                IAccessibilityInteractionConnectionCallback callback, int interrogatingPid,
-                long interrogatingTid) {
-            Message message = Message.obtain();
-            message.what = DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_ID;
-            message.arg1 = viewId;
-            message.arg2 = interactionId;
-            message.obj = callback;
-            // If the interrogation is performed by the same thread as the main UI
-            // thread in this process, set the message as a static reference so
-            // after this call completes the same thread but in the interrogating
-            // client can handle the message to generate the result.
-            if (interrogatingPid == Process.myPid()
-                    && interrogatingTid == Looper.getMainLooper().getThread().getId()) {
-                message.setTarget(ViewRootImpl.this);
-                AccessibilityInteractionClient.getInstance().setSameThreadMessage(message);
+        @Override
+        public void focusSearch(long accessibilityNodeId, int direction, int interactionId,
+                IAccessibilityInteractionConnectionCallback callback, int flags,
+                int interrogatingPid, long interrogatingTid) {
+            ViewRootImpl viewRootImpl = mViewRootImpl.get();
+            if (viewRootImpl != null && viewRootImpl.mView != null) {
+                viewRootImpl.getAccessibilityInteractionController()
+                    .focusSearchClientThread(accessibilityNodeId, direction, interactionId,
+                            callback, flags, interrogatingPid, interrogatingTid);
             } else {
-                sendMessage(message);
-            }
-        }
-
-        public void findAccessibilityNodeInfoByViewIdUiThread(Message message) {
-            final int viewId = message.arg1;
-            final int interactionId = message.arg2;
-            final IAccessibilityInteractionConnectionCallback callback =
-                (IAccessibilityInteractionConnectionCallback) message.obj;
-
-            AccessibilityNodeInfo info = null;
-            try {
-                View root = ViewRootImpl.this.mView;
-                View target = root.findViewById(viewId);
-                if (target != null && target.getVisibility() == View.VISIBLE) {
-                    info = target.createAccessibilityNodeInfo();
-                }
-            } finally {
+                // We cannot make the call and notify the caller so it does not wait.
                 try {
-                    callback.setFindAccessibilityNodeInfoResult(info, interactionId);
+                    callback.setFindAccessibilityNodeInfoResult(null, interactionId);
                 } catch (RemoteException re) {
-                    /* ignore - the other side will time out */
+                    /* best effort - ignore */
                 }
             }
-        }
-
-        public void findAccessibilityNodeInfosByViewTextClientThread(String text,
-                int accessibilityViewId, int interactionId,
-                IAccessibilityInteractionConnectionCallback callback, int interrogatingPid,
-                long interrogatingTid) {
-            Message message = Message.obtain();
-            message.what = DO_FIND_ACCESSIBLITY_NODE_INFO_BY_VIEW_TEXT;
-            SomeArgs args = mPool.acquire();
-            args.arg1 = text;
-            args.argi1 = accessibilityViewId;
-            args.argi2 = interactionId;
-            args.arg2 = callback;
-            message.obj = args;
-            // If the interrogation is performed by the same thread as the main UI
-            // thread in this process, set the message as a static reference so
-            // after this call completes the same thread but in the interrogating
-            // client can handle the message to generate the result.
-            if (interrogatingPid == Process.myPid()
-                    && interrogatingTid == Looper.getMainLooper().getThread().getId()) {
-                message.setTarget(ViewRootImpl.this);
-                AccessibilityInteractionClient.getInstance().setSameThreadMessage(message);
-            } else {
-                sendMessage(message);
-            }
-        }
-
-        public void findAccessibilityNodeInfosByViewTextUiThread(Message message) {
-            SomeArgs args = (SomeArgs) message.obj;
-            final String text = (String) args.arg1;
-            final int accessibilityViewId = args.argi1;
-            final int interactionId = args.argi2;
-            final IAccessibilityInteractionConnectionCallback callback =
-                (IAccessibilityInteractionConnectionCallback) args.arg2;
-            mPool.release(args);
-
-            List<AccessibilityNodeInfo> infos = null;
-            try {
-                ArrayList<View> foundViews = mAttachInfo.mFocusablesTempList;
-                foundViews.clear();
-
-                View root = null;
-                if (accessibilityViewId != View.NO_ID) {
-                    root = findViewByAccessibilityId(accessibilityViewId);
-                } else {
-                    root = ViewRootImpl.this.mView;
-                }
-
-                if (root == null || root.getVisibility() != View.VISIBLE) {
-                    return;
-                }
-
-                root.findViewsWithText(foundViews, text, View.FIND_VIEWS_WITH_TEXT
-                        | View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION);
-                if (foundViews.isEmpty()) {
-                    return;
-                }
-
-                infos = mTempAccessibilityNodeInfoList;
-                infos.clear();
-
-                final int viewCount = foundViews.size();
-                for (int i = 0; i < viewCount; i++) {
-                    View foundView = foundViews.get(i);
-                    if (foundView.getVisibility() == View.VISIBLE) {
-                        infos.add(foundView.createAccessibilityNodeInfo());
-                    }
-                 }
-            } finally {
-                try {
-                    callback.setFindAccessibilityNodeInfosResult(infos, interactionId);
-                } catch (RemoteException re) {
-                    /* ignore - the other side will time out */
-                }
-            }
-        }
-
-        public void performAccessibilityActionClientThread(int accessibilityId, int action,
-                int interactionId, IAccessibilityInteractionConnectionCallback callback,
-                int interogatingPid, long interrogatingTid) {
-            Message message = Message.obtain();
-            message.what = DO_PERFORM_ACCESSIBILITY_ACTION;
-            SomeArgs args = mPool.acquire();
-            args.argi1 = accessibilityId;
-            args.argi2 = action;
-            args.argi3 = interactionId;
-            args.arg1 = callback;
-            message.obj = args;
-            // If the interrogation is performed by the same thread as the main UI
-            // thread in this process, set the message as a static reference so
-            // after this call completes the same thread but in the interrogating
-            // client can handle the message to generate the result.
-            if (interogatingPid == Process.myPid()
-                    && interrogatingTid == Looper.getMainLooper().getThread().getId()) {
-                message.setTarget(ViewRootImpl.this);
-                AccessibilityInteractionClient.getInstance().setSameThreadMessage(message);
-            } else {
-                sendMessage(message);
-            }
-        }
-
-        public void perfromAccessibilityActionUiThread(Message message) {
-            SomeArgs args = (SomeArgs) message.obj;
-            final int accessibilityId = args.argi1;
-            final int action = args.argi2;
-            final int interactionId = args.argi3;
-            final IAccessibilityInteractionConnectionCallback callback =
-                (IAccessibilityInteractionConnectionCallback) args.arg1;
-            mPool.release(args);
-
-            boolean succeeded = false;
-            try {
-                switch (action) {
-                    case AccessibilityNodeInfo.ACTION_FOCUS: {
-                        succeeded = performActionFocus(accessibilityId);
-                    } break;
-                    case AccessibilityNodeInfo.ACTION_CLEAR_FOCUS: {
-                        succeeded = performActionClearFocus(accessibilityId);
-                    } break;
-                    case AccessibilityNodeInfo.ACTION_SELECT: {
-                        succeeded = performActionSelect(accessibilityId);
-                    } break;
-                    case AccessibilityNodeInfo.ACTION_CLEAR_SELECTION: {
-                        succeeded = performActionClearSelection(accessibilityId);
-                    } break;
-                }
-            } finally {
-                try {
-                    callback.setPerformAccessibilityActionResult(succeeded, interactionId);
-                } catch (RemoteException re) {
-                    /* ignore - the other side will time out */
-                }
-            }
-        }
-
-        private boolean performActionFocus(int accessibilityId) {
-            View target = findViewByAccessibilityId(accessibilityId);
-            if (target == null || target.getVisibility() != View.VISIBLE) {
-                return false;
-            }
-            // Get out of touch mode since accessibility wants to move focus around.
-            ensureTouchMode(false);
-            return target.requestFocus();
-        }
-
-        private boolean performActionClearFocus(int accessibilityId) {
-            View target = findViewByAccessibilityId(accessibilityId);
-            if (target == null || target.getVisibility() != View.VISIBLE) {
-                return false;
-            }
-            if (!target.isFocused()) {
-                return false;
-            }
-            target.clearFocus();
-            return !target.isFocused();
-        }
-
-        private boolean performActionSelect(int accessibilityId) {
-            View target = findViewByAccessibilityId(accessibilityId);
-            if (target == null || target.getVisibility() != View.VISIBLE) {
-                return false;
-            }
-            if (target.isSelected()) {
-                return false;
-            }
-            target.setSelected(true);
-            return target.isSelected();
-        }
-
-        private boolean performActionClearSelection(int accessibilityId) {
-            View target = findViewByAccessibilityId(accessibilityId);
-            if (target == null || target.getVisibility() != View.VISIBLE) {
-                return false;
-            }
-            if (!target.isSelected()) {
-                return false;
-            }
-            target.setSelected(false);
-            return !target.isSelected();
-        }
-
-        private View findViewByAccessibilityId(int accessibilityId) {
-            View root = ViewRootImpl.this.mView;
-            if (root == null) {
-                return null;
-            }
-            View foundView = root.findViewByAccessibilityId(accessibilityId);
-            if (foundView != null && foundView.getVisibility() != View.VISIBLE) {
-                return null;
-            }
-            return foundView;
         }
     }
 
     private class SendWindowContentChangedAccessibilityEvent implements Runnable {
+        public View mSource;
         public volatile boolean mIsPending;
 
         public void run() {

@@ -153,6 +153,21 @@ public final class MediaStore {
     public static final String INTENT_ACTION_STILL_IMAGE_CAMERA = "android.media.action.STILL_IMAGE_CAMERA";
 
     /**
+     * The name of the Intent action used to launch a camera in still image mode
+     * for use when the device is secured (e.g. with a pin, password, pattern,
+     * or face unlock). Applications responding to this intent must not expose
+     * any personal content like existing photos or videos on the device. The
+     * applications should be careful not to share any photo or video with other
+     * applications or internet. The activity should use {@link
+     * android.view.WindowManager.LayoutParams#FLAG_SHOW_WHEN_LOCKED} to display
+     * on top of the lock screen while secured. There is no activity stack when
+     * this flag is used, so launching more than one activity is strongly
+     * discouraged.
+     */
+    public static final String INTENT_ACTION_STILL_IMAGE_CAMERA_SECURE =
+            "android.media.action.STILL_IMAGE_CAMERA_SECURE";
+
+    /**
      * The name of the Intent action used to launch a camera in video mode.
      */
     public static final String INTENT_ACTION_VIDEO_CAMERA = "android.media.action.VIDEO_CAMERA";

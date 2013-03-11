@@ -31,6 +31,7 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Point;
+import android.hardware.display.DisplayManagerGlobal;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.Parcel;
@@ -63,6 +64,55 @@ public class ActivityManager {
         mContext = context;
         mHandler = handler;
     }
+
+    /**
+     * Result for IActivityManaqer.startActivity: the caller asked that the Intent not
+     * be executed if it is the recipient, and that is indeed the case.
+     * @hide
+     */
+    public static final int START_RETURN_INTENT_TO_CALLER = 1;
+
+    /**
+     * Flag for IActivityManaqer.startActivity: do special start mode where
+     * a new activity is launched only if it is needed.
+     * @hide
+     */
+    public static final int START_FLAG_ONLY_IF_NEEDED = 1<<0;
+
+    /**
+     * Flag for IActivityManaqer.startActivity: launch the app for
+     * debugging.
+     * @hide
+     */
+    public static final int START_FLAG_DEBUG = 1<<1;
+
+    /**
+     * Flag for IActivityManaqer.startActivity: launch the app for
+     * OpenGL tracing.
+     * @hide
+     */
+    public static final int START_FLAG_OPENGL_TRACES = 1<<2;
+
+    /**
+     * Flag for IActivityManaqer.startActivity: if the app is being
+     * launched for profiling, automatically stop the profiler once done.
+     * @hide
+     */
+    public static final int START_FLAG_AUTO_STOP_PROFILER = 1<<3;
+
+    /**
+     * Type for IActivityManaqer.getIntentSender: this PendingIntent is
+     * for a startActivity operation.
+     * @hide
+     */
+    public static final int INTENT_SENDER_ACTIVITY = 2;
+
+    /**
+     * Type for IActivityManaqer.getIntentSender: this PendingIntent is
+     * for an activity result operation.
+     * @hide
+     */
+    public static final int INTENT_SENDER_ACTIVITY_RESULT = 3;
 
     /**
      * Screen compatibility mode: the application most always run in
@@ -216,7 +266,7 @@ public class ActivityManager {
      * (which tends to consume a lot more RAM).
      * @hide
      */
-    static public boolean isHighEndGfx(Display display) {
+    static public boolean isHighEndGfx() {
         MemInfoReader reader = new MemInfoReader();
         reader.readMemInfo();
         if (reader.getTotalSize() >= (512*1024*1024)) {
@@ -224,6 +274,9 @@ public class ActivityManager {
             // we can afford the overhead of graphics acceleration.
             return true;
         }
+
+        Display display = DisplayManagerGlobal.getInstance().getRealDisplay(
+                Display.DEFAULT_DISPLAY);
         Point p = new Point();
         display.getRealSize(p);
         int pixels = p.x * p.y;
@@ -652,7 +705,17 @@ public class ActivityManager {
             return null;
         }
     }
-    
+
+    /** @hide */
+    public Bitmap getTaskTopThumbnail(int id) throws SecurityException {
+        try {
+            return ActivityManagerNative.getDefault().getTaskTopThumbnail(id);
+        } catch (RemoteException e) {
+            // System dead, we will be dead too soon!
+            return null;
+        }
+    }
+
     /**
      * Flag for {@link #moveTaskToFront(int, int)}: also move the "home"
      * activity along with the task, so it is positioned immediately behind

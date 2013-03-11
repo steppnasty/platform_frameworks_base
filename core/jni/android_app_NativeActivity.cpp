@@ -25,7 +25,7 @@
 #include <android_runtime/android_view_Surface.h>
 #include <android_runtime/android_app_NativeActivity.h>
 #include <android_runtime/android_util_AssetManager.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <ui/egl/android_natives.h>
 #include <ui/InputTransport.h>
 #include <utils/Looper.h>
@@ -462,7 +462,7 @@ struct NativeCode : public ANativeActivity {
     
     void setSurface(jobject _surface) {
         if (_surface != NULL) {
-            nativeWindow = android_Surface_getNativeWindow(env, _surface);
+            nativeWindow = android_view_Surface_getNativeWindow(env, _surface);
         } else {
             nativeWindow = NULL;
         }

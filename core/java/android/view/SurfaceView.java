@@ -470,10 +470,10 @@ public class SurfaceView extends View {
                     relayoutResult = mSession.relayout(
                         mWindow, mWindow.mSeq, mLayout, mWidth, mHeight,
                             visible ? VISIBLE : GONE,
-                            WindowManagerImpl.RELAYOUT_DEFER_SURFACE_DESTROY,
+                            WindowManagerGlobal.RELAYOUT_DEFER_SURFACE_DESTROY,
                             mWinFrame, mContentInsets,
                             mVisibleInsets, mConfiguration, mNewSurface);
-                    if ((relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0) {
+                    if ((relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0) {
                         mReportDrawNeeded = true;
                     }
 
@@ -507,7 +507,7 @@ public class SurfaceView extends View {
                     SurfaceHolder.Callback callbacks[] = null;
 
                     final boolean surfaceChanged =
-                            (relayoutResult&WindowManagerImpl.RELAYOUT_RES_SURFACE_CHANGED) != 0;
+                            (relayoutResult&WindowManagerGlobal.RELAYOUT_RES_SURFACE_CHANGED) != 0;
                     if (mSurfaceCreated && (surfaceChanged || (!visible && visibleChanged))) {
                         mSurfaceCreated = false;
                         if (mSurface.isValid()) {
@@ -701,16 +701,7 @@ public class SurfaceView extends View {
         }
 
         public void setFormat(int format) {
-            switch (format) {
-                case STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_HALF_L_R:
-                case STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_R_L:
-                case STEREOSCOPIC_3D_FORMAT_TOP_BOTTOM:
-                case STEREOSCOPIC_3D_FORMAT_INTERLEAVED:
-                    mSurface.setStereoscopic3DFormat(format);
-                    return;
-                default:
-                    break;
-            }
+
             // for backward compatibility reason, OPAQUE always
             // means 565 for SurfaceView
             if (format == PixelFormat.OPAQUE)

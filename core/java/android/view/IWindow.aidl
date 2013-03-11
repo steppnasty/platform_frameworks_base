@@ -45,10 +45,12 @@ oneway interface IWindow {
      */
     void executeCommand(String command, String parameters, in ParcelFileDescriptor descriptor);
 
-    void resized(int w, int h, in Rect coveredInsets, in Rect visibleInsets,
-            boolean reportDraw, in Configuration newConfig);
+    void resized(in Rect frame, in Rect contentInsets,
+            in Rect visibleInsets, boolean reportDraw, in Configuration newConfig);
+    void moved(int newX, int newY);
     void dispatchAppVisibility(boolean visible);
     void dispatchGetNewSurface();
+    void dispatchScreenState(boolean on);
 
     /**
      * Tell the window that it is either gaining or losing focus.  Keep it up
@@ -76,4 +78,11 @@ oneway interface IWindow {
      */
      void dispatchSystemUiVisibilityChanged(int seq, int globalVisibility,
             int localValue, int localChanges);
+
+    /**
+     * If the window manager returned RELAYOUT_RES_ANIMATING
+     * from relayout(), this method will be called when the animation
+     * is done.
+     */
+    void doneAnimating();
 }

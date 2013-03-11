@@ -35,6 +35,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.MeasureSpec;
 import android.view.ViewGroup;
+import android.widget.RemoteViews.OnClickHandler;
 
 import com.android.internal.widget.IRemoteViewsAdapterConnection;
 import com.android.internal.widget.IRemoteViewsFactory;
@@ -67,6 +68,7 @@ public class RemoteViewsAdapter extends BaseAdapter implements Handler.Callback 
     private LayoutInflater mLayoutInflater;
     private RemoteViewsAdapterServiceConnection mServiceConnection;
     private WeakReference<RemoteAdapterConnectionCallback> mCallback;
+    private OnClickHandler mRemoteViewsOnClickHandler;
     private FixedSizeRemoteViewsCache mCache;
 
     // A flag to determine whether we should notify data set changed after we connect
@@ -590,7 +592,7 @@ public class RemoteViewsAdapter extends BaseAdapter implements Handler.Callback 
             for (Integer i : mIndexRemoteViews.keySet()) {
                 final RemoteViews v = mIndexRemoteViews.get(i);
                 if (v != null) {
-                    mem += v.estimateBitmapMemoryUsage();
+                    mem += v.estimateMemoryUsage();
                 }
             }
             return mem;
@@ -748,6 +750,10 @@ public class RemoteViewsAdapter extends BaseAdapter implements Handler.Callback 
         } finally {
             super.finalize();
         }
+    }
+
+    public void setRemoteViewsOnClickHandler(OnClickHandler handler) {
+        mRemoteViewsOnClickHandler = handler;
     }
 
     private void loadNextIndexInBackground() {

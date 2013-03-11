@@ -28,6 +28,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.SystemClock;
@@ -204,6 +205,81 @@ public class AppWidgetHostView extends FrameLayout {
         if (jail == null) jail = new ParcelableSparseArray();
 
         super.dispatchRestoreInstanceState(jail);
+    }
+
+    /**
+     * Provide guidance about the size of this widget to the AppWidgetManager. The widths and
+     * heights should correspond to the full area the AppWidgetHostView is given. Padding added by
+     * the framework will be accounted for automatically. This information gets embedded into the
+     * AppWidget options and causes a callback to the AppWidgetProvider.
+     * @see AppWidgetProvider#onAppWidgetOptionsChanged(Context, AppWidgetManager, int, Bundle)
+     *
+     * @param newOptions The bundle of options, in addition to the size information,
+     *          can be null.
+     * @param minWidth The minimum width in dips that the widget will be displayed at.
+     * @param minHeight The maximum height in dips that the widget will be displayed at.
+     * @param maxWidth The maximum width in dips that the widget will be displayed at.
+     * @param maxHeight The maximum height in dips that the widget will be displayed at.
+     *
+     */
+    public void updateAppWidgetSize(Bundle newOptions, int minWidth, int minHeight, int maxWidth,
+            int maxHeight) {
+        updateAppWidgetSize(newOptions, minWidth, minHeight, maxWidth, maxHeight, false);
+    }
+
+    /**
+     * @hide
+     */
+    public void updateAppWidgetSize(Bundle newOptions, int minWidth, int minHeight, int maxWidth,
+            int maxHeight, boolean ignorePadding) {
+        if (newOptions == null) {
+            newOptions = new Bundle();
+        }
+
+        Rect padding = new Rect();
+        if (mInfo != null) {
+            padding = getDefaultPaddingForWidget(mContext, mInfo.provider, padding);
+        }
+        float density = getResources().getDisplayMetrics().density;
+
+        int xPaddingDips = (int) ((padding.left + padding.right) / density);
+        int yPaddingDips = (int) ((padding.top + padding.bottom) / density);
+
+        int newMinWidth = minWidth - (ignorePadding ? 0 : xPaddingDips);
+        int newMinHeight = minHeight - (ignorePadding ? 0 : yPaddingDips);
+        int newMaxWidth = maxWidth - (ignorePadding ? 0 : xPaddingDips);
+        int newMaxHeight = maxHeight - (ignorePadding ? 0 : yPaddingDips);
+
+        AppWidgetManager widgetManager = AppWidgetManager.getInstance(mContext);
+
+        // We get the old options to see if the sizes have changed
+        Bundle oldOptions = widgetManager.getAppWidgetOptions(mAppWidgetId);
+        boolean needsUpdate = false;
+        if (newMinWidth != oldOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ||
+                newMinHeight != oldOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ||
+                newMaxWidth != oldOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH) ||
+                newMaxHeight != oldOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)) {
+            needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+            newOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, newMinWidth);
+            newOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, newMinHeight);
+            newOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, newMaxWidth);
+            newOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, newMaxHeight);
+            updateAppWidgetOptions(newOptions);
+        }
+    }
+
+    /**
+     * Specify some extra information for the widget provider. Causes a callback to the
+     * AppWidgetProvider.
+     * @see AppWidgetProvider#onAppWidgetOptionsChanged(Context, AppWidgetManager, int, Bundle)
+     *
+     * @param options The bundle of options information.
+     */
+    public void updateAppWidgetOptions(Bundle options) {
+        AppWidgetManager.getInstance(mContext).updateAppWidgetOptions(mAppWidgetId, options);
     }
 
     /** {@inheritDoc} */

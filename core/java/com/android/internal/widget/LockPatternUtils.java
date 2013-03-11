@@ -21,6 +21,7 @@ import com.android.internal.telephony.ITelephony;
 import com.google.android.collect.Lists;
 
 import android.app.admin.DevicePolicyManager;
+import android.appwidget.AppWidgetManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -36,6 +37,7 @@ import android.security.KeyStore;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.IWindowManager;
 import android.view.View;
 import android.widget.Button;
 
@@ -99,11 +101,37 @@ public class LockPatternUtils {
     public static final int MIN_LOCK_PATTERN_SIZE = 4;
 
     /**
+     * The default size of the pattern lockscreen. Ex: 3x3
+     */
+    public static final byte PATTERN_SIZE_DEFAULT = 3;
+
+    /**
      * The minimum number of dots the user must include in a wrong pattern
      * attempt for it to be counted against the counts that affect
      * {@link #FAILED_ATTEMPTS_BEFORE_TIMEOUT} and {@link #FAILED_ATTEMPTS_BEFORE_RESET}
      */
     public static final int MIN_PATTERN_REGISTER_FAIL = MIN_LOCK_PATTERN_SIZE;
+
+    /**
+     * Tells the keyguard to show the security challenge when the keyguard is created.
+     */
+    public static final String KEYGUARD_SHOW_SECURITY_CHALLENGE = "showsecuritychallenge";
+
+    /**
+     * Tells the keyguard to show the widget with the specified id when the keyguard is created.
+     */
+    public static final String KEYGUARD_SHOW_APPWIDGET = "showappwidget";
+
+    /**
+     * The bit in LOCK_BIOMETRIC_WEAK_FLAGS to be used to indicate whether liveliness should
+     * be used
+     */
+    public static final int FLAG_BIOMETRIC_WEAK_LIVELINESS = 0x1;
+
+    /**
+     * Pseudo-appwidget id we use to represent the default clock status widget
+     */
+    public static final int ID_DEFAULT_STATUS_WIDGET = -2;
 
     private final static String LOCKOUT_PERMANENT_KEY = "lockscreen.lockedoutpermanently";
     private final static String LOCKOUT_ATTEMPT_DEADLINE = "lockscreen.lockoutattemptdeadline";
@@ -125,6 +153,7 @@ public class LockPatternUtils {
     private final Context mContext;
     private final ContentResolver mContentResolver;
     private DevicePolicyManager mDevicePolicyManager;
+    private ILockSettings mLockSettingsService;
     private static String sLockPatternFilename;
     private static String sLockPasswordFilename;
 
@@ -182,6 +211,14 @@ public class LockPatternUtils {
             sPasswordObserver = new PasswordFileObserver(dataSystemDirectory, fileObserverMask);
             sPasswordObserver.startWatching();
         }
+    }
+
+    private ILockSettings getLockSettings() {
+        if (mLockSettingsService == null) {
+            mLockSettingsService = ILockSettings.Stub.asInterface(
+                (IBinder) ServiceManager.getService("lock_settings"));
+        }
+        return mLockSettingsService;
     }
 
     public int getRequestedMinimumPasswordLength() {
@@ -714,13 +751,16 @@ public class LockPatternUtils {
      * @param string The pattern serialized with {@link #patternToString}
      * @return The pattern.
      */
-    public static List<LockPatternView.Cell> stringToPattern(String string) {
+    public List<LockPatternView.Cell> stringToPattern(String string) {
         List<LockPatternView.Cell> result = Lists.newArrayList();
+
+        final byte size = getLockPatternSize();
+        LockPatternView.Cell.updateSize(size);
 
         final byte[] bytes = string.getBytes();
         for (int i = 0; i < bytes.length; i++) {
             byte b = bytes[i];
-            result.add(LockPatternView.Cell.of(b / 3, b % 3));
+            result.add(LockPatternView.Cell.of(b / size, b % size, size));
         }
         return result;
     }
@@ -883,6 +923,28 @@ public class LockPatternUtils {
     }
 
     /**
+     * Set whether biometric weak liveliness is enabled.
+     */
+    public void setBiometricWeakLivelinessEnabled(boolean enabled) {
+        long currentFlag = getLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, 0L);
+        long newFlag;
+        if (enabled) {
+            newFlag = currentFlag | FLAG_BIOMETRIC_WEAK_LIVELINESS;
+        } else {
+            newFlag = currentFlag & ~FLAG_BIOMETRIC_WEAK_LIVELINESS;
+        }
+        setLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, newFlag);
+    }
+
+    /**
+     * @return Whether the biometric weak liveliness is enabled.
+     */
+    public boolean isBiometricWeakLivelinessEnabled() {
+        long currentFlag = getLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, 0L);
+        return ((currentFlag & FLAG_BIOMETRIC_WEAK_LIVELINESS) != 0);
+    }
+
+    /**
      * Set whether the lock pattern is enabled.
      */
     public void setLockPatternEnabled(boolean enabled) {
@@ -915,6 +977,24 @@ public class LockPatternUtils {
      */
     public void setTactileFeedbackEnabled(boolean enabled) {
         setBoolean(Settings.Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED, enabled);
+    }
+
+    /**
+     * @return the pattern lockscreen size
+     */
+    public byte getLockPatternSize() {
+        try {
+            return getLockSettings().getLockPatternSize();
+        } catch (RemoteException re) {
+            return PATTERN_SIZE_DEFAULT;
+        }
+    }
+
+    /**
+     * Set the pattern lockscreen size
+     */
+    public void setLockPatternSize(long size) {
+        setLong(Settings.Secure.LOCK_PATTERN_SIZE, size);
     }
 
     /**
@@ -1002,6 +1082,133 @@ public class LockPatternUtils {
                                                 enabled ? 1 : 0);
     }
 
+    public int[] getAppWidgets() {
+        String appWidgetIdString = Settings.Secure.getString(
+                mContentResolver, Settings.Secure.LOCK_SCREEN_APPWIDGET_IDS);
+        String delims = ",";
+        if (appWidgetIdString != null && appWidgetIdString.length() > 0) {
+            String[] appWidgetStringIds = appWidgetIdString.split(delims);
+            int[] appWidgetIds = new int[appWidgetStringIds.length];
+            for (int i = 0; i < appWidgetStringIds.length; i++) {
+                String appWidget = appWidgetStringIds[i];
+                try {
+                    appWidgetIds[i] = Integer.decode(appWidget);
+                } catch (NumberFormatException e) {
+                    Log.d(TAG, "Error when parsing widget id " + appWidget);
+                    return null;
+                }
+            }
+            return appWidgetIds;
+        }
+        return new int[0];
+    }
+
+    private static String combineStrings(int[] list, String separator) {
+        int listLength = list.length;
+
+        switch (listLength) {
+            case 0: {
+                return "";
+            }
+            case 1: {
+                return Integer.toString(list[0]);
+            }
+        }
+
+        int strLength = 0;
+        int separatorLength = separator.length();
+
+        String[] stringList = new String[list.length];
+        for (int i = 0; i < listLength; i++) {
+            stringList[i] = Integer.toString(list[i]);
+            strLength += stringList[i].length();
+            if (i < listLength - 1) {
+                strLength += separatorLength;
+            }
+        }
+
+        StringBuilder sb = new StringBuilder(strLength);
+
+        for (int i = 0; i < listLength; i++) {
+            sb.append(list[i]);
+            if (i < listLength - 1) {
+                sb.append(separator);
+            }
+        }
+
+        return sb.toString();
+    }
+
+    // appwidget used when appwidgets are disabled (we make an exception for
+    // default clock widget)
+    public void writeFallbackAppWidgetId(int appWidgetId) {
+        Settings.Secure.putInt(mContentResolver,
+                Settings.Secure.LOCK_SCREEN_FALLBACK_APPWIDGET_ID,
+                appWidgetId);
+    }
+
+    // appwidget used when appwidgets are disabled (we make an exception for
+    // default clock widget)
+    public int getFallbackAppWidgetId() {
+        return Settings.Secure.getInt(
+                mContentResolver,
+                Settings.Secure.LOCK_SCREEN_FALLBACK_APPWIDGET_ID,
+                AppWidgetManager.INVALID_APPWIDGET_ID);
+    }
+
+    private void writeAppWidgets(int[] appWidgetIds) {
+        Settings.Secure.putString(mContentResolver,
+                        Settings.Secure.LOCK_SCREEN_APPWIDGET_IDS,
+                        combineStrings(appWidgetIds, ","));
+    }
+
+    // TODO: log an error if this returns false
+    public boolean addAppWidget(int widgetId, int index) {
+        int[] widgets = getAppWidgets();
+        if (widgets == null) {
+            return false;
+        }
+        if (index < 0 || index > widgets.length) {
+            return false;
+        }
+        int[] newWidgets = new int[widgets.length + 1];
+        for (int i = 0, j = 0; i < newWidgets.length; i++) {
+            if (index == i) {
+                newWidgets[i] = widgetId;
+                i++;
+            }
+            if (i < newWidgets.length) {
+                newWidgets[i] = widgets[j];
+                j++;
+            }
+        }
+        writeAppWidgets(newWidgets);
+        return true;
+    }
+
+    public boolean removeAppWidget(int widgetId) {
+        int[] widgets = getAppWidgets();
+
+        if (widgets.length == 0) {
+            return false;
+        }
+
+        int[] newWidgets = new int[widgets.length - 1];
+        for (int i = 0, j = 0; i < widgets.length; i++) {
+            if (widgets[i] == widgetId) {
+                // continue...
+            } else if (j >= newWidgets.length) {
+                // we couldn't find the widget
+                return false;
+            } else {
+                newWidgets[j] = widgets[i];
+                j++;
+            }
+        }
+        writeAppWidgets(newWidgets);
+        return true;
+    }
+
     private long getLong(String secureSettingKey, long def) {
         return android.provider.Settings.Secure.getLong(mContentResolver, secureSettingKey, def);
     }
@@ -1043,8 +1250,13 @@ public class LockPatternUtils {
      *  {@link TelephonyManager#CALL_STATE_RINGING}
      *  {@link TelephonyManager#CALL_STATE_OFFHOOK}
      * @param shown indicates whether the given screen wants the emergency button to show at all
+     * @param button
+     * @param phoneState
+     * @param shown shown if true; hidden if false
+     * @param upperCase if true, converts button label string to upper case
      */
-    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown) {
+    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown,
+            boolean upperCase, boolean showIcon) {
         if (isEmergencyCallCapable() && shown) {
             button.setVisibility(View.VISIBLE);
         } else {
@@ -1056,14 +1268,30 @@ public class LockPatternUtils {
         if (phoneState == TelephonyManager.CALL_STATE_OFFHOOK) {
             // show "return to call" text and show phone icon
             textId = R.string.lockscreen_return_to_call;
-            int phoneCallIcon = R.drawable.stat_sys_phone_call;
+            int phoneCallIcon = showIcon ? R.drawable.stat_sys_phone_call : 0;
             button.setCompoundDrawablesWithIntrinsicBounds(phoneCallIcon, 0, 0, 0);
         } else {
             textId = R.string.lockscreen_emergency_call;
-            int emergencyIcon = R.drawable.ic_emergency;
+            int emergencyIcon = showIcon ? R.drawable.ic_emergency : 0;
             button.setCompoundDrawablesWithIntrinsicBounds(emergencyIcon, 0, 0, 0);
         }
-        button.setText(textId);
+        if (upperCase) {
+            CharSequence original = mContext.getResources().getText(textId);
+            String upper = original != null ? original.toString().toUpperCase() : null;
+            button.setText(upper);
+        } else {
+            button.setText(textId);
+        }
+    }
+
+    /**
+     * @deprecated
+     * @param button
+     * @param phoneState
+     * @param shown
+     */
+    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown) {
+        updateEmergencyCallButtonState(button, phoneState, shown, false, true);
     }
 
     /**
@@ -1101,6 +1329,16 @@ public class LockPatternUtils {
 
     public boolean getPowerButtonInstantlyLocks() {
         return getBoolean(LOCKSCREEN_POWER_BUTTON_INSTANTLY_LOCKS, true);
+    }
+
+    public static boolean isSafeModeEnabled() {
+        try {
+            return IWindowManager.Stub.asInterface(
+                    ServiceManager.getService("window")).isSafeModeEnabled();
+        } catch (RemoteException e) {
+            // Shouldn't happen!
+        }
+        return false;
     }
 
 }

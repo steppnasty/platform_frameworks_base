@@ -17,6 +17,7 @@
 
 package android.os;
 
+import java.util.ArrayList;
 
 /**
  * Gives access to the system properties store.  The system properties
@@ -33,12 +34,15 @@ public class SystemProperties
     public static final boolean QCOM_HARDWARE = native_get_boolean("com.qc.hardware", false);
     public static final boolean QCOM_HDMI_OUT = native_get_boolean("com.qc.hdmi_out", false);
 
+    private static final ArrayList<Runnable> sChangeCallbacks = new ArrayList<Runnable>();
+
     private static native String native_get(String key);
     private static native String native_get(String key, String def);
     private static native int native_get_int(String key, int def);
     private static native long native_get_long(String key, long def);
     private static native boolean native_get_boolean(String key, boolean def);
     private static native void native_set(String key, String def);
+    private static native void native_add_change_callback();
 
     /**
      * Get the value for the given key.
@@ -128,6 +132,15 @@ public class SystemProperties
                 PROP_VALUE_MAX);
         }
         native_set(key, val);
+    }
+
+    public static void addChangeCallback(Runnable callback) {
+        synchronized (sChangeCallbacks) {
+            if (sChangeCallbacks.size() == 0) {
+                native_add_change_callback();
+            }
+            sChangeCallbacks.add(callback);
+        }
     }
 
     /**

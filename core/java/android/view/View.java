@@ -38,6 +38,8 @@ import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.hardware.display.DisplayManagerGlobal;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -45,6 +47,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.FloatProperty;
@@ -58,10 +61,15 @@ import android.util.Property;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.ContextMenu.ContextMenuInfo;
+import android.view.AccessibilityIterators.TextSegmentIterator;
+import android.view.AccessibilityIterators.CharacterTextSegmentIterator;
+import android.view.AccessibilityIterators.WordTextSegmentIterator;
+import android.view.AccessibilityIterators.ParagraphTextSegmentIterator;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityEventSource;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.EditorInfo;
@@ -636,6 +644,13 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      * The logging tag used by this class with android.util.Log.
      */
     protected static final String VIEW_LOG_TAG = "View";
+
+    /**
+     * When set to true, apps will draw debugging information about their layouts.
+     *
+     * @hide
+     */
+    public static final String DEBUG_LAYOUT_PROPERTY = "debug.layout";
 
     /**
      * Used to mark a View that has no ID.
@@ -1554,6 +1569,11 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     int mAccessibilityViewId = NO_ID;
 
     /**
+     * @hide
+     */
+    private int mAccessibilityCursorPosition = ACCESSIBILITY_CURSOR_POSITION_UNDEFINED;
+
+    /**
      * The view's tag.
      * {@hide}
      *
@@ -1759,6 +1779,53 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
 
     static final int DRAG_MASK = DRAG_CAN_ACCEPT | DRAG_HOVERED;
 
+    // Accessiblity constants for mPrivateFlags2
+
+    /**
+     * Shift for the bits in {@link #mPrivateFlags2} related to the
+     * "importantForAccessibility" attribute.
+     */
+    static final int PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT = 20;
+
+    /**
+     * Automatically determine whether a view is important for accessibility.
+     */
+    public static final int IMPORTANT_FOR_ACCESSIBILITY_AUTO = 0x00000000;
+
+    /**
+     * The view is important for accessibility.
+     */
+    public static final int IMPORTANT_FOR_ACCESSIBILITY_YES = 0x00000001;
+
+    /**
+     * The view is not important for accessibility.
+     */
+    public static final int IMPORTANT_FOR_ACCESSIBILITY_NO = 0x00000002;
+
+    /**
+     * The default whether the view is important for accessibility.
+     */
+    static final int IMPORTANT_FOR_ACCESSIBILITY_DEFAULT = IMPORTANT_FOR_ACCESSIBILITY_AUTO;
+
+    /**
+     * Mask for obtainig the bits which specify how to determine
+     * whether a view is important for accessibility.
+     */
+    static final int PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_MASK = (IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        | IMPORTANT_FOR_ACCESSIBILITY_YES | IMPORTANT_FOR_ACCESSIBILITY_NO)
+        << PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
+
+    /**
+     * Flag indicating whether a view has accessibility focus.
+     */
+    static final int PFLAG2_ACCESSIBILITY_FOCUSED = 0x00000040 << PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
+
+    /**
+     * Flag indicating whether a view state for accessibility has changed.
+     */
+    static final int PFLAG2_ACCESSIBILITY_STATE_CHANGED = 0x00000080
+            << PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
+
     /**
      * Always allow a user to over-scroll this view, provided it is a
      * view that can scroll.
@@ -1821,6 +1888,100 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      * @see #setSystemUiVisibility(int)
      */
     public static final int SYSTEM_UI_FLAG_HIDE_NAVIGATION = 0x00000002;
+
+    /**
+     * Flag for {@link #setSystemUiVisibility(int)}: View has requested to go
+     * into the normal fullscreen mode so that its content can take over the screen
+     * while still allowing the user to interact with the application.
+     *
+     * <p>This has the same visual effect as
+     * {@link android.view.WindowManager.LayoutParams#FLAG_FULLSCREEN
+     * WindowManager.LayoutParams.FLAG_FULLSCREEN},
+     * meaning that non-critical screen decorations (such as the status bar) will be
+     * hidden while the user is in the View's window, focusing the experience on
+     * that content.  Unlike the window flag, if you are using ActionBar in
+     * overlay mode with {@link Window#FEATURE_ACTION_BAR_OVERLAY
+     * Window.FEATURE_ACTION_BAR_OVERLAY}, then enabling this flag will also
+     * hide the action bar.
+     *
+     * <p>This approach to going fullscreen is best used over the window flag when
+     * it is a transient state -- that is, the application does this at certain
+     * points in its user interaction where it wants to allow the user to focus
+     * on content, but not as a continuous state.  For situations where the application
+     * would like to simply stay full screen the entire time (such as a game that
+     * wants to take over the screen), the
+     * {@link android.view.WindowManager.LayoutParams#FLAG_FULLSCREEN window flag}
+     * is usually a better approach.  The state set here will be removed by the system
+     * in various situations (such as the user moving to another application) like
+     * the other system UI states.
+     *
+     * <p>When using this flag, the application should provide some easy facility
+     * for the user to go out of it.  A common example would be in an e-book
+     * reader, where tapping on the screen brings back whatever screen and UI
+     * decorations that had been hidden while the user was immersed in reading
+     * the book.
+     *
+     * @see #setSystemUiVisibility(int)
+     */
+    public static final int SYSTEM_UI_FLAG_FULLSCREEN = 0x00000004;
+
+    /**
+     * Flag for {@link #setSystemUiVisibility(int)}: When using other layout
+     * flags, we would like a stable view of the content insets given to
+     * {@link #fitSystemWindows(Rect)}.  This means that the insets seen there
+     * will always represent the worst case that the application can expect
+     * as a continuous state.  In the stock Android UI this is the space for
+     * the system bar, nav bar, and status bar, but not more transient elements
+     * such as an input method.
+     *
+     * The stable layout your UI sees is based on the system UI modes you can
+     * switch to.  That is, if you specify {@link #SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN}
+     * then you will get a stable layout for changes of the
+     * {@link #SYSTEM_UI_FLAG_FULLSCREEN} mode; if you specify
+     * {@link #SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN} and
+     * {@link #SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION}, then you can transition
+     * to {@link #SYSTEM_UI_FLAG_FULLSCREEN} and {@link #SYSTEM_UI_FLAG_HIDE_NAVIGATION}
+     * with a stable layout.  (Note that you should avoid using
+     * {@link #SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION} by itself.)
+     *
+     * If you have set the window flag {@link WindowManager.LayoutParams#FLAG_FULLSCREEN}
+     * to hide the status bar (instead of using {@link #SYSTEM_UI_FLAG_FULLSCREEN}),
+     * then a hidden status bar will be considered a "stable" state for purposes
+     * here.  This allows your UI to continually hide the status bar, while still
+     * using the system UI flags to hide the action bar while still retaining
+     * a stable layout.  Note that changing the window fullscreen flag will never
+     * provide a stable layout for a clean transition.
+     *
+     * <p>If you are using ActionBar in
+     * overlay mode with {@link Window#FEATURE_ACTION_BAR_OVERLAY
+     * Window.FEATURE_ACTION_BAR_OVERLAY}, this flag will also impact the
+     * insets it adds to those given to the application.
+     */
+    public static final int SYSTEM_UI_FLAG_LAYOUT_STABLE = 0x00000100;
+
+    /**
+     * Flag for {@link #setSystemUiVisibility(int)}: View would like its window
+     * to be layed out as if it has requested
+     * {@link #SYSTEM_UI_FLAG_HIDE_NAVIGATION}, even if it currently hasn't.  This
+     * allows it to avoid artifacts when switching in and out of that mode, at
+     * the expense that some of its user interface may be covered by screen
+     * decorations when they are shown.  You can perform layout of your inner
+     * UI elements to account for the navagation system UI through the
+     * {@link #fitSystemWindows(Rect)} method.
+     */
+    public static final int SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION = 0x00000200;
+
+    /**
+     * Flag for {@link #setSystemUiVisibility(int)}: View would like its window
+     * to be layed out as if it has requested
+     * {@link #SYSTEM_UI_FLAG_FULLSCREEN}, even if it currently hasn't.  This
+     * allows it to avoid artifacts when switching in and out of that mode, at
+     * the expense that some of its user interface may be covered by screen
+     * decorations when they are shown.  You can perform layout of your inner
+     * UI elements to account for non-fullscreen system UI through the
+     * {@link #fitSystemWindows(Rect)} method.
+     */
+    public static final int SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN = 0x00000400;
 
     /**
      * @deprecated Use {@link #SYSTEM_UI_FLAG_LOW_PROFILE} instead.
@@ -1933,6 +2094,17 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     /**
      * @hide
      *
+     * NOTE: This flag may only be used in subtreeSystemUiVisibility. It is masked
+     * out of the public fields to keep the undefined bits out of the developer's way.
+     *
+     * Flag to disable the global search gesture. Don't use this
+     * unless you're a special part of the system UI (i.e, setup wizard, keyguard).
+     */
+    public static final int STATUS_BAR_DISABLE_SEARCH = 0x02000000;
+
+    /**
+     * @hide
+     *
      * NOTE: This flag may only be used in subtreeSystemUiVisibility, etc. etc.
      *
      * This hides HOME and RECENT and is provided for compatibility with interim implementations.
@@ -1968,6 +2140,26 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      * @see #findViewsWithText(ArrayList, CharSequence, int)
      */
     public static final int FIND_VIEWS_WITH_CONTENT_DESCRIPTION = 0x00000002;
+
+    /**
+     * Find views that contain {@link AccessibilityNodeProvider}. Such
+     * a View is a root of virtual view hierarchy and may contain the searched
+     * text. If this flag is set Views with providers are automatically
+     * added and it is a responsibility of the client to call the APIs of
+     * the provider to determine whether the virtual tree rooted at this View
+     * contains the text, i.e. getting the list of {@link AccessibilityNodeInfo}s
+     * represeting the virtual views with this text.
+     *
+     * @see #findViewsWithText(ArrayList, CharSequence, int)
+     *
+     * @hide
+     */
+    public static final int FIND_VIEWS_WITH_ACCESSIBILITY_NODE_PROVIDERS = 0x00000004;
+
+    /**
+     * The undefined cursor position.
+     */
+    private static final int ACCESSIBILITY_CURSOR_POSITION_UNDEFINED = -1;
 
     /**
      * Controls the over-scroll mode for this view.
@@ -3899,6 +4091,26 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     }
 
     /**
+     * Convenience method for sending a {@link AccessibilityEvent#TYPE_ANNOUNCEMENT}
+     * {@link AccessibilityEvent} to make an announcement which is related to some
+     * sort of a context change for which none of the events representing UI transitions
+     * is a good fit. For example, announcing a new page in a book. If accessibility
+     * is not enabled this method does nothing.
+     *
+     * @param text The announcement text.
+     */
+    public void announceForAccessibility(CharSequence text) {
+        if (AccessibilityManager.getInstance(mContext).isEnabled() && mParent != null) {
+            AccessibilityEvent event = AccessibilityEvent.obtain(
+                    AccessibilityEvent.TYPE_ANNOUNCEMENT);
+            onInitializeAccessibilityEvent(event);
+            event.getText().add(text);
+            event.setContentDescription(null);
+            mParent.requestSendAccessibilityEvent(this, event);
+        }
+    }
+
+    /**
      * @see #sendAccessibilityEvent(int)
      *
      * Note: Called from the default {@link AccessibilityDelegate}.
@@ -4217,6 +4429,36 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      */
     public void setAccessibilityDelegate(AccessibilityDelegate delegate) {
         mAccessibilityDelegate = delegate;
+    }
+
+    /**
+     * Gets the provider for managing a virtual view hierarchy rooted at this View
+     * and reported to {@link android.accessibilityservice.AccessibilityService}s
+     * that explore the window content.
+     * <p>
+     * If this method returns an instance, this instance is responsible for managing
+     * {@link AccessibilityNodeInfo}s describing the virtual sub-tree rooted at this
+     * View including the one representing the View itself. Similarly the returned
+     * instance is responsible for performing accessibility actions on any virtual
+     * view or the root view itself.
+     * </p>
+     * <p>
+     * If an {@link AccessibilityDelegate} has been specified via calling
+     * {@link #setAccessibilityDelegate(AccessibilityDelegate)} its
+     * {@link AccessibilityDelegate#getAccessibilityNodeProvider(View)}
+     * is responsible for handling this call.
+     * </p>
+     *
+     * @return The provider.
+     *
+     * @see AccessibilityNodeProvider
+     */
+    public AccessibilityNodeProvider getAccessibilityNodeProvider() {
+        if (mAccessibilityDelegate != null) {
+            return mAccessibilityDelegate.getAccessibilityNodeProvider(this);
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -5282,6 +5524,90 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     }
 
     /**
+     * Returns whether this View is accessibility focused.
+     *
+     * @return True if this View is accessibility focused.
+     */
+    boolean isAccessibilityFocused() {
+        return (mPrivateFlags2 & PFLAG2_ACCESSIBILITY_FOCUSED) != 0;
+    }
+
+    /**
+     * Call this to try to give accessibility focus to this view.
+     *
+     * A view will not actually take focus if {@link AccessibilityManager#isEnabled()}
+     * returns false or the view is no visible or the view already has accessibility
+     * focus.
+     *
+     * See also {@link #focusSearch(int)}, which is what you call to say that you
+     * have focus, and you want your parent to look for the next one.
+     *
+     * @return Whether this view actually took accessibility focus.
+     *
+     * @hide
+     */
+    public boolean requestAccessibilityFocus() {
+        AccessibilityManager manager = AccessibilityManager.getInstance(mContext);
+        if (!manager.isEnabled() || !manager.isTouchExplorationEnabled()) {
+            return false;
+        }
+        if ((mViewFlags & VISIBILITY_MASK) != VISIBLE) {
+            return false;
+        }
+        if ((mPrivateFlags2 & PFLAG2_ACCESSIBILITY_FOCUSED) == 0) {
+            mPrivateFlags2 |= PFLAG2_ACCESSIBILITY_FOCUSED;
+            ViewRootImpl viewRootImpl = getViewRootImpl();
+            if (viewRootImpl != null) {
+                viewRootImpl.setAccessibilityFocus(this, null);
+            }
+            invalidate();
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
+            notifyAccessibilityStateChanged();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Call this to try to clear accessibility focus of this view.
+     *
+     * See also {@link #focusSearch(int)}, which is what you call to say that you
+     * have focus, and you want your parent to look for the next one.
+     *
+     * @hide
+     */
+    public void clearAccessibilityFocus() {
+        if ((mPrivateFlags2 & PFLAG2_ACCESSIBILITY_FOCUSED) != 0) {
+            mPrivateFlags2 &= ~PFLAG2_ACCESSIBILITY_FOCUSED;
+            invalidate();
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED);
+            notifyAccessibilityStateChanged();
+        }
+        // Clear the global reference of accessibility focus if this
+        // view or any of its descendants had accessibility focus.
+        ViewRootImpl viewRootImpl = getViewRootImpl();
+        if (viewRootImpl != null) {
+            View focusHost = viewRootImpl.getAccessibilityFocusedHost();
+            if (focusHost != null && ViewRootImpl.isViewDescendantOf(focusHost, this)) {
+                viewRootImpl.setAccessibilityFocus(null, null);
+            }
+        }
+    }
+
+    /**
+     * Clears accessibility focus without calling any callback methods
+     * normally invoked in {@link #clearAccessibilityFocus()}. This method
+     * is used for clearing accessibility focus when giving this focus to
+     * another view.
+     */
+    void clearAccessibilityFocusNoCallbacks() {
+        if ((mPrivateFlags2 & PFLAG2_ACCESSIBILITY_FOCUSED) != 0) {
+            mPrivateFlags2 &= ~PFLAG2_ACCESSIBILITY_FOCUSED;
+            invalidate();
+        }
+    }
+
+    /**
      * Call this to try to give focus to a specific view or to one of its
      * descendants.
      *
@@ -5415,6 +5741,410 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
             }
         }
         return false;
+    }
+
+    /**
+     * Gets the mode for determining whether this View is important for accessibility
+     * which is if it fires accessibility events and if it is reported to
+     * accessibility services that query the screen.
+     *
+     * @return The mode for determining whether a View is important for accessibility.
+     *
+     * @attr ref android.R.styleable#View_importantForAccessibility
+     *
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_YES
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_NO
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_AUTO
+     */
+    @ViewDebug.ExportedProperty(category = "accessibility", mapping = {
+            @ViewDebug.IntToString(from = IMPORTANT_FOR_ACCESSIBILITY_AUTO, to = "auto"),
+            @ViewDebug.IntToString(from = IMPORTANT_FOR_ACCESSIBILITY_YES, to = "yes"),
+            @ViewDebug.IntToString(from = IMPORTANT_FOR_ACCESSIBILITY_NO, to = "no")
+        })
+    public int getImportantForAccessibility() {
+        return (mPrivateFlags2 & PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_MASK)
+                >> PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
+    }
+
+    /**
+     * Sets how to determine whether this view is important for accessibility
+     * which is if it fires accessibility events and if it is reported to
+     * accessibility services that query the screen.
+     *
+     * @param mode How to determine whether this view is important for accessibility.
+     *
+     * @attr ref android.R.styleable#View_importantForAccessibility
+     *
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_YES
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_NO
+     * @see #IMPORTANT_FOR_ACCESSIBILITY_AUTO
+     */
+    public void setImportantForAccessibility(int mode) {
+        if (mode != getImportantForAccessibility()) {
+            mPrivateFlags2 &= ~PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_MASK;
+            mPrivateFlags2 |= (mode << PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT)
+                    & PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_MASK;
+            notifyAccessibilityStateChanged();
+        }
+    }
+
+    /**
+     * Gets whether this view should be exposed for accessibility.
+     *
+     * @return Whether the view is exposed for accessibility.
+     *
+     * @hide
+     */
+    public boolean isImportantForAccessibility() {
+        final int mode = (mPrivateFlags2 & PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_MASK)
+                >> PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
+        switch (mode) {
+            case IMPORTANT_FOR_ACCESSIBILITY_YES:
+                return true;
+            case IMPORTANT_FOR_ACCESSIBILITY_NO:
+                return false;
+            case IMPORTANT_FOR_ACCESSIBILITY_AUTO:
+                return isActionableForAccessibility() || hasListenersForAccessibility()
+                        || getAccessibilityNodeProvider() != null;
+            default:
+                throw new IllegalArgumentException("Unknow important for accessibility mode: "
+                        + mode);
+        }
+    }
+
+    /**
+     * Gets the parent for accessibility purposes. Note that the parent for
+     * accessibility is not necessary the immediate parent. It is the first
+     * predecessor that is important for accessibility.
+     *
+     * @return The parent for accessibility purposes.
+     */
+    public ViewParent getParentForAccessibility() {
+        if (mParent instanceof View) {
+            View parentView = (View) mParent;
+            if (parentView.includeForAccessibility()) {
+                return mParent;
+            } else {
+                return mParent.getParentForAccessibility();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Adds the children of a given View for accessibility. Since some Views are
+     * not important for accessibility the children for accessibility are not
+     * necessarily direct children of the riew, rather they are the first level of
+     * descendants important for accessibility.
+     *
+     * @param children The list of children for accessibility.
+     */
+    public void addChildrenForAccessibility(ArrayList<View> children) {
+        if (includeForAccessibility()) {
+            children.add(this);
+        }
+    }
+
+    /**
+     * Whether to regard this view for accessibility. A view is regarded for
+     * accessibility if it is important for accessibility or the querying
+     * accessibility service has explicitly requested that view not
+     * important for accessibility are regarded.
+     *
+     * @return Whether to regard the view for accessibility.
+     *
+     * @hide
+     */
+    public boolean includeForAccessibility() {
+        if (mAttachInfo != null) {
+            return mAttachInfo.mIncludeNotImportantViews || isImportantForAccessibility();
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether the View is considered actionable from
+     * accessibility perspective. Such view are important for
+     * accessibility.
+     *
+     * @return True if the view is actionable for accessibility.
+     *
+     * @hide
+     */
+    public boolean isActionableForAccessibility() {
+        return (isClickable() || isLongClickable() || isFocusable());
+    }
+
+    /**
+     * Returns whether the View has registered callbacks wich makes it
+     * important for accessibility.
+     *
+     * @return True if the view is actionable for accessibility.
+     */
+    private boolean hasListenersForAccessibility() {
+        ListenerInfo info = getListenerInfo();
+        return mTouchDelegate != null || info.mOnKeyListener != null
+                || info.mOnTouchListener != null || info.mOnGenericMotionListener != null
+                || info.mOnHoverListener != null || info.mOnDragListener != null;
+    }
+
+    /**
+     * Notifies accessibility services that some view's important for
+     * accessibility state has changed. Note that such notifications
+     * are made at most once every
+     * {@link ViewConfiguration#getSendRecurringAccessibilityEventsInterval()}
+     * to avoid unnecessary load to the system. Also once a view has
+     * made a notifucation this method is a NOP until the notification has
+     * been sent to clients.
+     *
+     * @hide
+     *
+     * TODO: Makse sure this method is called for any view state change
+     *       that is interesting for accessilility purposes.
+     */
+    public void notifyAccessibilityStateChanged() {
+        if (!AccessibilityManager.getInstance(mContext).isEnabled()) {
+            return;
+        }
+        if ((mPrivateFlags2 & PFLAG2_ACCESSIBILITY_STATE_CHANGED) == 0) {
+            mPrivateFlags2 |= PFLAG2_ACCESSIBILITY_STATE_CHANGED;
+            if (mParent != null) {
+                mParent.childAccessibilityStateChanged(this);
+            }
+        }
+    }
+
+    /**
+     * Performs the specified accessibility action on the view. For
+     * possible accessibility actions look at {@link AccessibilityNodeInfo}.
+     * <p>
+     * If an {@link AccessibilityDelegate} has been specified via calling
+     * {@link #setAccessibilityDelegate(AccessibilityDelegate)} its
+     * {@link AccessibilityDelegate#performAccessibilityAction(View, int, Bundle)}
+     * is responsible for handling this call.
+     * </p>
+     *
+     * @param action The action to perform.
+     * @param arguments Optional action arguments.
+     * @return Whether the action was performed.
+     */
+    public boolean performAccessibilityAction(int action, Bundle arguments) {
+      if (mAccessibilityDelegate != null) {
+          return mAccessibilityDelegate.performAccessibilityAction(this, action, arguments);
+      } else {
+          return performAccessibilityActionInternal(action, arguments);
+      }
+    }
+
+    /**
+    * @see #performAccessibilityAction(int, Bundle)
+    *
+    * Note: Called from the default {@link AccessibilityDelegate}.
+    */
+    boolean performAccessibilityActionInternal(int action, Bundle arguments) {
+        switch (action) {
+            case AccessibilityNodeInfo.ACTION_CLICK: {
+                if (isClickable()) {
+                    performClick();
+                    return true;
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_LONG_CLICK: {
+                if (isLongClickable()) {
+                    performLongClick();
+                    return true;
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_FOCUS: {
+                if (!hasFocus()) {
+                    // Get out of touch mode since accessibility
+                    // wants to move focus around.
+                    getViewRootImpl().ensureTouchMode(false);
+                    return requestFocus();
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_CLEAR_FOCUS: {
+                if (hasFocus()) {
+                    clearFocus();
+                    return !isFocused();
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_SELECT: {
+                if (!isSelected()) {
+                    setSelected(true);
+                    return isSelected();
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_CLEAR_SELECTION: {
+                if (isSelected()) {
+                    setSelected(false);
+                    return !isSelected();
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS: {
+                if (!isAccessibilityFocused()) {
+                    return requestAccessibilityFocus();
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS: {
+                if (isAccessibilityFocused()) {
+                    clearAccessibilityFocus();
+                    return true;
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY: {
+                if (arguments != null) {
+                    final int granularity = arguments.getInt(
+                            AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT);
+                    return nextAtGranularity(granularity);
+                }
+            } break;
+            case AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY: {
+                if (arguments != null) {
+                    final int granularity = arguments.getInt(
+                            AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT);
+                    return previousAtGranularity(granularity);
+                }
+            } break;
+        }
+        return false;
+    }
+
+    private boolean nextAtGranularity(int granularity) {
+        CharSequence text = getIterableTextForAccessibility();
+        if (text == null || text.length() == 0) {
+            return false;
+        }
+        TextSegmentIterator iterator = getIteratorForGranularity(granularity);
+        if (iterator == null) {
+            return false;
+        }
+        final int current = getAccessibilityCursorPosition();
+        final int[] range = iterator.following(current);
+        if (range == null) {
+            return false;
+        }
+        final int start = range[0];
+        final int end = range[1];
+        setAccessibilityCursorPosition(end);
+        sendViewTextTraversedAtGranularityEvent(
+                AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY,
+                granularity, start, end);
+        return true;
+    }
+
+    private boolean previousAtGranularity(int granularity) {
+        CharSequence text = getIterableTextForAccessibility();
+        if (text == null || text.length() == 0) {
+            return false;
+        }
+        TextSegmentIterator iterator = getIteratorForGranularity(granularity);
+        if (iterator == null) {
+            return false;
+        }
+        int current = getAccessibilityCursorPosition();
+        if (current == ACCESSIBILITY_CURSOR_POSITION_UNDEFINED) {
+            current = text.length();
+        } else if (granularity == AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER) {
+            // When traversing by character we always put the cursor after the character
+            // to ease edit and have to compensate before asking the for previous segment.
+            current--;
+        }
+        final int[] range = iterator.preceding(current);
+        if (range == null) {
+            return false;
+        }
+        final int start = range[0];
+        final int end = range[1];
+        // Always put the cursor after the character to ease edit.
+        if (granularity == AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER) {
+            setAccessibilityCursorPosition(end);
+        } else {
+            setAccessibilityCursorPosition(start);
+        }
+        sendViewTextTraversedAtGranularityEvent(
+                AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY,
+                granularity, start, end);
+        return true;
+    }
+
+    /**
+     * Gets the text reported for accessibility purposes.
+     *
+     * @return The accessibility text.
+     *
+     * @hide
+     */
+    public CharSequence getIterableTextForAccessibility() {
+        return getContentDescription();
+    }
+
+    /**
+     * @hide
+     */
+    public int getAccessibilityCursorPosition() {
+        return mAccessibilityCursorPosition;
+    }
+
+    /**
+     * @hide
+     */
+    public void setAccessibilityCursorPosition(int position) {
+        mAccessibilityCursorPosition = position;
+    }
+
+    private void sendViewTextTraversedAtGranularityEvent(int action, int granularity,
+            int fromIndex, int toIndex) {
+        if (mParent == null) {
+            return;
+        }
+        AccessibilityEvent event = AccessibilityEvent.obtain(
+                AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY);
+        onInitializeAccessibilityEvent(event);
+        onPopulateAccessibilityEvent(event);
+        event.setFromIndex(fromIndex);
+        event.setToIndex(toIndex);
+        event.setAction(action);
+        event.setMovementGranularity(granularity);
+        mParent.requestSendAccessibilityEvent(this, event);
+    }
+
+    /**
+     * @hide
+     */
+    public TextSegmentIterator getIteratorForGranularity(int granularity) {
+        switch (granularity) {
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER: {
+                CharSequence text = getIterableTextForAccessibility();
+                if (text != null && text.length() > 0) {
+                    CharacterTextSegmentIterator iterator =
+                        CharacterTextSegmentIterator.getInstance(
+                                mContext.getResources().getConfiguration().locale);
+                    iterator.initialize(text.toString());
+                    return iterator;
+                }
+            } break;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD: {
+                CharSequence text = getIterableTextForAccessibility();
+                if (text != null && text.length() > 0) {
+                    WordTextSegmentIterator iterator =
+                        WordTextSegmentIterator.getInstance(
+                                mContext.getResources().getConfiguration().locale);
+                    iterator.initialize(text.toString());
+                    return iterator;
+                }
+            } break;
+            case AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH: {
+                CharSequence text = getIterableTextForAccessibility();
+                if (text != null && text.length() > 0) {
+                    ParagraphTextSegmentIterator iterator =
+                        ParagraphTextSegmentIterator.getInstance();
+                    iterator.initialize(text.toString());
+                    return iterator;
+                }
+            } break;
+        }
+        return null;
     }
 
     /**
@@ -5898,7 +6628,7 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
             outRect.bottom -= insets.bottom;
             return;
         }
-        Display d = WindowManagerImpl.getDefault().getDefaultDisplay();
+        Display d = DisplayManagerGlobal.getInstance().getRealDisplay(Display.DEFAULT_DISPLAY);
         d.getRectSize(outRect);
     }
 
@@ -8889,6 +9619,24 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     }
 
     /**
+     * <p>Cause an invalidate to happen on the next animation time step, typically the
+     * next display frame.</p>
+     *
+     * <p>This method can be invoked from outside of the UI thread
+     * only when this View is attached to a window.</p>
+     *
+     * @see #invalidate()
+     */
+    public void postInvalidateOnAnimation() {
+        // We try only with the AttachInfo because there's no point in invalidating
+        // if we are not attached to our window
+        final AttachInfo attachInfo = mAttachInfo;
+        if (attachInfo != null) {
+            attachInfo.mViewRootImpl.dispatchInvalidateOnAnimation(this);
+        }
+    }
+
+    /**
      * Post a callback to send a {@link AccessibilityEvent#TYPE_VIEW_SCROLLED} event.
      * This event is sent at most once every
      * {@link ViewConfiguration#getSendRecurringAccessibilityEventsInterval()}.
@@ -11718,9 +12466,18 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      * touched. If setting the padding is desired, please use
      * {@link #setPadding(int, int, int, int)}.
      *
-     * @param d The Drawable to use as the background, or null to remove the
+     * @param background The Drawable to use as the background, or null to remove the
      *        background
      */
+    public void setBackground(Drawable background) {
+        //noinspection deprecation
+        setBackgroundDrawable(background);
+    }
+
+    /**
+     * @deprecated use {@link #setBackground(Drawable)} instead
+     */
+    @Deprecated
     public void setBackgroundDrawable(Drawable d) {
         if (d == mBGDrawable) {
             return;
@@ -14627,6 +15384,11 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
         Canvas mCanvas;
 
         /**
+         * The view root impl.
+         */
+        final ViewRootImpl mViewRootImpl;
+
+        /**
          * A Handler supplied by a view's {@link android.view.ViewRootImpl}. This
          * handler can be used to pump events in the UI events queue.
          */
@@ -14666,16 +15428,28 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
         int mAccessibilityWindowId = View.NO_ID;
 
         /**
+         * Whether to ingore not exposed for accessibility Views when
+         * reporting the view tree to accessibility services.
+         */
+        boolean mIncludeNotImportantViews;
+
+        /**
+         * Show where the margins, bounds and layout bounds are for each view.
+         */
+        boolean mDebugLayout = SystemProperties.getBoolean(DEBUG_LAYOUT_PROPERTY, false);
+
+        /**
          * Creates a new set of attachment information with the specified
          * events handler and thread.
          *
          * @param handler the events handler the view must use
          */
-        AttachInfo(IWindowSession session, IWindow window,
+        AttachInfo(IWindowSession session, IWindow window, ViewRootImpl viewRootImpl,
                 Handler handler, Callbacks effectPlayer) {
             mSession = session;
             mWindow = window;
             mWindowToken = window.asBinder();
+            mViewRootImpl = viewRootImpl;
             mHandler = handler;
             mRootCallbacks = effectPlayer;
         }
@@ -14883,6 +15657,26 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
         }
 
         /**
+         * Performs the specified accessibility action on the view. For
+         * possible accessibility actions look at {@link AccessibilityNodeInfo}.
+         * <p>
+         * The default implementation behaves as
+         * {@link View#performAccessibilityAction(int, Bundle)
+         *  View#performAccessibilityAction(int, Bundle)} for the case of
+         *  no accessibility delegate been set.
+         * </p>
+         *
+         * @param action The action to perform.
+         * @return Whether the action was performed.
+         *
+         * @see View#performAccessibilityAction(int, Bundle)
+         *      View#performAccessibilityAction(int, Bundle)
+         */
+        public boolean performAccessibilityAction(View host, int action, Bundle args) {
+            return host.performAccessibilityActionInternal(action, args);
+        }
+
+        /**
          * Sends an accessibility event. This method behaves exactly as
          * {@link #sendAccessibilityEvent(View, int)} but takes as an argument an
          * empty {@link AccessibilityEvent} and does not perform a check whether
@@ -15006,6 +15800,24 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
         public boolean onRequestSendAccessibilityEvent(ViewGroup host, View child,
                 AccessibilityEvent event) {
             return host.onRequestSendAccessibilityEventInternal(child, event);
+        }
+
+        /**
+         * Gets the provider for managing a virtual view hierarchy rooted at this View
+         * and reported to {@link android.accessibilityservice.AccessibilityService}s
+         * that explore the window content.
+         * <p>
+         * The default implementation behaves as
+         * {@link View#getAccessibilityNodeProvider() View#getAccessibilityNodeProvider()} for
+         * the case of no accessibility delegate been set.
+         * </p>
+         *
+         * @return The provider.
+         *
+         * @see AccessibilityNodeProvider
+         */
+        public AccessibilityNodeProvider getAccessibilityNodeProvider(View host) {
+            return null;
         }
     }
 }

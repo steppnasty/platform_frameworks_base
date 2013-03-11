@@ -57,9 +57,22 @@ public class DisplayMetrics {
     public static final int DENSITY_XHIGH = 320;
 
     /**
+     * Standard quantized DPI for extra-extra-high-density screens.  Applications
+     * should not generally worry about this density; relying on XHIGH graphics
+     * being scaled up to it should be sufficient for almost all cases.
+     */
+    public static final int DENSITY_XXHIGH = 480;
+
+    /**
      * The reference density used throughout the system.
      */
     public static final int DENSITY_DEFAULT = DENSITY_MEDIUM;
+
+    /**
+     * Scaling factor to convert a density in DPI units to the density scale.
+     * @hide
+     */
+    public static final float DENSITY_DEFAULT_SCALE = 1.0f / DENSITY_DEFAULT;
 
     /**
      * The device's density.
@@ -133,6 +146,12 @@ public class DisplayMetrics {
      */
     public float noncompatDensity;
     /**
+     * The reported display density prior to any compatibility mode scaling
+     * being applied.
+     * @hide
+     */
+    public int noncompatDensityDpi;
+    /**
      * The reported scaled density prior to any compatibility mode scaling
      * being applied.
      * @hide
@@ -165,6 +184,7 @@ public class DisplayMetrics {
         noncompatWidthPixels = o.noncompatWidthPixels;
         noncompatHeightPixels = o.noncompatHeightPixels;
         noncompatDensity = o.noncompatDensity;
+        noncompatDensityDpi = o.noncompatDensityDpi;
         noncompatScaledDensity = o.noncompatScaledDensity;
         noncompatXdpi = o.noncompatXdpi;
         noncompatYdpi = o.noncompatYdpi;
@@ -180,6 +200,7 @@ public class DisplayMetrics {
         ydpi = DENSITY_DEVICE;
         noncompatWidthPixels = 0;
         noncompatHeightPixels = 0;
+        noncompatDensityDpi = densityDpi;
     }
 
     @Override

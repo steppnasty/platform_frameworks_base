@@ -29,6 +29,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.widget.RemoteViews.OnClickHandler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -973,6 +974,21 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
         mDeferNotifyDataSetChanged = false;
         // Otherwise, create a new RemoteViewsAdapter for binding
         mRemoteViewsAdapter = new RemoteViewsAdapter(getContext(), intent, this);
+    }
+
+    /**
+     * Sets up the onClickHandler to be used by the RemoteViewsAdapter when inflating RemoteViews
+     * 
+     * @param handler The OnClickHandler to use when inflating RemoteViews.
+     * 
+     * @hide
+     */
+    public void setRemoteViewsOnClickHandler(OnClickHandler handler) {
+        // Ensure that we don't already have a RemoteViewsAdapter that is bound to an existing
+        // service handling the specified intent.
+        if (mRemoteViewsAdapter != null) {
+            mRemoteViewsAdapter.setRemoteViewsOnClickHandler(handler);
+        }
     }
 
     @Override

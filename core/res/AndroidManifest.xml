@@ -1138,6 +1138,13 @@
         android:description="@string/permdesc_manageAppTokens"
         android:protectionLevel="signature" />
 
+    <!-- @hide Allows the application to temporarily freeze the screen for a
+         full-screen transition. -->
+    <permission android:name="android.permission.FREEZE_SCREEN"
+        android:label="@string/permlab_freezeScreen"
+        android:description="@string/permdesc_freezeScreen"
+        android:protectionLevel="signature" />
+
     <!-- Allows an application to inject user events (keys, touch, trackball)
          into the event stream and deliver them to ANY window.  Without this
          permission, you can only deliver events to windows in your own process.
@@ -1145,6 +1152,31 @@
     <permission android:name="android.permission.INJECT_EVENTS"
         android:label="@string/permlab_injectEvents"
         android:description="@string/permdesc_injectEvents"
+        android:protectionLevel="signature" />
+
+    <!-- @hide Allows an application to register an input filter which filters the stream
+         of user events (keys, touch, trackball) before they are dispatched to any window. -->
+    <permission android:name="android.permission.FILTER_EVENTS"
+        android:label="@string/permlab_filter_events"
+        android:description="@string/permdesc_filter_events"
+        android:protectionLevel="signature" />
+
+    <!-- @hide Allows an application to retrieve info for a window from the window manager. -->
+    <permission android:name="android.permission.RETRIEVE_WINDOW_INFO"
+        android:label="@string/permlab_retrieve_window_info"
+        android:description="@string/permdesc_retrieve_window_info"
+        android:protectionLevel="signature" />
+
+    <!-- @hide Allows an application to temporary enable accessibility on the device. -->
+    <permission android:name="android.permission.TEMPORARY_ENABLE_ACCESSIBILITY"
+        android:label="@string/permlab_temporary_enable_accessibility"
+        android:description="@string/permdesc_temporary_enable_accessibility"
+        android:protectionLevel="signature" />
+
+    <!-- @hide Allows an application to magnify the content of a display. -->
+    <permission android:name="android.permission.MAGNIFY_DISPLAY"
+        android:label="@string/permlab_magnify_display"
+        android:description="@string/permdesc_magnify_display"
         android:protectionLevel="signature" />
 
     <!-- Allows an application to watch and control how activities are
@@ -1187,6 +1219,13 @@
         android:description="@string/permdesc_bindInputMethod"
         android:protectionLevel="signature" />
 
+    <!-- Must be required by an {@link android.accessibilityservice.AccessibilityService},
+         to ensure that only the system can bind to it. -->
+    <permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:label="@string/permlab_bindAccessibilityService"
+        android:description="@string/permdesc_bindAccessibilityService"
+        android:protectionLevel="signature" />
+
     <!-- Must be required by a TextService (e.g. SpellCheckerService)
          to ensure that only the system can bind to it. -->
     <permission android:name="android.permission.BIND_TEXT_SERVICE"
@@ -1227,6 +1266,14 @@
     <permission android:name="android.permission.SET_POINTER_SPEED"
         android:label="@string/permlab_setPointerSpeed"
         android:description="@string/permdesc_setPointerSpeed"
+        android:protectionLevel="signature" />
+
+    <!-- Allows low-level access to setting the keyboard layout.
+         Not for use by normal applications.
+         @hide -->
+    <permission android:name="android.permission.SET_KEYBOARD_LAYOUT"
+        android:label="@string/permlab_setKeyboardLayout"
+        android:description="@string/permdesc_setKeyboardLayout"
         android:protectionLevel="signature" />
 
     <!-- Allows an application to install packages. -->
@@ -1279,6 +1326,22 @@
         android:label="@string/permlab_readFrameBuffer"
         android:description="@string/permdesc_readFrameBuffer"
         android:protectionLevel="signatureOrSystem" />
+
+    <!-- Allows an application to configure and connect to Wifi displays
+         @hide -->
+    <permission android:name="android.permission.CONFIGURE_WIFI_DISPLAY"
+        android:label="@string/permlab_configureWifiDisplay"
+        android:description="@string/permdesc_configureWifiDisplay"
+        android:protectionLevel="signature" />
+
+    <!-- Allows an application to control low-level features of Wifi displays
+         such as opening an RTSP socket.  This permission should only be used
+         by the display manager.
+         @hide -->
+    <permission android:name="android.permission.CONTROL_WIFI_DISPLAY"
+        android:label="@string/permlab_controlWifiDisplay"
+        android:description="@string/permdesc_controlWifiDisplay"
+        android:protectionLevel="signature" />
 
     <!-- Required to be able to disable the device (very dangerous!). -->
     <permission android:name="android.permission.BRICK"
@@ -1405,6 +1468,13 @@
         android:permissionGroup="android.permission-group.PERSONAL_INFO"
         android:label="@string/permlab_bindGadget"
         android:description="@string/permdesc_bindGadget"
+        android:protectionLevel="signatureOrSystem" />
+
+    <!-- Internal permission allowing an application to query/set which
+         applications can bind AppWidgets.
+         @hide -->
+    <permission android:name="android.permission.MODIFY_APPWIDGET_BIND_PERMISSIONS"
+        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
         android:protectionLevel="signatureOrSystem" />
 
     <!-- Allows applications to change the background data setting

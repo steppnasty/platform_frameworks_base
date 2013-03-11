@@ -53,7 +53,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewRootImpl;
 import android.view.WindowManager;
-import android.view.WindowManagerImpl;
+import android.view.WindowManagerGlobal;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -248,13 +248,13 @@ public abstract class WallpaperService extends Service {
         
         final BaseIWindow mWindow = new BaseIWindow() {
             @Override
-            public void resized(int w, int h, Rect coveredInsets,
+            public void resized(Rect frame, Rect contentInsets,
                     Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
                 Message msg = mCaller.obtainMessageI(MSG_WINDOW_RESIZED,
                         reportDraw ? 1 : 0);
                 mCaller.sendMessage(msg);
             }
-            
+
             @Override
             public void dispatchAppVisibility(boolean visible) {
                 // We don't do this in preview mode; we'll let the preview
@@ -654,7 +654,7 @@ public abstract class WallpaperService extends Service {
                         }
 
                         redrawNeeded |= creating
-                                || (relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0;
+                                || (relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0;
 
                         if (forceReport || creating || surfaceCreating
                                 || formatChanged || sizeChanged) {
@@ -741,7 +741,7 @@ public abstract class WallpaperService extends Service {
             mWindowToken = wrapper.mWindowToken;
             mSurfaceHolder.setSizeFromLayout();
             mInitializing = true;
-            mSession = ViewRootImpl.getWindowSession(getMainLooper());
+            mSession = WindowManagerGlobal.getWindowSession(getMainLooper());
             
             mWindow.setSession(mSession);
 

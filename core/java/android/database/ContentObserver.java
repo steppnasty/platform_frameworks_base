@@ -16,6 +16,7 @@
 
 package android.database;
 
+import android.net.Uri;
 import android.os.Handler;
 
 /**
@@ -120,13 +121,51 @@ public abstract class ContentObserver {
     }
 
     /**
-     * This method is called when a change occurs to the cursor that
-     * is being observed.
-     *  
-     * @param selfChange true if the update was caused by a call to <code>commit</code> on the
-     *  cursor that is being observed.
+     * This method is called when a content change occurs.
+     * <p>
+     * Subclasses should override this method to handle content changes.
+     * </p>
+     *
+     * @param selfChange True if this is a self-change notification.
      */
-    public void onChange(boolean selfChange) {}
+    public void onChange(boolean selfChange) {
+        // Do nothing.  Subclass should override.
+    }
+
+    /**
+     * This method is called when a content change occurs.
+     * Includes the changed content Uri when available.
+     * <p>
+     * Subclasses should override this method to handle content changes.
+     * To ensure correct operation on older versions of the framework that
+     * did not provide a Uri argument, applications should also implement
+     * the {@link #onChange(boolean)} overload of this method whenever they
+     * implement the {@link #onChange(boolean, Uri)} overload.
+     * </p><p>
+     * Example implementation:
+     * <pre><code>
+     * // Implement the onChange(boolean) method to delegate the change notification to
+     * // the onChange(boolean, Uri) method to ensure correct operation on older versions
+     * // of the framework that did not have the onChange(boolean, Uri) method.
+     * {@literal @Override}
+     * public void onChange(boolean selfChange) {
+     *     onChange(selfChange, null);
+     * }
+     *
+     * // Implement the onChange(boolean, Uri) method to take advantage of the new Uri argument.
+     * {@literal @Override}
+     * public void onChange(boolean selfChange, Uri uri) {
+     *     // Handle change.
+     * }
+     * </code></pre>
+     * </p>
+     *
+     * @param selfChange True if this is a self-change notification.
+     * @param uri The Uri of the changed content, or null if unknown.
+     */
+    public void onChange(boolean selfChange, Uri uri) {
+        onChange(selfChange);
+    }
 
     public final void dispatchChange(boolean selfChange) {
         if (mHandler == null) {

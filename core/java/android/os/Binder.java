@@ -70,7 +70,35 @@ public class Binder implements IBinder {
      * incoming transaction, then its own uid is returned.
      */
     public static final native int getCallingUid();
-    
+
+    /**
+     * Return the original ID of the user assigned to the process that sent you the current
+     * transaction that is being process. This uid can be used with higher-level system services
+     * to determine its identity and check permissions. If the current thread is not currently 
+     * executing an incoming transaction, then its own uid is returned.
+     * <p/>
+     * This value cannot be reset by calls to {@link #clearCallingIdentity()}.
+     * @hide
+     */
+    public static final int getOrigCallingUid() {
+        if (UserId.MU_ENABLED) {
+            return getOrigCallingUidNative();
+        } else {
+            return getCallingUid();
+        }
+    }
+
+    private static final native int getOrigCallingUidNative();
+
+    /**
+     * Utility function to return the user id of the calling process.
+     * @return userId of the calling process, extracted from the callingUid
+     * @hide
+     */
+    public static final int getOrigCallingUser() {
+        return UserId.getUserId(getOrigCallingUid());
+    }
+
     /**
      * Reset the identity of the incoming IPC on the current thread.  This can
      * be useful if, while handling an incoming call, you will be calling

@@ -15,6 +15,7 @@
 -->
 
 <resources>
+    <bool name="kg_sim_puk_account_full_screen">false</bool>
     <bool name="preferences_prefer_dual_pane">true</bool>
     <bool name="show_ongoing_ime_switcher">false</bool>
     <bool name="action_bar_expanded_action_views_exclusive">false</bool>

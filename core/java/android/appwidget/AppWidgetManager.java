@@ -19,6 +19,7 @@ package android.appwidget;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -79,6 +80,13 @@ public class AppWidgetManager {
     public static final String ACTION_APPWIDGET_PICK = "android.appwidget.action.APPWIDGET_PICK";
 
     /**
+     * Similar to ACTION_APPWIDGET_PICK, but used from keyguard
+     * @hide
+     */
+    public static final String
+            ACTION_KEYGUARD_APPWIDGET_PICK = "android.appwidget.action.KEYGUARD_APPWIDGET_PICK";
+
+    /**
      * Sent when it is time to configure your AppWidget while it is being added to a host.
      * This action is not sent as a broadcast to the AppWidget provider, but as a startActivity
      * to the activity specified in the {@link AppWidgetProviderInfo AppWidgetProviderInfo meta-data}.
@@ -109,6 +117,40 @@ public class AppWidgetManager {
     public static final String EXTRA_APPWIDGET_ID = "appWidgetId";
 
     /**
+     * A bundle extra that contains the lower bound on the current width, in dips, of a widget instance.
+     */
+    public static final String OPTION_APPWIDGET_MIN_WIDTH = "appWidgetMinWidth";
+
+    /**
+     * A bundle extra that contains the lower bound on the current height, in dips, of a widget instance.
+     */
+    public static final String OPTION_APPWIDGET_MIN_HEIGHT = "appWidgetMinHeight";
+
+    /**
+     * A bundle extra that contains the upper bound on the current width, in dips, of a widget instance.
+     */
+    public static final String OPTION_APPWIDGET_MAX_WIDTH = "appWidgetMaxWidth";
+
+    /**
+     * A bundle extra that contains the upper bound on the current width, in dips, of a widget instance.
+     */
+    public static final String OPTION_APPWIDGET_MAX_HEIGHT = "appWidgetMaxHeight";
+
+    /**
+     * A bundle extra that hints to the AppWidgetProvider the category of host that owns this
+     * this widget. Can have the value {@link
+     * AppWidgetProviderInfo#WIDGET_CATEGORY_HOME_SCREEN} or {@link
+     * AppWidgetProviderInfo#WIDGET_CATEGORY_KEYGUARD}.
+     */
+    public static final String OPTION_APPWIDGET_HOST_CATEGORY = "appWidgetCategory";
+
+    /**
+     * An intent extra which points to a bundle of extra information for a particular widget id.
+     * In particular this bundle can contain EXTRA_APPWIDGET_WIDTH and EXTRA_APPWIDGET_HEIGHT.
+     */
+    public static final String EXTRA_APPWIDGET_OPTIONS = "appWidgetOptions";
+
+    /**
      * An intent extra that contains multiple appWidgetIds.
      * <p>
      * The value will be an int array that can be retrieved like this:
@@ -132,6 +174,21 @@ public class AppWidgetManager {
      * {@more}
      */
     public static final String EXTRA_CUSTOM_EXTRAS = "customExtras";
+
+    /**
+     * An intent extra to pass to the AppWidget picker which allows the picker to filter
+     * the list based on the {@link AppWidgetProviderInfo#widgetCategory}.
+     *
+     * @hide
+     */
+    public static final String EXTRA_CATEGORY_FILTER = "categoryFilter";
+
+    /**
+     * An intent extra to pass to the AppWidget picker to specify whether or not to sort
+     * the list of caller-specified extra AppWidgets along with the rest of the AppWidgets
+     * @hide
+     */
+    public static final String EXTRA_CUSTOM_SORT = "customSort";
 
     /**
      * A sentiel value that the AppWidget manager will never return as a appWidgetId.
@@ -159,6 +216,15 @@ public class AppWidgetManager {
      * @see AppWidgetProvider#onUpdate AppWidgetProvider.onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds)
      */
     public static final String ACTION_APPWIDGET_UPDATE = "android.appwidget.action.APPWIDGET_UPDATE";
+
+    /**
+     * Sent when the custom extras for an AppWidget change.
+     *
+     * @see AppWidgetProvider#onAppWidgetOptionsChanged
+     *      AppWidgetProvider.onAppWidgetOptionsChanged(Context context, 
+     *      AppWidgetManager appWidgetManager, int appWidgetId, Bundle newExtras)
+     */
+    public static final String ACTION_APPWIDGET_OPTIONS_CHANGED = "android.appwidget.action.APPWIDGET_UPDATE_OPTIONS";
 
     /**
      * Sent when an instance of an AppWidget is deleted from its host.
@@ -245,6 +311,46 @@ public class AppWidgetManager {
     public void updateAppWidget(int[] appWidgetIds, RemoteViews views) {
         try {
             sService.updateAppWidgetIds(appWidgetIds, views);
+        }
+        catch (RemoteException e) {
+            throw new RuntimeException("system server dead?", e);
+        }
+    }
+
+    /**
+     * Update the extras for a given widget instance.
+     *
+     * The extras can be used to embed additional information about this widget to be accessed
+     * by the associated widget's AppWidgetProvider.
+     *
+     * @see #getAppWidgetOptions(int)
+     *
+     * @param appWidgetId    The AppWidget instances for which to set the RemoteViews.
+     * @param options         The options to associate with this widget
+     */
+    public void updateAppWidgetOptions(int appWidgetId, Bundle options) {
+        try {
+            sService.updateAppWidgetOptions(appWidgetId, options);
+        }
+        catch (RemoteException e) {
+            throw new RuntimeException("system server dead?", e);
+        }
+    }
+
+    /**
+     * Get the extras associated with a given widget instance.
+     *
+     * The extras can be used to embed additional information about this widget to be accessed
+     * by the associated widget's AppWidgetProvider.
+     *
+     * @see #updateAppWidgetOptions(int, Bundle)
+     *
+     * @param appWidgetId     The AppWidget instances for which to set the RemoteViews.
+     * @return                The options associated with the given widget instance.
+     */
+    public Bundle getAppWidgetOptions(int appWidgetId) {
+        try {
+            return sService.getAppWidgetOptions(appWidgetId);
         }
         catch (RemoteException e) {
             throw new RuntimeException("system server dead?", e);

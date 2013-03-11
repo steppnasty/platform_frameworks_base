@@ -22,6 +22,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.database.Cursor;
 import android.graphics.Rect;
@@ -843,4 +844,20 @@ public class SearchManager
         }
     }
 
+    /**
+     * Gets an intent for launching installed assistant activity, or null if not available.
+     * @return The assist intent.
+     *
+     * @hide
+     */
+    public static final Intent getAssistIntent(Context context) {
+        PackageManager pm = context.getPackageManager();
+        Intent intent = new Intent(Intent.ACTION_ASSIST);
+        ComponentName component = intent.resolveActivity(pm);
+        if (component != null) {
+            intent.setComponent(component);
+            return intent;
+        }
+        return null;
+    }
 }

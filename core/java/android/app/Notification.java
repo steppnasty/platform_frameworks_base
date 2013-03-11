@@ -20,16 +20,20 @@ import com.android.internal.R;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.RemoteViews;
 
 import java.text.NumberFormat;
+import java.util.ArrayList;
 
 /**
  * A class that represents how a persistent notification is to be presented to
@@ -158,6 +162,13 @@ public class Notification implements Parcelable
      * The view that will represent this notification in the expanded status bar.
      */
     public RemoteViews contentView;
+
+    /**
+     * A large-format version of {@link #contentView}, giving the Notification an
+     * opportunity to show more detail. The system UI may choose to show this
+     * instead of the normal content view at its discretion.
+     */
+    public RemoteViews bigContentView;
 
     /**
      * The bitmap that may escape the bounds of the panel and bar.
@@ -309,6 +320,86 @@ public class Notification implements Parcelable
     public static final int FLAG_HIGH_PRIORITY = 0x00000080;
 
     /**
+     * Default notification {@link #priority}. If your application does not prioritize its own
+     * notifications, use this value for all notifications.
+     */
+    public static final int PRIORITY_DEFAULT = 0;
+
+    /**
+     * Lower {@link #priority}, for items that are less important. The UI may choose to show these
+     * items smaller, or at a different position in the list, compared with your app's
+     * {@link #PRIORITY_DEFAULT} items.
+     */
+    public static final int PRIORITY_LOW = -1;
+
+    /**
+     * Lowest {@link #priority}; these items might not be shown to the user except under special
+     * circumstances, such as detailed notification logs.
+     */
+    public static final int PRIORITY_MIN = -2;
+
+    /**
+     * Higher {@link #priority}, for more important notifications or alerts. The UI may choose to
+     * show these items larger, or at a different position in notification lists, compared with
+     * your app's {@link #PRIORITY_DEFAULT} items.
+     */
+    public static final int PRIORITY_HIGH = 1;
+
+    /**
+     * Highest {@link #priority}, for your application's most important items that require the
+     * user's prompt attention or input.
+     */
+    public static final int PRIORITY_MAX = 2;
+
+    /**
+     * Relative priority for this notification.
+     * 
+     * Priority is an indication of how much of the user's valuable attention should be consumed by
+     * this notification. Low-priority notifications may be hidden from the user in certain
+     * situations, while the user might be interrupted for a higher-priority notification. The
+     * system will make a determination about how to interpret notification priority as described in 
+     * MUMBLE MUMBLE.
+     */
+    public int priority;
+
+    /**
+     * @hide
+     * Notification type: incoming call (voice or video) or similar synchronous communication request.
+     */
+    public static final String KIND_CALL = "android.call";
+
+    /**
+     * @hide
+     * Notification type: incoming direct message (SMS, instant message, etc.).
+     */
+    public static final String KIND_MESSAGE = "android.message";
+
+    /**
+     * @hide
+     * Notification type: asynchronous bulk message (email).
+     */
+    public static final String KIND_EMAIL = "android.email";
+
+    /**
+     * @hide
+     * Notification type: calendar event.
+     */
+    public static final String KIND_EVENT = "android.event";
+
+    /**
+     * @hide
+     * Notification type: promotion or advertisement.
+     */
+    public static final String KIND_PROMO = "android.promo";
+
+    /**
+     * @hide
+     * If this notification matches of one or more special types (see the <code>KIND_*</code>
+     * constants), add them here, best match first.
+     */
+    public String[] kind;
+
+    /**
      * Bit to be bitwise-ored into the {@link #flags} field that should be
      * set if this notification should force the led to pulse even if the
      * screen has been shut off while the notification was active.
@@ -317,6 +408,62 @@ public class Notification implements Parcelable
     public static final int FLAG_FORCE_LED_SCREEN_OFF = 0x00000100;
 
     public int flags;
+
+    /**
+     * Structure to encapsulate an "action", including title and icon, that can be attached to a Notification.
+     * @hide
+     */
+    private static class Action implements Parcelable {
+        public int icon;
+        public CharSequence title;
+        public PendingIntent actionIntent;
+        @SuppressWarnings("unused")
+        public Action() { }
+        private Action(Parcel in) {
+            icon = in.readInt();
+            title = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(in);
+            if (in.readInt() == 1) {
+                actionIntent = PendingIntent.CREATOR.createFromParcel(in);
+            }
+        }
+        public Action(int icon_, CharSequence title_, PendingIntent intent_) {
+            this.icon = icon_;
+            this.title = title_;
+            this.actionIntent = intent_;
+        }
+        @Override
+        public Action clone() {
+            return new Action(
+                this.icon,
+                this.title.toString(),
+                this.actionIntent // safe to alias
+            );
+        }
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+        @Override
+        public void writeToParcel(Parcel out, int flags) {
+            out.writeInt(icon);
+            TextUtils.writeToParcel(title, out, flags);
+            if (actionIntent != null) {
+                out.writeInt(1);
+                actionIntent.writeToParcel(out, flags);
+            } else {
+                out.writeInt(0);
+            }
+        }
+        public static final Parcelable.Creator<Action> CREATOR
+        = new Parcelable.Creator<Action>() {
+            public Action createFromParcel(Parcel in) {
+                return new Action(in);
+            }
+            public Action[] newArray(int size) {
+                return new Action[size];
+            }
+        };
+    }
 
     /**
      * Constructs a Notification object with everything set to 0.
@@ -636,6 +783,8 @@ public class Notification implements Parcelable
      * all the flags, as well as help constructing the typical notification layouts.
      */
     public static class Builder {
+        private static final int MAX_ACTION_BUTTONS = 3;
+
         private Context mContext;
 
         private long mWhen;
@@ -645,6 +794,7 @@ public class Notification implements Parcelable
         private CharSequence mContentTitle;
         private CharSequence mContentText;
         private CharSequence mContentInfo;
+        private CharSequence mSubText;
         private PendingIntent mContentIntent;
         private RemoteViews mContentView;
         private PendingIntent mDeleteIntent;
@@ -663,6 +813,11 @@ public class Notification implements Parcelable
         private int mProgressMax;
         private int mProgress;
         private boolean mProgressIndeterminate;
+        private int mPriority;
+        private ArrayList<Action> mActions = new ArrayList<Action>(MAX_ACTION_BUTTONS);
+        private boolean mUseChronometer;
+        private Style mStyle;
+        private boolean mShowWhen = true;
 
         /**
          * Constructor.
@@ -938,12 +1093,150 @@ public class Notification implements Parcelable
             return this;
         }
 
+        /**
+         * Set the priority of this notification.
+         *
+         * @see Notification#priority
+         */
+        public Builder setPriority(int pri) {
+            mPriority = pri;
+            return this;
+        }
+
+        /**
+         * Add an action to this notification. Actions are typically displayed by
+         * the system as a button adjacent to the notification content.
+         *
+         * @param icon Resource ID of a drawable that represents the action.
+         * @param title Text describing the action.
+         * @param intent PendingIntent to be fired when the action is invoked.
+         */
+        public Builder addAction(int icon, CharSequence title, PendingIntent intent) {
+            mActions.add(new Action(icon, title, intent));
+            return this;
+        }
+
+        /**
+         * Add a rich notification style to be applied at build time.
+         *
+         * @param style Object responsible for modifying the notification style.
+         */
+        public Builder setStyle(Style style) {
+            if (mStyle != style) {
+                mStyle = style;
+                if (mStyle != null) {
+                    mStyle.setBuilder(this);
+                }
+            }
+            return this;
+        }
+
         private void setFlag(int mask, boolean value) {
             if (value) {
                 mFlags |= mask;
             } else {
                 mFlags &= ~mask;
             }
+        }
+
+        private RemoteViews applyStandardTemplate(int resId, boolean fitIn1U) {
+            RemoteViews contentView = new RemoteViews(mContext.getPackageName(), resId);
+            boolean showLine3 = false;
+            boolean showLine2 = false;
+            int smallIconImageViewId = R.id.icon;
+            if (mLargeIcon != null) {
+                contentView.setImageViewBitmap(R.id.icon, mLargeIcon);
+                smallIconImageViewId = R.id.right_icon;
+            }
+            if (mPriority < PRIORITY_LOW) {
+                contentView.setInt(R.id.icon,
+                        "setBackgroundResource", R.drawable.notification_template_icon_low_bg);
+                contentView.setInt(R.id.status_bar_latest_event_content,
+                        "setBackgroundResource", R.drawable.notification_bg_low);
+            }
+            if (mSmallIcon != 0) {
+                contentView.setImageViewResource(smallIconImageViewId, mSmallIcon);
+                contentView.setViewVisibility(smallIconImageViewId, View.VISIBLE);
+            } else {
+                contentView.setViewVisibility(smallIconImageViewId, View.GONE);
+            }
+            if (mContentTitle != null) {
+                contentView.setTextViewText(R.id.title, mContentTitle);
+            }
+            if (mContentText != null) {
+                contentView.setTextViewText(R.id.text, mContentText);
+                showLine3 = true;
+            }
+            if (mContentInfo != null) {
+                contentView.setTextViewText(R.id.info, mContentInfo);
+                contentView.setViewVisibility(R.id.info, View.VISIBLE);
+                showLine3 = true;
+            } else if (mNumber > 0) {
+                final int tooBig = mContext.getResources().getInteger(
+                        R.integer.status_bar_notification_info_maxnum);
+                if (mNumber > tooBig) {
+                    contentView.setTextViewText(R.id.info, mContext.getResources().getString(
+                                R.string.status_bar_notification_info_overflow));
+                } else {
+                    NumberFormat f = NumberFormat.getIntegerInstance();
+                    contentView.setTextViewText(R.id.info, f.format(mNumber));
+                }
+                contentView.setViewVisibility(R.id.info, View.VISIBLE);
+                showLine3 = true;
+            } else {
+                contentView.setViewVisibility(R.id.info, View.GONE);
+            }
+
+            // Need to show three lines?
+            if (mSubText != null) {
+                contentView.setTextViewText(R.id.text, mSubText);
+                if (mContentText != null) {
+                    contentView.setTextViewText(R.id.text2, mContentText);
+                    contentView.setViewVisibility(R.id.text2, View.VISIBLE);
+                    showLine2 = true;
+                } else {
+                    contentView.setViewVisibility(R.id.text2, View.GONE);
+                }
+            } else {
+                contentView.setViewVisibility(R.id.text2, View.GONE);
+                if (mProgressMax != 0 || mProgressIndeterminate) {
+                    contentView.setProgressBar(
+                            R.id.progress, mProgressMax, mProgress, mProgressIndeterminate);
+                    contentView.setViewVisibility(R.id.progress, View.VISIBLE);
+                    showLine2 = true;
+                } else {
+                    contentView.setViewVisibility(R.id.progress, View.GONE);
+                }
+            }
+            if (showLine2) {
+                if (fitIn1U) {
+                    // need to shrink all the type to make sure everything fits
+                    final Resources res = mContext.getResources();
+                    final float subTextSize = res.getDimensionPixelSize(
+                            R.dimen.notification_subtext_size);
+                    contentView.setTextViewTextSize(R.id.text, TypedValue.COMPLEX_UNIT_PX, subTextSize);
+                }
+                // vertical centering
+                contentView.setViewPadding(R.id.line1, 0, 0, 0, 0);
+            }
+
+            if (mWhen != 0 && mShowWhen) {
+                if (mUseChronometer) {
+                    contentView.setViewVisibility(R.id.chronometer, View.VISIBLE);
+                    contentView.setLong(R.id.chronometer, "setBase",
+                            mWhen + (SystemClock.elapsedRealtime() - System.currentTimeMillis()));
+                    contentView.setBoolean(R.id.chronometer, "setStarted", true);
+                } else {
+                    contentView.setViewVisibility(R.id.time, View.VISIBLE);
+                    contentView.setLong(R.id.time, "setTime", mWhen);
+                }
+            } else {
+                contentView.setViewVisibility(R.id.time, View.GONE);
+            }
+
+            contentView.setViewVisibility(R.id.line3, showLine3 ? View.VISIBLE : View.GONE);
+            contentView.setViewVisibility(R.id.overflow_divider, showLine3 ? View.VISIBLE : View.GONE);
+            return contentView;
         }
 
         private RemoteViews makeRemoteViews(int resId) {
@@ -995,6 +1288,25 @@ public class Notification implements Parcelable
             return contentView;
         }
 
+        private RemoteViews applyStandardTemplateWithActions(int layoutId) {
+            RemoteViews big = applyStandardTemplate(layoutId, false);
+
+            int N = mActions.size();
+            if (N > 0) {
+                // Log.d("Notification", "has actions: " + mContentText);
+                big.setViewVisibility(R.id.actions, View.VISIBLE);
+                big.setViewVisibility(R.id.action_divider, View.VISIBLE);
+                if (N>MAX_ACTION_BUTTONS) N=MAX_ACTION_BUTTONS;
+                big.removeAllViews(R.id.actions);
+                for (int i=0; i<N; i++) {
+                    final RemoteViews button = generateActionButton(mActions.get(i));
+                    //Log.d("Notification", "adding action " + i + ": " + mActions.get(i).title);
+                    big.addView(R.id.actions, button);
+                }
+            }
+            return big;
+        }
+
         private RemoteViews makeContentView() {
             if (mContentView != null) {
                 return mContentView;
@@ -1019,11 +1331,24 @@ public class Notification implements Parcelable
             }
         }
 
+        private RemoteViews generateActionButton(Action action) {
+            final boolean tombstone = (action.actionIntent == null);
+            RemoteViews button = new RemoteViews(mContext.getPackageName(),
+                    tombstone ? R.layout.notification_action_tombstone
+                              : R.layout.notification_action);
+            button.setTextViewCompoundDrawables(R.id.action0, action.icon, 0, 0, 0);
+            button.setTextViewText(R.id.action0, action.title);
+            if (!tombstone) {
+                button.setOnClickPendingIntent(R.id.action0, action.actionIntent);
+            }
+            button.setContentDescription(R.id.action0, action.title);
+            return button;
+        }
+
         /**
-         * Combine all of the options that have been set and return a new {@link Notification}
-         * object.
+         * Apply the unstyled operations and return a new {@link Notification} object.
          */
-        public Notification getNotification() {
+        public Notification buildUnstyled() {
             Notification n = new Notification();
             n.when = mWhen;
             n.icon = mSmallIcon;
@@ -1052,5 +1377,102 @@ public class Notification implements Parcelable
             }
             return n;
         }
+
+        /**
+         * @deprecated Use {@link #build()} instead.
+         */
+        @Deprecated
+        public Notification getNotification() {
+            return build();
+        }
+
+        /**
+         * Combine all of the options that have been set and return a new {@link Notification}
+         * object.
+         */
+        public Notification build() {
+            if (mStyle != null) {
+                return mStyle.build();
+            } else {
+                return buildUnstyled();
+            }
+        }
+    }
+
+    /**
+     * An object that can apply a rich notification style to a {@link Notification.Builder}
+     * object.
+     */
+    public static abstract class Style
+    {
+        private CharSequence mBigContentTitle;
+        private CharSequence mSummaryText = null;
+        private boolean mSummaryTextSet = false;
+
+        protected Builder mBuilder;
+
+        /**
+         * Overrides ContentTitle in the big form of the template.
+         * This defaults to the value passed to setContentTitle().
+         */
+        protected void internalSetBigContentTitle(CharSequence title) {
+            mBigContentTitle = title;
+        }
+
+        /**
+         * Set the first line of text after the detail section in the big form of the template.
+         */
+        protected void internalSetSummaryText(CharSequence cs) {
+            mSummaryText = cs;
+            mSummaryTextSet = true;
+        }
+
+        public void setBuilder(Builder builder) {
+            if (mBuilder != builder) {
+                mBuilder = builder;
+                if (mBuilder != null) {
+                    mBuilder.setStyle(this);
+                }
+            }
+        }
+
+        protected void checkBuilder() {
+            if (mBuilder == null) {
+                throw new IllegalArgumentException("Style requires a valid Builder object");
+            }
+        }
+
+        protected RemoteViews getStandardView(int layoutId) {
+            checkBuilder();
+
+            if (mBigContentTitle != null) {
+                mBuilder.setContentTitle(mBigContentTitle);
+            }
+
+            RemoteViews contentView = mBuilder.applyStandardTemplateWithActions(layoutId);
+
+            if (mBigContentTitle != null && mBigContentTitle.equals("")) {
+                contentView.setViewVisibility(R.id.line1, View.GONE);
+            } else {
+                contentView.setViewVisibility(R.id.line1, View.VISIBLE);
+            }
+
+            // The last line defaults to the subtext, but can be replaced by mSummaryText
+            final CharSequence overflowText =
+                    mSummaryTextSet ? mSummaryText
+                                    : mBuilder.mSubText;
+            if (overflowText != null) {
+                contentView.setTextViewText(R.id.text, overflowText);
+                contentView.setViewVisibility(R.id.overflow_divider, View.VISIBLE);
+                contentView.setViewVisibility(R.id.line3, View.VISIBLE);
+            } else {
+                contentView.setViewVisibility(R.id.overflow_divider, View.GONE);
+                contentView.setViewVisibility(R.id.line3, View.GONE);
+            }
+
+            return contentView;
+        }
+
+        public abstract Notification build();
     }
 }

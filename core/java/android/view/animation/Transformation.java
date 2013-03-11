@@ -110,7 +110,17 @@ public class Transformation {
         mAlpha *= t.getAlpha();
         mMatrix.preConcat(t.getMatrix());
     }
-    
+
+    /**
+     * Like {@link #compose(Transformation)} but does this.postConcat(t) of
+     * the transformation matrix.
+     * @hide
+     */
+    public void postCompose(Transformation t) {
+        mAlpha *= t.getAlpha();
+        mMatrix.postConcat(t.getMatrix());
+    }
+
     /**
      * @return The 3x3 Matrix representing the trnasformation to apply to the
      * coordinates of the object being animated

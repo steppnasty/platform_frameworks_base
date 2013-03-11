@@ -1479,6 +1479,16 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
+     * @hide
+     */
+    @Override
+    public void childAccessibilityStateChanged(View child) {
+        if (mParent != null) {
+            mParent.childAccessibilityStateChanged(child);
+        }
+    }
+
+    /**
      * Implement this method to intercept hover events before they are handled
      * by child views.
      * <p>
@@ -5541,6 +5551,17 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             topMargin = top;
             endMargin = end;
             bottomMargin = bottom;
+        }
+
+        /**
+         * Sets the relative start margin.
+         *
+         * @param start the start margin size
+         *
+         * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginStart
+         */
+        public void setMarginStart(int start) {
+            startMargin = start;
         }
 
         /**

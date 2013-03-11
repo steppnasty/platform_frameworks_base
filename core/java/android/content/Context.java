@@ -32,6 +32,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.AttributeSet;
+import android.view.Display;
+import android.view.CompatibilityInfoHolder;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -840,6 +842,46 @@ public abstract class Context {
     public abstract void startActivity(Intent intent);
 
     /**
+     * Launch a new activity.  You will not receive any information about when
+     * the activity exits.
+     *
+     * <p>Note that if this method is being called from outside of an
+     * {@link android.app.Activity} Context, then the Intent must include
+     * the {@link Intent#FLAG_ACTIVITY_NEW_TASK} launch flag.  This is because,
+     * without being started from an existing Activity, there is no existing
+     * task in which to place the new activity and thus it needs to be placed
+     * in its own separate task.
+     *
+     * <p>This method throws {@link ActivityNotFoundException}
+     * if there was no Activity found to run the given Intent.
+     *
+     * @param intent The description of the activity to start.
+     * @param options Additional options for how the Activity should be started.
+     * May be null if there are no options.  See {@link android.app.ActivityOptions}
+     * for how to build the Bundle supplied here; there are no supported definitions
+     * for building it manually.
+     *
+     * @throws ActivityNotFoundException
+     *
+     * @see #startActivity(Intent)
+     * @see PackageManager#resolveActivity
+     */
+    public abstract void startActivity(Intent intent, Bundle options);
+
+    /**
+     * Same as {@link #startActivities(Intent[], Bundle)} with no options
+     * specified.
+     *
+     * @param intents An array of Intents to be started.
+     *
+     * @throws ActivityNotFoundException
+     *
+     * @see {@link #startActivities(Intent[], Bundle)}
+     * @see PackageManager#resolveActivity
+     */
+    public abstract void startActivities(Intent[] intents);
+
+    /**
      * Launch multiple new activities.  This is generally the same as calling
      * {@link #startActivity(Intent)} for the first Intent in the array,
      * that activity during its creation calling {@link #startActivity(Intent)}
@@ -854,12 +896,16 @@ public abstract class Context {
      * list may be on it, some not), so you probably want to avoid such situations.
      *
      * @param intents An array of Intents to be started.
+     * @param options Additional options for how the Activity should be started.
+     * See {@link android.content.Context#startActivity(Intent, Bundle)
+     * Context.startActivity(Intent, Bundle)} for more details.
      *
      * @throws ActivityNotFoundException
      *
+     * @see {@link #startActivities(Intent[])}
      * @see PackageManager#resolveActivity
      */
-    public abstract void startActivities(Intent[] intents);
+    public abstract void startActivities(Intent[] intents, Bundle options);
 
     /**
      * Like {@link #startActivity(Intent)}, but taking a IntentSender
@@ -881,6 +927,35 @@ public abstract class Context {
     public abstract void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
             throws IntentSender.SendIntentException;
+
+    /**
+     * Like {@link #startActivity(Intent, Bundle)}, but taking a IntentSender
+     * to start.  If the IntentSender is for an activity, that activity will be started
+     * as if you had called the regular {@link #startActivity(Intent)}
+     * here; otherwise, its associated action will be executed (such as
+     * sending a broadcast) as if you had called
+     * {@link IntentSender#sendIntent IntentSender.sendIntent} on it.
+     *
+     * @param intent The IntentSender to launch.
+     * @param fillInIntent If non-null, this will be provided as the
+     * intent parameter to {@link IntentSender#sendIntent}.
+     * @param flagsMask Intent flags in the original IntentSender that you
+     * would like to change.
+     * @param flagsValues Desired values for any bits set in
+     * <var>flagsMask</var>
+     * @param extraFlags Always set to 0.
+     * @param options Additional options for how the Activity should be started.
+     * See {@link android.content.Context#startActivity(Intent, Bundle)
+     * Context.startActivity(Intent, Bundle)} for more details.  If options
+     * have also been supplied by the IntentSender, options given here will
+     * override any that conflict with those given by the IntentSender.
+     *
+     * @see #startActivity(Intent, Bundle)
+     * @see #startIntentSender(IntentSender, Intent, int, int, int)
+     */
+    public abstract void startIntentSender(IntentSender intent,
+            Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags,
+            Bundle options) throws IntentSender.SendIntentException;
 
     /**
      * Broadcast the given intent to all interested BroadcastReceivers.  This
@@ -1305,6 +1380,15 @@ public abstract class Context {
      */
     public abstract boolean bindService(Intent service, ServiceConnection conn,
             int flags);
+
+    /**
+     * Same as {@link #bindService(Intent, ServiceConnection, int)}, but with an explicit userId
+     * argument for use by system server and other multi-user aware code.
+     * @hide
+     */
+    public boolean bindService(Intent service, ServiceConnection conn, int flags, int userId) {
+        throw new RuntimeException("Not implemented. Must override in a subclass.");
+    }
 
     /**
      * Disconnect from an application service.  You will no longer receive
@@ -1813,6 +1897,24 @@ public abstract class Context {
     public static final String USB_SERVICE = "usb";
 
     /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link android.hardware.input.InputManager} for interacting with input devices.
+     *
+     * @see #getSystemService
+     * @see android.hardware.input.InputManager
+     */
+    public static final String INPUT_SERVICE = "input";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
+     * {@link android.hardware.display.DisplayManager} for interacting with display devices.
+     *
+     * @see #getSystemService
+     * @see android.hardware.display.DisplayManager
+     */
+    public static final String DISPLAY_SERVICE = "display";
+
+    /**
      * Determine whether the given permission is allowed for a particular
      * process and user ID running in the system.
      *
@@ -2213,6 +2315,37 @@ public abstract class Context {
      */
     public abstract Context createPackageContext(String packageName,
             int flags) throws PackageManager.NameNotFoundException;
+
+    /**
+     * Return a new Context object for the current Context but whose resources
+     * are adjusted to match the metrics of the given Display.  Each call to this method
+     * returns a new instance of a Context object; Context objects are not
+     * shared, however common state (ClassLoader, other Resources for the
+     * same configuration) may be so the Context itself can be fairly lightweight.
+     *
+     * The returned display Context provides a {@link WindowManager}
+     * (see {@link #getSystemService(String)}) that is configured to show windows
+     * on the given display.  The WindowManager's {@link WindowManager#getDefaultDisplay}
+     * method can be used to retrieve the Display from the returned Context.
+     *
+     * @param display A {@link Display} object specifying the display
+     * for whose metrics the Context's resources should be tailored and upon which
+     * new windows should be shown.
+     *
+     * @return A Context for the display.
+     */
+    public abstract Context createDisplayContext(Display display);
+
+    /**
+     * Gets the compatibility info holder for this context.  This information
+     * is provided on a per-application basis and is used to simulate lower density
+     * display metrics for legacy applications.
+     *
+     * @param displayId The display id for which to get compatibility info.
+     * @return The compatibility info holder, or null if not required by the application.
+     * @hide
+     */
+    public abstract CompatibilityInfoHolder getCompatibilityInfo(int displayId);
 
     /**
      * Indicates whether this Context is restricted.

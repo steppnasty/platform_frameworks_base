@@ -16,6 +16,7 @@
 
 package android.view;
 
+import android.hardware.input.InputManager;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.RemoteException;
@@ -40,9 +41,13 @@ import java.util.List;
  */
 public final class InputDevice implements Parcelable {
     private int mId;
+    private final int mGeneration;
     private String mName;
+    private final String mDescriptor;
+    private final boolean mIsExternal;
     private int mSources;
     private int mKeyboardType;
+    private final KeyCharacterMap mKeyCharacterMap;
     private String mKeyCharacterMapFile;
 
     private final ArrayList<MotionRange> mMotionRanges = new ArrayList<MotionRange>();
@@ -287,8 +292,48 @@ public final class InputDevice implements Parcelable {
      */
     public static final int KEYBOARD_TYPE_ALPHABETIC = 2;
 
+    public static final Parcelable.Creator<InputDevice> CREATOR =
+            new Parcelable.Creator<InputDevice>() {
+        public InputDevice createFromParcel(Parcel in) {
+            return new InputDevice(in);
+        }
+        public InputDevice[] newArray(int size) {
+            return new InputDevice[size];
+        }
+    };
+
     // Called by native code.
-    private InputDevice() {
+    private InputDevice(int id, int generation, String name, String descriptor,
+            boolean isExternal, int sources,
+            int keyboardType, KeyCharacterMap keyCharacterMap) {
+        mId = id;
+        mGeneration = generation;
+        mName = name;
+        mDescriptor = descriptor;
+        mIsExternal = isExternal;
+        mSources = sources;
+        mKeyboardType = keyboardType;
+        mKeyCharacterMap = keyCharacterMap;
+    }
+
+    private InputDevice(Parcel in) {
+        mId = in.readInt();
+        mGeneration = in.readInt();
+        mName = in.readString();
+        mDescriptor = in.readString();
+        mIsExternal = in.readInt() != 0;
+        mSources = in.readInt();
+        mKeyboardType = in.readInt();
+        mKeyCharacterMap = KeyCharacterMap.CREATOR.createFromParcel(in);
+
+        for (;;) {
+            int axis = in.readInt();
+            if (axis < 0) {
+                break;
+            }
+            addMotionRange(axis, in.readInt(),
+                    in.readFloat(), in.readFloat(), in.readFloat(), in.readFloat());
+        }
     }
 
     /**
@@ -297,13 +342,7 @@ public final class InputDevice implements Parcelable {
      * @return The input device or null if not found.
      */
     public static InputDevice getDevice(int id) {
-        IWindowManager wm = Display.getWindowManager();
-        try {
-            return wm.getInputDevice(id);
-        } catch (RemoteException ex) {
-            throw new RuntimeException(
-                    "Could not get input device information from Window Manager.", ex);
-        }
+        return InputManager.getInstance().getInputDevice(id);
     }
     
     /**
@@ -311,13 +350,7 @@ public final class InputDevice implements Parcelable {
      * @return The input device ids.
      */
     public static int[] getDeviceIds() {
-        IWindowManager wm = Display.getWindowManager();
-        try {
-            return wm.getInputDeviceIds();
-        } catch (RemoteException ex) {
-            throw new RuntimeException(
-                    "Could not get input device ids from Window Manager.", ex);
-        }
+        return InputManager.getInstance().getInputDeviceIds();
     }
     
     /**
@@ -327,7 +360,86 @@ public final class InputDevice implements Parcelable {
     public int getId() {
         return mId;
     }
-    
+
+    /**
+     * Gets a generation number for this input device.
+     * The generation number is incremented whenever the device is reconfigured and its
+     * properties may have changed.
+     *
+     * @return The generation number.
+     *
+     * @hide
+     */
+    public int getGeneration() {
+        return mGeneration;
+    }
+
+    /**
+     * Gets the input device descriptor, which is a stable identifier for an input device.
+     * <p>
+     * An input device descriptor uniquely identifies an input device.  Its value
+     * is intended to be persistent across system restarts, and should not change even
+     * if the input device is disconnected, reconnected or reconfigured at any time.
+     * </p><p>
+     * It is possible for there to be multiple {@link InputDevice} instances that have the
+     * same input device descriptor.  This might happen in situations where a single
+     * human input device registers multiple {@link InputDevice} instances (HID collections)
+     * that describe separate features of the device, such as a keyboard that also
+     * has a trackpad.  Alternately, it may be that the input devices are simply
+     * indistinguishable, such as two keyboards made by the same manufacturer.
+     * </p><p>
+     * The input device descriptor returned by {@link #getDescriptor} should only be
+     * used when an application needs to remember settings associated with a particular
+     * input device.  For all other purposes when referring to a logical
+     * {@link InputDevice} instance at runtime use the id returned by {@link #getId()}.
+     * </p>
+     *
+     * @return The input device descriptor.
+     */
+    public String getDescriptor() {
+        return mDescriptor;
+    }
+
+    /**
+     * Returns true if the device is a virtual input device rather than a real one,
+     * such as the virtual keyboard (see {@link KeyCharacterMap#VIRTUAL_KEYBOARD}).
+     * <p>
+     * Virtual input devices are provided to implement system-level functionality
+     * and should not be seen or configured by users.
+     * </p>
+     *
+     * @return True if the device is virtual.
+     *
+     * @see KeyCharacterMap#VIRTUAL_KEYBOARD
+     */
+    public boolean isVirtual() {
+        return mId < 0;
+    }
+
+    /**
+     * Returns true if the device is external (connected to USB or Bluetooth or some other
+     * peripheral bus), otherwise it is built-in.
+     *
+     * @return True if the device is external.
+     *
+     * @hide
+     */
+    public boolean isExternal() {
+        return mIsExternal;
+    }
+
+    /**
+     * Returns true if the device is a full keyboard.
+     *
+     * @return True if the device is a full keyboard.
+     *
+     * @hide
+     */
+    public boolean isFullKeyboard() {
+        return (mSources & SOURCE_KEYBOARD) == SOURCE_KEYBOARD
+                && mKeyboardType == KEYBOARD_TYPE_ALPHABETIC;
+    }
+
     /**
      * Gets the name of this input device.
      * @return The input device name.
@@ -517,19 +629,6 @@ public final class InputDevice implements Parcelable {
             return mFuzz;
         }
     }
-
-    public static final Parcelable.Creator<InputDevice> CREATOR
-            = new Parcelable.Creator<InputDevice>() {
-        public InputDevice createFromParcel(Parcel in) {
-            InputDevice result = new InputDevice();
-            result.readFromParcel(in);
-            return result;
-        }
-        
-        public InputDevice[] newArray(int size) {
-            return new InputDevice[size];
-        }
-    };
     
     private void readFromParcel(Parcel in) {
         mId = in.readInt();
@@ -551,7 +650,10 @@ public final class InputDevice implements Parcelable {
     @Override
     public void writeToParcel(Parcel out, int flags) {
         out.writeInt(mId);
+        out.writeInt(mGeneration);
         out.writeString(mName);
+        out.writeString(mDescriptor);
+        out.writeInt(mIsExternal ? 1 : 0);
         out.writeInt(mSources);
         out.writeInt(mKeyboardType);
         out.writeString(mKeyCharacterMapFile);
@@ -578,7 +680,10 @@ public final class InputDevice implements Parcelable {
     public String toString() {
         StringBuilder description = new StringBuilder();
         description.append("Input Device ").append(mId).append(": ").append(mName).append("\n");
-        
+        description.append("  Descriptor: ").append(mDescriptor).append("\n");
+        description.append("  Generation: ").append(mGeneration).append("\n");
+        description.append("  Location: ").append(mIsExternal ? "external" : "built-in").append("\n");
+
         description.append("  Keyboard Type: ");
         switch (mKeyboardType) {
             case KEYBOARD_TYPE_NONE:

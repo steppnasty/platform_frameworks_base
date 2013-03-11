@@ -93,6 +93,49 @@ public class AccessibilityServiceInfo implements Parcelable {
     public static final int DEFAULT = 0x0000001;
 
     /**
+     * This flag requests that the system gets into touch exploration mode.
+     * In this mode a single finger moving on the screen behaves as a mouse
+     * pointer hovering over the user interface. The system will also detect
+     * certain gestures performed on the touch screen and notify this service.
+     * The system will enable touch exploration mode if there is at least one
+     * accessibility service that has this flag set. Hence, clearing this
+     * flag does not guarantee that the device will not be in touch exploration
+     * mode since there may be another enabled service that requested it.
+     */
+    public static final int FLAG_REQUEST_TOUCH_EXPLORATION_MODE= 0x0000004;
+
+    /**
+     * If this flag is set the system will regard views that are not important
+     * for accessibility in addition to the ones that are important for accessibility.
+     * That is, views that are marked as not important for accessibility via
+     * {@link View#IMPORTANT_FOR_ACCESSIBILITY_NO} and views that are marked as
+     * potentially important for accessibility via
+     * {@link View#IMPORTANT_FOR_ACCESSIBILITY_AUTO} for which the system has determined
+     * that are not important for accessibility, are both reported while querying the
+     * window content and also the accessibility service will receive accessibility events
+     * from them.
+     * <p>
+     * <strong>Note:</strong> For accessibility services targeting API version
+     * {@link Build.VERSION_CODES#JELLY_BEAN} or higher this flag has to be explicitly
+     * set for the system to regard views that are not important for accessibility. For
+     * accessibility services targeting API version lower than
+     * {@link Build.VERSION_CODES#JELLY_BEAN} this flag is ignored and all views are
+     * regarded for accessibility purposes.
+     * </p>
+     * <p>
+     * Usually views not important for accessibility are layout managers that do not
+     * react to user actions, do not draw any content, and do not have any special
+     * semantics in the context of the screen content. For example, a three by three
+     * grid can be implemented as three horizontal linear layouts and one vertical,
+     * or three vertical linear layouts and one horizontal, or one grid layout, etc.
+     * In this context the actual layout mangers used to achieve the grid configuration
+     * are not important, rather it is important that there are nine evenly distributed
+     * elements.
+     * </p>
+     */
+    public static final int FLAG_INCLUDE_NOT_IMPORTANT_VIEWS = 0x0000002;
+
+    /**
      * The event types an {@link AccessibilityService} is interested in.
      * <p>
      *   <strong>Can be dynamically set at runtime.</strong>

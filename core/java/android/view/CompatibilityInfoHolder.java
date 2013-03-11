@@ -17,12 +17,15 @@
 package android.view;
 
 import android.content.res.CompatibilityInfo;
+import android.util.Log;
 
 /** @hide */
 public class CompatibilityInfoHolder {
+    private final static String TAG = "CompatibilityInfoHoler";
     private volatile CompatibilityInfo mCompatInfo = CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;
 
     public void set(CompatibilityInfo compatInfo) {
+        Log.w(TAG, "set");
         if (compatInfo != null && (compatInfo.isScalingRequired()
                 || !compatInfo.supportsScreen())) {
             mCompatInfo = compatInfo;
@@ -32,10 +35,12 @@ public class CompatibilityInfoHolder {
     }
 
     public CompatibilityInfo get() {
+        Log.w(TAG, "get");
         return mCompatInfo;
     }
 
     public CompatibilityInfo getIfNeeded() {
+        Log.w(TAG, "getIfNeeded");
         CompatibilityInfo ci = mCompatInfo;
         if (ci == null || ci  == CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO) {
             return null;

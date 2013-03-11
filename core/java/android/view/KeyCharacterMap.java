@@ -16,18 +16,20 @@
 
 package android.view;
 
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.text.method.MetaKeyKeyListener;
 import android.util.AndroidRuntimeException;
 import android.util.SparseIntArray;
-import android.os.RemoteException;
 import android.util.SparseArray;
+import android.hardware.input.InputManager;
 
 import java.lang.Character;
 
 /**
  * Describes the keys provided by a keyboard device and their associated labels.
  */
-public class KeyCharacterMap {
+public class KeyCharacterMap implements Parcelable {
     /**
      * The id of the device's primary built in keyboard is always 0.
      *
@@ -136,9 +138,20 @@ public class KeyCharacterMap {
 
     private static SparseArray<KeyCharacterMap> sInstances = new SparseArray<KeyCharacterMap>();
 
-    private final int mDeviceId;
+    public static final Parcelable.Creator<KeyCharacterMap> CREATOR =
+            new Parcelable.Creator<KeyCharacterMap>() {
+        public KeyCharacterMap createFromParcel(Parcel in) {
+            return new KeyCharacterMap(in);
+        }
+        public KeyCharacterMap[] newArray(int size) {
+            return new KeyCharacterMap[size];
+        }
+    };
+
     private int mPtr;
 
+    private static native int nativeReadFromParcel(Parcel in);
+    private static native void nativeWriteToParcel(int ptr, Parcel out);
     private static native int nativeLoad(String file);
     private static native void nativeDispose(int ptr);
 
@@ -149,10 +162,20 @@ public class KeyCharacterMap {
     private static native char nativeGetMatch(int ptr, int keyCode, char[] chars, int metaState);
     private static native char nativeGetDisplayLabel(int ptr, int keyCode);
     private static native int nativeGetKeyboardType(int ptr);
-    private static native KeyEvent[] nativeGetEvents(int ptr, int deviceId, char[] chars);
+    private static native KeyEvent[] nativeGetEvents(int ptr, char[] chars);
 
-    private KeyCharacterMap(int deviceId, int ptr) {
-        mDeviceId = deviceId;
+    private KeyCharacterMap(Parcel in) {
+        if (in == null) {
+            throw new IllegalArgumentException("parcel must not be null");
+        }
+        mPtr = nativeReadFromParcel(in);
+        if (mPtr == 0) {
+            throw new RuntimeException("Could not read KeyCharacterMap from parcel.");
+        }
+    }
+
+    // Called from native
+    private KeyCharacterMap(int ptr) {
         mPtr = ptr;
     }
 
@@ -174,25 +197,16 @@ public class KeyCharacterMap {
      * is missing from the system.
      */
     public static KeyCharacterMap load(int deviceId) {
-        synchronized (sInstances) {
-            KeyCharacterMap map = sInstances.get(deviceId);
-            if (map == null) {
-                String kcm = null;
-                if (deviceId != VIRTUAL_KEYBOARD) {
-                    InputDevice device = InputDevice.getDevice(deviceId);
-                    if (device != null) {
-                        kcm = device.getKeyCharacterMapFile();
-                    }
-                }
-                if (kcm == null || kcm.length() == 0) {
-                    kcm = "/system/usr/keychars/Virtual.kcm";
-                }
-                int ptr = nativeLoad(kcm); // might throw
-                map = new KeyCharacterMap(deviceId, ptr);
-                sInstances.put(deviceId, map);
+        final InputManager im = InputManager.getInstance();
+        InputDevice inputDevice = im.getInputDevice(deviceId);
+        if (inputDevice == null) {
+            inputDevice = im.getInputDevice(VIRTUAL_KEYBOARD);
+            if (inputDevice == null) {
+                throw new UnavailableException(
+                        "Could not load key character map for device " + deviceId);
             }
-            return map;
         }
+        return inputDevice.getKeyCharacterMap();
     }
 
     /**
@@ -241,19 +255,19 @@ public class KeyCharacterMap {
      *
      * @param keyCode The key code.
      * @param metaState The meta key modifier state.
-     * @param outFallbackAction The fallback action object to populate.
-     * @return True if a fallback action was found, false otherwise.
+     * @return The fallback action, or null if none.  Remember to recycle the fallback action.
      *
      * @hide
      */
-    public boolean getFallbackAction(int keyCode, int metaState,
-            FallbackAction outFallbackAction) {
-        if (outFallbackAction == null) {
-            throw new IllegalArgumentException("fallbackAction must not be null");
-        }
-
+    public FallbackAction getFallbackAction(int keyCode, int metaState) {
+        FallbackAction action = FallbackAction.obtain();
         metaState = KeyEvent.normalizeMetaState(metaState);
-        return nativeGetFallbackAction(mPtr, keyCode, metaState, outFallbackAction);
+        if (nativeGetFallbackAction(mPtr, keyCode, metaState, action)) {
+            action.metaState = KeyEvent.normalizeMetaState(action.metaState);
+            return action;
+        }
+        action.recycle();
+        return null;
     }
 
     /**
@@ -429,7 +443,7 @@ public class KeyCharacterMap {
         if (chars == null) {
             throw new IllegalArgumentException("chars must not be null.");
         }
-        return nativeGetEvents(mPtr, mDeviceId, chars);
+        return nativeGetEvents(mPtr, chars);
     }
 
     /**
@@ -518,10 +532,7 @@ public class KeyCharacterMap {
      * @return True if at least one attached keyboard supports the specified key code.
      */
     public static boolean deviceHasKey(int keyCode) {
-        int[] codeArray = new int[1];
-        codeArray[0] = keyCode;
-        boolean[] ret = deviceHasKeys(codeArray);
-        return ret[0];
+        return InputManager.getInstance().deviceHasKeys(new int[] { keyCode })[0];
     }
 
     /**
@@ -535,14 +546,20 @@ public class KeyCharacterMap {
      * at the same index in the key codes array.
      */
     public static boolean[] deviceHasKeys(int[] keyCodes) {
-        boolean[] ret = new boolean[keyCodes.length];
-        IWindowManager wm = Display.getWindowManager();
-        try {
-            wm.hasKeys(keyCodes, ret);
-        } catch (RemoteException e) {
-            // no fallback; just return the empty array
+        return InputManager.getInstance().deviceHasKeys(keyCodes);
+    }
+
+    @Override
+    public void writeToParcel(Parcel out, int flags) {
+        if (out == null) {
+            throw new IllegalArgumentException("parcel must not be null");
         }
-        return ret;
+        nativeWriteToParcel(mPtr, out);
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
     }
 
     /**
@@ -713,7 +730,44 @@ public class KeyCharacterMap {
      * @hide
      */
     public static final class FallbackAction {
+        private static final int MAX_RECYCLED = 10;
+        private static final Object sRecycleLock = new Object();
+        private static FallbackAction sRecycleBin;
+        private static int sRecycledCount;
+
+        private FallbackAction next;
+
         public int keyCode;
         public int metaState;
+
+        private FallbackAction() {
+        }
+
+        public static FallbackAction obtain() {
+            final FallbackAction target;
+            synchronized (sRecycleLock) {
+                if (sRecycleBin == null) {
+                    target = new FallbackAction();
+                } else {
+                    target = sRecycleBin;
+                    sRecycleBin = target.next;
+                    sRecycledCount--;
+                    target.next = null;
+                }
+            }
+            return target;
+        }
+
+        public void recycle() {
+            synchronized (sRecycleLock) {
+                if (sRecycledCount < MAX_RECYCLED) {
+                    next = sRecycleBin;
+                    sRecycleBin = this;
+                    sRecycledCount += 1;
+                } else {
+                    next = null;
+                }
+            }
+        }
     }
 }

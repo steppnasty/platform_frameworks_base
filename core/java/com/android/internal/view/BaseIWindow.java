@@ -33,7 +33,8 @@ public class BaseIWindow extends IWindow.Stub {
         mSession = session;
     }
     
-    public void resized(int w, int h, Rect coveredInsets,
+    @Override
+    public void resized(Rect frame, Rect contentInsets,
             Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
         if (reportDraw) {
             try {
@@ -43,10 +44,18 @@ public class BaseIWindow extends IWindow.Stub {
         }
     }
 
+    @Override
+    public void moved(int newX, int newY) {
+    }
+
     public void dispatchAppVisibility(boolean visible) {
     }
 
     public void dispatchGetNewSurface() {
+    }
+
+    @Override
+    public void dispatchScreenState(boolean on) {
     }
 
     public void windowFocusChanged(boolean hasFocus, boolean touchEnabled) {
@@ -83,5 +92,9 @@ public class BaseIWindow extends IWindow.Stub {
             } catch (RemoteException e) {
             }
         }
+    }
+
+    @Override
+    public void doneAnimating() {
     }
 }

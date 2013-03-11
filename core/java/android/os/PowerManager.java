@@ -16,6 +16,7 @@
 
 package android.os;
 
+import android.content.Context;
 import android.util.Log;
 
 /**
@@ -100,7 +101,7 @@ import android.util.Log;
  * Any application using a WakeLock must request the {@code android.permission.WAKE_LOCK}
  * permission in an {@code &lt;uses-permission&gt;} element of the application's manifest.
  */
-public class PowerManager
+public final class PowerManager
 {
     private static final String TAG = "PowerManager";
     
@@ -121,6 +122,13 @@ public class PowerManager
                                         | WAKE_BIT_SCREEN_BRIGHT
                                         | WAKE_BIT_KEYBOARD_BRIGHT
                                         | WAKE_BIT_PROXIMITY_SCREEN_OFF;
+
+    /**
+     * Mask for the wake lock level component of a combined wake lock level and flags integer.
+     *
+     * @hide
+     */
+    public static final int WAKE_LOCK_LEVEL_MASK = 0x0000ffff;
 
     /**
      * Wake lock that ensures that the CPU is running.  The screen might
@@ -178,6 +186,65 @@ public class PowerManager
     public static final int WAIT_FOR_PROXIMITY_NEGATIVE = 1;
 
     /**
+     * Brightness value for fully on.
+     * @hide
+     */
+    public static final int BRIGHTNESS_ON = 255;
+
+    /**
+     * Brightness value for fully off.
+     * @hide
+     */
+    public static final int BRIGHTNESS_OFF = 0;
+
+    // Note: Be sure to update android.os.BatteryStats and PowerManager.h
+    // if adding or modifying user activity event constants.
+
+    /**
+     * User activity event type: Unspecified event type.
+     * @hide
+     */
+    public static final int USER_ACTIVITY_EVENT_OTHER = 0;
+
+    /**
+     * User activity event type: Button or key pressed or released.
+     * @hide
+     */
+    public static final int USER_ACTIVITY_EVENT_BUTTON = 1;
+
+    /**
+     * User activity event type: Touch down, move or up.
+     * @hide
+     */
+    public static final int USER_ACTIVITY_EVENT_TOUCH = 2;
+
+    /**
+     * User activity flag: Do not restart the user activity timeout or brighten
+     * the display in response to user activity if it is already dimmed.
+     * @hide
+     */
+    public static final int USER_ACTIVITY_FLAG_NO_CHANGE_LIGHTS = 1 << 0;
+
+    /**
+     * Go to sleep reason code: Going to sleep due by user request.
+     * @hide
+     */
+    public static final int GO_TO_SLEEP_REASON_USER = 0;
+
+    /**
+     * Go to sleep reason code: Going to sleep due by request of the
+     * device administration policy.
+     * @hide
+     */
+    public static final int GO_TO_SLEEP_REASON_DEVICE_ADMIN = 1;
+
+    /**
+     * Go to sleep reason code: Going to sleep due to a screen timeout.
+     * @hide
+     */
+    public static final int GO_TO_SLEEP_REASON_TIMEOUT = 2;
+
+    /**
      * Normally wake locks don't actually wake the device, they just cause
      * it to remain on once it's already on.  Think of the video player
      * app as the normal behavior.  Notifications that pop up and want
@@ -197,7 +264,60 @@ public class PowerManager
      * Does not work with PARTIAL_WAKE_LOCKs.
      */
     public static final int ON_AFTER_RELEASE = 0x20000000;
-    
+
+    final Context mContext;
+    final IPowerManager mService;
+    final Handler mHandler;
+
+    /**
+     * {@hide}
+     */
+    public PowerManager(Context context, IPowerManager service, Handler handler) {
+        mContext = context;
+        mService = service;
+        mHandler = handler;
+    }
+
+    /**
+     * Gets the minimum supported screen brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the minimum value that can be set by the user.
+     * @hide
+     */
+    public int getMinimumScreenBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_screenBrightnessSettingMinimum);
+    }
+
+    /**
+     * Gets the maximum supported screen brightness setting.
+     * The screen may be allowed to become dimmer than this value but
+     * this is the maximum value that can be set by the user.
+     * @hide
+     */
+    public int getMaximumScreenBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_screenBrightnessSettingMaximum);
+    }
+
+    /**
+     * Gets the default screen brightness setting.
+     * @hide
+     */
+    public int getDefaultScreenBrightnessSetting() {
+        return mContext.getResources().getInteger(
+                com.android.internal.R.integer.config_screenBrightnessSettingDefault);
+    }
+
+    /**
+     * Returns true if the screen auto-brightness adjustment setting should
+     * be available in the UI.  This setting is experimental and disabled by default.
+     * @hide
+     */
+    public static boolean useScreenAutoBrightnessAdjustmentFeature() {
+        return SystemProperties.getBoolean("persist.power.useautobrightadj", false);
+    }
+
     /**
      * Class lets you say that you need to have the device on.
      * <p>
@@ -280,9 +400,15 @@ public class PowerManager
         
         private void acquireLocked() {
             if (!mRefCounted || mCount++ == 0) {
+                // Do this even if the wake lock is already thought to be held (mHeld == true)
+                // because non-reference counted wake locks are not always properly released.
+                // For example, the keyguard's wake lock might be forcibly released by the
+                // power manager without the keyguard knowing.  A subsequent call to acquire
+                // should immediately acquire the wake lock once again despite never having
+                // been explicitly released by the keyguard.
                 mHandler.removeCallbacks(mReleaser);
                 try {
-                    mService.acquireWakeLock(mFlags, mToken, mTag, mWorkSource);
+                    mService.acquireWakeLock(mToken, mFlags, mTag, mWorkSource);
                 } catch (RemoteException e) {
                 }
                 mHeld = true;
@@ -419,25 +545,51 @@ public class PowerManager
         return new WakeLock(flags, tag);
     }
 
+    /** @hide */
+    public static void validateWakeLockParameters(int levelAndFlags, String tag) {
+        switch (levelAndFlags & WAKE_LOCK_LEVEL_MASK) {
+            case PARTIAL_WAKE_LOCK:
+            case SCREEN_DIM_WAKE_LOCK:
+            case SCREEN_BRIGHT_WAKE_LOCK:
+            case FULL_WAKE_LOCK:
+            case PROXIMITY_SCREEN_OFF_WAKE_LOCK:
+                break;
+            default:
+                throw new IllegalArgumentException("Must specify a valid wake lock level.");
+        }
+        if (tag == null) {
+            throw new IllegalArgumentException("The tag must not be null.");
+        }
+    }
+
     /**
-     * User activity happened.
+     * Notifies the power manager that user activity happened.
      * <p>
-     * Turns the device from whatever state it's in to full on, and resets
-     * the auto-off timer.
+     * Resets the auto-off timer and brightens the screen if the device
+     * is not asleep.  This is what happens normally when a key or the touch
+     * screen is pressed or when some other user activity occurs.
+     * This method does not wake up the device if it has been put to sleep.
+     * </p><p>
+     * Requires the {@link android.Manifest.permission#DEVICE_POWER} permission.
+     * </p>
      *
-     * @param when is used to order this correctly with the wake lock calls.
-     *          This time should be in the {@link SystemClock#uptimeMillis
-     *          SystemClock.uptimeMillis()} time base.
-     * @param noChangeLights should be true if you don't want the lights to
-     *          turn on because of this event.  This is set when the power
-     *          key goes down.  We want the device to stay on while the button
-     *          is down, but we're about to turn off.  Otherwise the lights
-     *          flash on and then off and it looks weird.
+     * @param when The time of the user activity, in the {@link SystemClock#uptimeMillis()}
+     * time base.  This timestamp is used to correctly order the user activity request with
+     * other power management functions.  It should be set
+     * to the timestamp of the input event that caused the user activity.
+     * @param noChangeLights If true, does not cause the keyboard backlight to turn on
+     * because of this event.  This is set when the power key is pressed.
+     * We want the device to stay on while the button is down, but we're about
+     * to turn off the screen so we don't want the keyboard backlight to turn on again.
+     * Otherwise the lights flash on and then off and it looks weird.
+     *
+     * @see #wakeUp
+     * @see #goToSleep
      */
-    public void userActivity(long when, boolean noChangeLights)
-    {
+    public void userActivity(long when, boolean noChangeLights) {
         try {
-            mService.userActivity(when, noChangeLights);
+            mService.userActivity(when, USER_ACTIVITY_EVENT_OTHER,
+                    noChangeLights ? USER_ACTIVITY_FLAG_NO_CHANGE_LIGHTS : 0);
         } catch (RemoteException e) {
         }
     }
@@ -453,22 +605,48 @@ public class PowerManager
     public void goToSleep(long time) 
     {
         try {
-            mService.goToSleep(time);
+            mService.goToSleep(time, GO_TO_SLEEP_REASON_USER);
         } catch (RemoteException e) {
         }
     }
 
     /**
-     * sets the brightness of the backlights (screen, keyboard, button).
+     * Forces the device to wake up from sleep.
+     * <p>
+     * If the device is currently asleep, wakes it up, otherwise does nothing.
+     * This is what happens when the power key is pressed to turn on the screen.
+     * </p><p>
+     * Requires the {@link android.Manifest.permission#DEVICE_POWER} permission.
+     * </p>
      *
-     * @param brightness value from 0 to 255
+     * @param time The time when the request to wake up was issued, in the
+     * {@link SystemClock#uptimeMillis()} time base.  This timestamp is used to correctly
+     * order the wake up request with other power management functions.  It should be set
+     * to the timestamp of the input event that caused the request to wake up.
+     *
+     * @see #userActivity
+     * @see #goToSleep
+     */
+    public void wakeUp(long time) {
+        try {
+            mService.wakeUp(time);
+        } catch (RemoteException e) {
+        }
+    }
+
+    /**
+     * Sets the brightness of the backlights (screen, keyboard, button).
+     * <p>
+     * Requires the {@link android.Manifest.permission#DEVICE_POWER} permission.
+     * </p>
+     *
+     * @param brightness The brightness value from 0 to 255.
      *
      * {@hide}
      */
-    public void setBacklightBrightness(int brightness)
-    {
+    public void setBacklightBrightness(int brightness) {
         try {
-            mService.setBacklightBrightness(brightness);
+            mService.setTemporaryScreenBrightnessSettingOverride(brightness);
         } catch (RemoteException e) {
         }
     }
@@ -534,27 +712,4 @@ public class PowerManager
         } catch (RemoteException e) {
         }
     }
-
-    private PowerManager()
-    {
-    }
-
-    /**
-     * {@hide}
-     */
-    public PowerManager(IPowerManager service, Handler handler)
-    {
-        mService = service;
-        mHandler = handler;
-    }
-
-    /**
-     *  TODO: It would be nice to be able to set the poke lock here,
-     *  but I'm not sure what would be acceptable as an interface -
-     *  either a PokeLock object (like WakeLock) or, possibly just a
-     *  method call to set the poke lock. 
-     */
-    
-    IPowerManager mService;
-    Handler mHandler;
 }

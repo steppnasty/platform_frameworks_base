@@ -26,7 +26,7 @@
 
 #include <EGL/egl_display.h>
 
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <SkBitmap.h>
 #include <SkPixelRef.h>
 
@@ -325,7 +325,7 @@ not_valid_surface:
         return 0;
     }
 
-    window = android_Surface_getNativeWindow(_env, native_window);
+    window = android_view_Surface_getNativeWindow(_env, native_window);
     if (window == NULL)
         goto not_valid_surface;
 

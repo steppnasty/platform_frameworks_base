@@ -20,6 +20,7 @@ import android.graphics.Rect;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
+import android.util.SparseLongArray;
 import android.util.SparseIntArray;
 import android.view.View;
 
@@ -52,7 +53,26 @@ public class AccessibilityNodeInfo implements Parcelable {
 
     private static final boolean DEBUG = false;
 
-    private static final int UNDEFINED = -1;
+    /** @hide */
+    public static final int UNDEFINED = -1;
+
+    /** @hide */
+    public static final long ROOT_NODE_ID = makeNodeId(UNDEFINED, UNDEFINED);
+
+    /** @hide */
+    public static final int ACTIVE_WINDOW_ID = UNDEFINED;
+
+    /** @hide */
+    public static final int FLAG_PREFETCH_PREDECESSORS = 0x00000001;
+
+    /** @hide */
+    public static final int FLAG_PREFETCH_SIBLINGS = 0x00000002;
+
+    /** @hide */
+    public static final int FLAG_PREFETCH_DESCENDANTS = 0x00000004;
+
+    /** @hide */
+    public static final int INCLUDE_NOT_IMPORTANT_VIEWS = 0x00000008;
 
     // Actions.
 
@@ -76,6 +96,178 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public static final int ACTION_CLEAR_SELECTION =  0x00000008;
 
+    /**
+     * Action that clicks on the node info.
+     */
+    public static final int ACTION_CLICK = 0x00000010;
+
+    /**
+     * Action that long clicks on the node.
+     */
+    public static final int ACTION_LONG_CLICK = 0x00000020;
+
+    /**
+     * Action that gives accessibility focus to the node.
+     */
+    public static final int ACTION_ACCESSIBILITY_FOCUS = 0x00000040;
+
+    /**
+     * Action that clears accessibility focus of the node.
+     */
+    public static final int ACTION_CLEAR_ACCESSIBILITY_FOCUS = 0x00000080;
+
+    /**
+     * Action that requests to go to the next entity in this node's text
+     * at a given movement granularity. For example, move to the next character,
+     * word, etc.
+     * <p>
+     * <strong>Arguments:</strong> {@link #ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT}<br>
+     * <strong>Example:</strong>
+     * <code><pre><p>
+     *   Bundle arguments = new Bundle();
+     *   arguments.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT,
+     *           AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER);
+     *   info.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, arguments);
+     * </code></pre></p>
+     * </p>
+     *
+     * @see #setMovementGranularities(int)
+     * @see #getMovementGranularities()
+     *
+     * @see #MOVEMENT_GRANULARITY_CHARACTER
+     * @see #MOVEMENT_GRANULARITY_WORD
+     * @see #MOVEMENT_GRANULARITY_LINE
+     * @see #MOVEMENT_GRANULARITY_PARAGRAPH
+     * @see #MOVEMENT_GRANULARITY_PAGE
+     */
+    public static final int ACTION_NEXT_AT_MOVEMENT_GRANULARITY = 0x00000100;
+
+    /**
+     * Action that requests to go to the previous entity in this node's text
+     * at a given movement granularity. For example, move to the next character,
+     * word, etc.
+     * <p>
+     * <strong>Arguments:</strong> {@link #ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT}<br>
+     * <strong>Example:</strong>
+     * <code><pre><p>
+     *   Bundle arguments = new Bundle();
+     *   arguments.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT,
+     *           AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER);
+     *   info.performAction(AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY,
+     *           arguments);
+     * </code></pre></p>
+     * </p>
+     *
+     * @see #setMovementGranularities(int)
+     * @see #getMovementGranularities()
+     *
+     * @see #MOVEMENT_GRANULARITY_CHARACTER
+     * @see #MOVEMENT_GRANULARITY_WORD
+     * @see #MOVEMENT_GRANULARITY_LINE
+     * @see #MOVEMENT_GRANULARITY_PARAGRAPH
+     * @see #MOVEMENT_GRANULARITY_PAGE
+     */
+    public static final int ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY = 0x00000200;
+
+    /**
+     * Action to move to the next HTML element of a given type. For example, move
+     * to the BUTTON, INPUT, TABLE, etc.
+     * <p>
+     * <strong>Arguments:</strong> {@link #ACTION_ARGUMENT_HTML_ELEMENT_STRING}<br>
+     * <strong>Example:</strong>
+     * <code><pre><p>
+     *   Bundle arguments = new Bundle();
+     *   arguments.putString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING, "BUTTON");
+     *   info.performAction(AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT, arguments);
+     * </code></pre></p>
+     * </p>
+     */
+    public static final int ACTION_NEXT_HTML_ELEMENT = 0x00000400;
+
+    /**
+     * Action to move to the previous HTML element of a given type. For example, move
+     * to the BUTTON, INPUT, TABLE, etc.
+     * <p>
+     * <strong>Arguments:</strong> {@link #ACTION_ARGUMENT_HTML_ELEMENT_STRING}<br>
+     * <strong>Example:</strong>
+     * <code><pre><p>
+     *   Bundle arguments = new Bundle();
+     *   arguments.putString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING, "BUTTON");
+     *   info.performAction(AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT, arguments);
+     * </code></pre></p>
+     * </p>
+     */
+    public static final int ACTION_PREVIOUS_HTML_ELEMENT = 0x00000800;
+
+    /**
+     * Action to scroll the node content forward.
+     */
+    public static final int ACTION_SCROLL_FORWARD = 0x00001000;
+
+    /**
+     * Action to scroll the node content backward.
+     */
+    public static final int ACTION_SCROLL_BACKWARD = 0x00002000;
+
+    /**
+     * Argument for which movement granularity to be used when traversing the node text.
+     * <p>
+     * <strong>Type:</strong> int<br>
+     * <strong>Actions:</strong> {@link #ACTION_NEXT_AT_MOVEMENT_GRANULARITY},
+     * {@link #ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY}
+     * </p>
+     */
+    public static final String ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT =
+        "ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT";
+
+    /**
+     * Argument for which HTML element to get moving to the next/previous HTML element.
+     * <p>
+     * <strong>Type:</strong> String<br>
+     * <strong>Actions:</strong> {@link #ACTION_NEXT_HTML_ELEMENT},
+     *         {@link #ACTION_PREVIOUS_HTML_ELEMENT}
+     * </p>
+     */
+    public static final String ACTION_ARGUMENT_HTML_ELEMENT_STRING =
+        "ACTION_ARGUMENT_HTML_ELEMENT_STRING";
+
+    /**
+     * The input focus.
+     */
+    public static final int FOCUS_INPUT = 1;
+
+    /**
+     * The accessibility focus.
+     */
+    public static final int FOCUS_ACCESSIBILITY = 2;
+
+    // Movement granularities
+
+    /**
+     * Movement granularity bit for traversing the text of a node by character.
+     */
+    public static final int MOVEMENT_GRANULARITY_CHARACTER = 0x00000001;
+
+    /**
+     * Movement granularity bit for traversing the text of a node by word.
+     */
+    public static final int MOVEMENT_GRANULARITY_WORD = 0x00000002;
+
+    /**
+     * Movement granularity bit for traversing the text of a node by line.
+     */
+    public static final int MOVEMENT_GRANULARITY_LINE = 0x00000004;
+
+    /**
+     * Movement granularity bit for traversing the text of a node by paragraph.
+     */
+    public static final int MOVEMENT_GRANULARITY_PARAGRAPH = 0x00000008;
+
+    /**
+     * Movement granularity bit for traversing the text of a node by page.
+     */
+    public static final int MOVEMENT_GRANULARITY_PAGE = 0x00000010;
+
     // Boolean attributes.
 
     private static final int PROPERTY_CHECKABLE = 0x00000001;
@@ -98,6 +290,63 @@ public class AccessibilityNodeInfo implements Parcelable {
 
     private static final int PROPERTY_SCROLLABLE = 0x00000200;
 
+    private static final int PROPERTY_ACCESSIBILITY_FOCUSED = 0x00000400;
+
+    private static final int PROPERTY_VISIBLE_TO_USER = 0x00000800;
+
+    /**
+     * Bits that provide the id of a virtual descendant of a view.
+     */
+    private static final long VIRTUAL_DESCENDANT_ID_MASK = 0xffffffff00000000L;
+
+    /**
+     * Bit shift of {@link #VIRTUAL_DESCENDANT_ID_MASK} to get to the id for a
+     * virtual descendant of a view. Such a descendant does not exist in the view
+     * hierarchy and is only reported via the accessibility APIs.
+     */
+    private static final int VIRTUAL_DESCENDANT_ID_SHIFT = 32;
+
+    /**
+     * Gets the accessibility view id which identifies a View in the view three.
+     *
+     * @param accessibilityNodeId The id of an {@link AccessibilityNodeInfo}.
+     * @return The accessibility view id part of the node id.
+     *
+     * @hide
+     */
+    public static int getAccessibilityViewId(long accessibilityNodeId) {
+        return (int) accessibilityNodeId;
+    }
+
+    /**
+     * Gets the virtual descendant id which identifies an imaginary view in a
+     * containing View.
+     *
+     * @param accessibilityNodeId The id of an {@link AccessibilityNodeInfo}.
+     * @return The virtual view id part of the node id.
+     *
+     * @hide
+     */
+    public static int getVirtualDescendantId(long accessibilityNodeId) {
+        return (int) ((accessibilityNodeId & VIRTUAL_DESCENDANT_ID_MASK)
+                >> VIRTUAL_DESCENDANT_ID_SHIFT);
+    }
+
+    /**
+     * Makes a node id by shifting the <code>virtualDescendantId</code>
+     * by {@link #VIRTUAL_DESCENDANT_ID_SHIFT} and taking
+     * the bitwise or with the <code>accessibilityViewId</code>.
+     *
+     * @param accessibilityViewId A View accessibility id.
+     * @param virtualDescendantId A virtual descendant id.
+     * @return The node id.
+     *
+     * @hide
+     */
+    public static long makeNodeId(int accessibilityViewId, int virtualDescendantId) {
+        return (((long) virtualDescendantId) << VIRTUAL_DESCENDANT_ID_SHIFT) | accessibilityViewId;
+    }
+
     // Housekeeping.
     private static final int MAX_POOL_SIZE = 50;
     private static final Object sPoolLock = new Object();
@@ -108,6 +357,9 @@ public class AccessibilityNodeInfo implements Parcelable {
     private boolean mSealed;
 
     // Data.
+    private int mWindowId = UNDEFINED;
+    private long mSourceNodeId = ROOT_NODE_ID;
+    private long mParentNodeId = ROOT_NODE_ID;
     private int mAccessibilityViewId = UNDEFINED;
     private int mAccessibilityWindowId = UNDEFINED;
     private int mParentAccessibilityViewId = UNDEFINED;
@@ -120,6 +372,7 @@ public class AccessibilityNodeInfo implements Parcelable {
     private CharSequence mText;
     private CharSequence mContentDescription;
 
+    private final SparseLongArray mChildNodeIds = new SparseLongArray();
     private SparseIntArray mChildAccessibilityIds = new SparseIntArray();
     private int mActions;
 
@@ -144,12 +397,42 @@ public class AccessibilityNodeInfo implements Parcelable {
     }
 
     /**
+     * Find the view that has the specified focus type. The search starts from
+     * the view represented by this node info.
+     *
+     * @param focus The focus to find. One of {@link #FOCUS_INPUT} or
+     *         {@link #FOCUS_ACCESSIBILITY}.
+     * @return The node info of the focused view or null.
+     *
+     * @see #FOCUS_INPUT
+     * @see #FOCUS_ACCESSIBILITY
+     */
+    public AccessibilityNodeInfo findFocus(int focus) {
+        enforceSealed();
+        enforceValidFocusType(focus);
+        if (!canPerformRequestOverConnection(mSourceNodeId)) {
+            return null;
+        }
+        return AccessibilityInteractionClient.getInstance().findFocus(mConnectionId, mWindowId,
+                mSourceNodeId, focus);
+    }
+
+    /**
      * Gets the id of the window from which the info comes from.
      *
      * @return The window id.
      */
     public int getWindowId() {
         return mAccessibilityWindowId;
+    }
+
+    /**
+     * @return The ids of the children.
+     *
+     * @hide
+     */
+    public SparseLongArray getChildNodeIds() {
+        return mChildNodeIds;
     }
 
     /**
@@ -177,13 +460,13 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public AccessibilityNodeInfo getChild(int index) {
         enforceSealed();
-        final int childAccessibilityViewId = mChildAccessibilityIds.get(index);
-        if (!canPerformRequestOverConnection(childAccessibilityViewId)) {
+        if (!canPerformRequestOverConnection(mSourceNodeId)) {
             return null;
         }
+        final long childId = mChildNodeIds.get(index);
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
-        return client.findAccessibilityNodeInfoByAccessibilityId(mConnectionId,
-                mAccessibilityWindowId, childAccessibilityViewId);
+        return client.findAccessibilityNodeInfoByAccessibilityId(mConnectionId, mWindowId,
+                childId, FLAG_PREFETCH_DESCENDANTS);
     }
 
     /**
@@ -214,6 +497,7 @@ public class AccessibilityNodeInfo implements Parcelable {
      * @see AccessibilityNodeInfo#ACTION_CLEAR_FOCUS
      * @see AccessibilityNodeInfo#ACTION_SELECT
      * @see AccessibilityNodeInfo#ACTION_CLEAR_SELECTION
+     * @see AccessibilityNodeInfo#ACTION_CLEAR_ACCESSIBILITY_FOCUS
      */
     public int getActions() {
         return mActions;
@@ -250,12 +534,12 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public boolean performAction(int action) {
         enforceSealed();
-        if (!canPerformRequestOverConnection(mAccessibilityViewId)) {
+        if (!canPerformRequestOverConnection(mSourceNodeId)) {
             return false;
         }
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
-        return client.performAccessibilityAction(mConnectionId, mAccessibilityWindowId,
-                mAccessibilityViewId, action);
+        return client.performAccessibilityAction(mConnectionId, mWindowId, mSourceNodeId,
+                action, null);
     }
 
     /**
@@ -274,12 +558,12 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public List<AccessibilityNodeInfo> findAccessibilityNodeInfosByText(String text) {
         enforceSealed();
-        if (!canPerformRequestOverConnection(mAccessibilityViewId)) {
+        if (!canPerformRequestOverConnection(mSourceNodeId)) {
             return Collections.emptyList();
         }
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
-        return client.findAccessibilityNodeInfosByViewText(mConnectionId, text,
-                mAccessibilityWindowId, mAccessibilityViewId);
+        return client.findAccessibilityNodeInfosByText(mConnectionId, mWindowId, mSourceNodeId,
+                text);
     }
 
     /**
@@ -294,12 +578,21 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public AccessibilityNodeInfo getParent() {
         enforceSealed();
-        if (!canPerformRequestOverConnection(mParentAccessibilityViewId)) {
+        if (!canPerformRequestOverConnection(mParentNodeId)) {
             return null;
         }
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
         return client.findAccessibilityNodeInfoByAccessibilityId(mConnectionId,
-                mAccessibilityWindowId, mParentAccessibilityViewId);
+                mWindowId, mParentNodeId, FLAG_PREFETCH_DESCENDANTS | FLAG_PREFETCH_SIBLINGS);
+    }
+
+    /**
+     * @return The parent node id.
+     *
+     * @hide
+     */
+    public long getParentNodeId() {
+        return mParentNodeId;
     }
 
     /**
@@ -471,6 +764,15 @@ public class AccessibilityNodeInfo implements Parcelable {
      */
     public void setFocused(boolean focused) {
         setBooleanProperty(PROPERTY_FOCUSED, focused);
+    }
+
+    /**
+     * Gets whether this node is accessibility focused.
+     *
+     * @return True if the node is accessibility focused.
+     */
+    public boolean isAccessibilityFocused() {
+        return getBooleanProperty(PROPERTY_ACCESSIBILITY_FOCUSED);
     }
 
     /**
@@ -776,6 +1078,17 @@ public class AccessibilityNodeInfo implements Parcelable {
     }
 
     /**
+     * Gets the id of the source node.
+     *
+     * @return The id.
+     *
+     * @hide
+     */
+    public long getSourceNodeId() {
+        return mSourceNodeId;
+    }
+
+    /**
      * Sets if this instance is sealed.
      *
      * @param sealed Whether is sealed.
@@ -808,6 +1121,30 @@ public class AccessibilityNodeInfo implements Parcelable {
         if (!isSealed()) {
             throw new IllegalStateException("Cannot perform this "
                     + "action on a not sealed instance.");
+        }
+    }
+
+    private void enforceValidFocusDirection(int direction) {
+        switch (direction) {
+            case View.FOCUS_DOWN:
+            case View.FOCUS_UP:
+            case View.FOCUS_LEFT:
+            case View.FOCUS_RIGHT:
+            case View.FOCUS_FORWARD:
+            case View.FOCUS_BACKWARD:
+                return;
+            default:
+                throw new IllegalArgumentException("Unknown direction: " + direction);
+        }
+    }
+
+    private void enforceValidFocusType(int focusType) {
+        switch (focusType) {
+            case FOCUS_INPUT:
+            case FOCUS_ACCESSIBILITY:
+                return;
+            default:
+                throw new IllegalArgumentException("Unknown focus type: " + focusType);
         }
     }
 
@@ -1036,14 +1373,29 @@ public class AccessibilityNodeInfo implements Parcelable {
                 return "ACTION_SELECT";
             case ACTION_CLEAR_SELECTION:
                 return "ACTION_CLEAR_SELECTION";
+            case ACTION_CLEAR_ACCESSIBILITY_FOCUS:
+                return "ACTION_CLEAR_ACCESSIBILITY_FOCUS";
+            case ACTION_NEXT_AT_MOVEMENT_GRANULARITY:
+                return "ACTION_NEXT_AT_MOVEMENT_GRANULARITY";
+            case ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY:
+                return "ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY";
+            case ACTION_NEXT_HTML_ELEMENT:
+                return "ACTION_NEXT_HTML_ELEMENT";
+            case ACTION_PREVIOUS_HTML_ELEMENT:
+                return "ACTION_PREVIOUS_HTML_ELEMENT";
+            case ACTION_SCROLL_FORWARD:
+                return "ACTION_SCROLL_FORWARD";
+            case ACTION_SCROLL_BACKWARD:
+                return "ACTION_SCROLL_BACKWARD";
             default:
                 throw new IllegalArgumentException("Unknown action: " + action);
         }
     }
 
-    private boolean canPerformRequestOverConnection(int accessibilityViewId) {
-        return (mConnectionId != UNDEFINED && mAccessibilityWindowId != UNDEFINED
-                && accessibilityViewId != UNDEFINED);
+    private boolean canPerformRequestOverConnection(long accessibilityNodeId) {
+        return (mWindowId != UNDEFINED
+                && getAccessibilityViewId(accessibilityNodeId) != UNDEFINED
+                && mConnectionId != UNDEFINED);
     }
 
     @Override

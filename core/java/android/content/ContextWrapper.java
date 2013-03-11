@@ -29,6 +29,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.CompatibilityInfoHolder;
+import android.view.Display;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -277,8 +279,18 @@ public class ContextWrapper extends Context {
     }
 
     @Override
+    public void startActivity(Intent intent, Bundle options) {
+        mBase.startActivity(intent, options);
+    }
+
+    @Override
     public void startActivities(Intent[] intents) {
         mBase.startActivities(intents);
+    }
+
+    @Override
+    public void startActivities(Intent[] intents, Bundle options) {
+        mBase.startActivities(intents, options);
     }
 
     @Override
@@ -288,7 +300,15 @@ public class ContextWrapper extends Context {
         mBase.startIntentSender(intent, fillInIntent, flagsMask,
                 flagsValues, extraFlags);
     }
-    
+
+    @Override
+    public void startIntentSender(IntentSender intent,
+            Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags,
+            Bundle options) throws IntentSender.SendIntentException {
+        mBase.startIntentSender(intent, fillInIntent, flagsMask,
+                flagsValues, extraFlags, options);
+    }
+
     @Override
     public void sendBroadcast(Intent intent) {
         mBase.sendBroadcast(intent);
@@ -484,7 +504,18 @@ public class ContextWrapper extends Context {
     }
 
     @Override
+    public Context createDisplayContext(Display display) {
+        return mBase.createDisplayContext(display);
+    }
+
+    @Override
     public boolean isRestricted() {
         return mBase.isRestricted();
+    }
+
+    /** @hide */
+    @Override
+    public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
+        return mBase.getCompatibilityInfo(displayId);
     }
 }

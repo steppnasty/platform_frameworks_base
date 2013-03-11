@@ -8522,7 +8522,7 @@ public class WebView extends AbsoluteLayout
                             (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
                     Display display = windowManager.getDefaultDisplay();
                     nativeCreate(msg.arg1, drawableDir,
-                            ActivityManager.isHighEndGfx(display));
+                            ActivityManager.isHighEndGfx());
                     if (mDelaySetPicture != null) {
                         setNewPicture(mDelaySetPicture, true);
                         mDelaySetPicture = null;

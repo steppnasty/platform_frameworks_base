@@ -48,6 +48,8 @@ import android.database.sqlite.SQLiteDatabase.CursorFactory;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.hardware.SensorManager;
+import android.hardware.SystemSensorManager;
+import android.hardware.display.DisplayManager;
 import android.hardware.usb.IUsbManager;
 import android.hardware.usb.UsbManager;
 import android.location.CountryDetector;
@@ -86,7 +88,9 @@ import android.telephony.TelephonyManager;
 import android.content.ClipboardManager;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
+import android.view.CompatibilityInfoHolder;
 import android.view.ContextThemeWrapper;
+import android.view.Display;
 import android.view.WindowManagerImpl;
 import android.view.accessibility.AccessibilityManager;
 import android.view.inputmethod.InputMethodManager;
@@ -157,6 +161,7 @@ class ContextImpl extends Context {
     private int mThemeResource = 0;
     private Resources.Theme mTheme = null;
     private PackageManager mPackageManager;
+    private Display mDisplay; // may be null if default display
     private Context mReceiverRestrictedContext = null;
     private boolean mRestricted;
 
@@ -328,6 +333,12 @@ class ContextImpl extends Context {
                     return InputMethodManager.getInstance(ctx);
                 }});
 
+        registerService(DISPLAY_SERVICE, new ServiceFetcher() {
+                @Override
+                public Object createService(ContextImpl ctx) {
+                    return new DisplayManager(ctx.getOuterContext());
+                }});
+
         registerService(TEXT_SERVICES_MANAGER_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
                     return TextServicesManager.getInstance();
@@ -381,7 +392,8 @@ class ContextImpl extends Context {
                 public Object createService(ContextImpl ctx) {
                     IBinder b = ServiceManager.getService(POWER_SERVICE);
                     IPowerManager service = IPowerManager.Stub.asInterface(b);
-                    return new PowerManager(service, ctx.mMainThread.getHandler());
+                    return new PowerManager(ctx.getOuterContext(),
+                            service, ctx.mMainThread.getHandler());
                 }});
 
         registerService(SEARCH_SERVICE, new ServiceFetcher() {
@@ -392,7 +404,7 @@ class ContextImpl extends Context {
 
         registerService(SENSOR_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
-                    return new SensorManager(ctx.mMainThread.getHandler().getLooper());
+                    return new SystemSensorManager(ctx.mMainThread.getHandler().getLooper());
                 }});
 
         registerService(STATUS_BAR_SERVICE, new ServiceFetcher() {
@@ -455,7 +467,13 @@ class ContextImpl extends Context {
 
         registerService(WINDOW_SERVICE, new ServiceFetcher() {
                 public Object getService(ContextImpl ctx) {
-                    return WindowManagerImpl.getDefault(ctx.mPackageInfo.mCompatibilityInfo);
+                    Display display = ctx.mDisplay;
+                    if (display == null) {
+                        DisplayManager dm = (DisplayManager)ctx.getOuterContext().getSystemService(
+                                Context.DISPLAY_SERVICE);
+                        display = dm.getDisplay(Display.DEFAULT_DISPLAY);
+                    }
+                    return new WindowManagerImpl(display);
                 }});
     }
 
@@ -862,6 +880,11 @@ class ContextImpl extends Context {
 
     @Override
     public void startActivity(Intent intent) {
+        startActivity(intent, null);
+    }
+
+    @Override
+    public void startActivity(Intent intent, Bundle options) {
         if ((intent.getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
             throw new AndroidRuntimeException(
                     "Calling startActivity() from outside of an Activity "
@@ -870,11 +893,16 @@ class ContextImpl extends Context {
         }
         mMainThread.getInstrumentation().execStartActivity(
             getOuterContext(), mMainThread.getApplicationThread(), null,
-            (Activity)null, intent, -1);
+            (Activity)null, intent, -1, options);
     }
 
     @Override
     public void startActivities(Intent[] intents) {
+        startActivities(intents, null);
+    }
+
+    @Override
+    public void startActivities(Intent[] intents, Bundle options) {
         if ((intents[0].getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
             throw new AndroidRuntimeException(
                     "Calling startActivities() from outside of an Activity "
@@ -883,12 +911,19 @@ class ContextImpl extends Context {
         }
         mMainThread.getInstrumentation().execStartActivities(
             getOuterContext(), mMainThread.getApplicationThread(), null,
-            (Activity)null, intents);
+            (Activity)null, intents, options);
     }
 
     @Override
     public void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
+            throws IntentSender.SendIntentException {
+        startIntentSender(intent, fillInIntent, flagsMask, flagsValues, extraFlags, null);
+    }
+
+    @Override
+    public void startIntentSender(IntentSender intent, Intent fillInIntent,
+            int flagsMask, int flagsValues, int extraFlags, Bundle options)
             throws IntentSender.SendIntentException {
         try {
             String resolvedType = null;
@@ -899,7 +934,7 @@ class ContextImpl extends Context {
             int result = ActivityManagerNative.getDefault()
                 .startActivityIntentSender(mMainThread.getApplicationThread(), intent,
                         fillInIntent, resolvedType, null, null,
-                        0, flagsMask, flagsValues);
+                        0, flagsMask, flagsValues, options);
             if (result == IActivityManager.START_CANCELED) {
                 throw new IntentSender.SendIntentException();
             }
@@ -1451,8 +1486,39 @@ class ContextImpl extends Context {
     }
 
     @Override
+    public Context createDisplayContext(Display display) {
+        if (display == null) {
+            throw new IllegalArgumentException("display must not be null");
+        }
+
+        int displayId = display.getDisplayId();
+        CompatibilityInfo ci = CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;
+        CompatibilityInfoHolder cih = getCompatibilityInfo(displayId);
+        if (cih != null) {
+            ci = cih.get();
+        }
+
+        ContextImpl context = new ContextImpl();
+        context.init(mPackageInfo, null, mMainThread);
+        context.mDisplay = display;
+        context.mResources = mMainThread.getTopLevelResources(
+                mPackageInfo.getResDir(), displayId, ci);
+        return context;
+    }
+
+    private int getDisplayId() {
+        return mDisplay != null ? mDisplay.getDisplayId() : Display.DEFAULT_DISPLAY;
+    }
+
+    @Override
     public boolean isRestricted() {
         return mRestricted;
+    }
+
+    @Override
+    public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
+        Log.w(TAG, "getCompatibilityInfo");
+        return displayId == Display.DEFAULT_DISPLAY ? mPackageInfo.mCompatibilityInfo : null;
     }
 
     private File getDataDirFile() {
@@ -1496,6 +1562,7 @@ class ContextImpl extends Context {
         mResources = context.mResources;
         mMainThread = context.mMainThread;
         mContentResolver = context.mContentResolver;
+        mDisplay = context.mDisplay;
         mOuterContext = this;
     }
 
@@ -1519,7 +1586,7 @@ class ContextImpl extends Context {
                         " compatiblity info:" + container.getDisplayMetrics());
             }
             mResources = mainThread.getTopLevelResources(
-                    mPackageInfo.getResDir(), container.getCompatibilityInfo());
+                    mPackageInfo.getResDir(), Display.DEFAULT_DISPLAY, container.getCompatibilityInfo());
         }
         mMainThread = mainThread;
         mContentResolver = new ApplicationContentResolver(this, mainThread);

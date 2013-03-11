@@ -54,6 +54,8 @@ import android.database.sqlite.SQLiteDebug;
 import android.database.sqlite.SQLiteDebug.DbStats;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.DisplayManagerGlobal;
 import android.net.IConnectivityManager;
 import android.net.Proxy;
 import android.net.ProxyProperties;
@@ -80,6 +82,7 @@ import android.util.EventLog;
 import android.util.Log;
 import android.util.LogPrinter;
 import android.util.Slog;
+import android.view.CompatibilityInfoHolder;
 import android.view.Display;
 import android.view.HardwareRenderer;
 import android.view.InflateException;
@@ -89,7 +92,7 @@ import android.view.ViewManager;
 import android.view.ViewRootImpl;
 import android.view.Window;
 import android.view.WindowManager;
-import android.view.WindowManagerImpl;
+import android.view.WindowManagerGlobal;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -140,6 +143,7 @@ public final class ActivityThread {
     private static final boolean DEBUG_RESULTS = false;
     private static final boolean DEBUG_BACKUP = true;
     private static final boolean DEBUG_CONFIGURATION = false;
+    private static final boolean DEBUG_MEMORY_TRIM = false;
     private static final long MIN_TIME_BETWEEN_GCS = 5*1000;
     private static final Pattern PATTERN_SEMICOLON = Pattern.compile(";");
     private static final int SQLITE_MEM_RELEASED_EVENT_LOG_TAG = 75003;
@@ -165,6 +169,7 @@ public final class ActivityThread {
             = new HashMap<IBinder, Service>();
     AppBindData mBoundApplication;
     Profiler mProfiler;
+    Display mDisplay;
     Configuration mConfiguration;
     Configuration mCompatConfiguration;
     Configuration mResConfiguration;
@@ -194,7 +199,7 @@ public final class ActivityThread {
             = new HashMap<String, WeakReference<LoadedApk>>();
     final HashMap<String, WeakReference<LoadedApk>> mResourcePackages
             = new HashMap<String, WeakReference<LoadedApk>>();
-    final HashMap<CompatibilityInfo, DisplayMetrics> mDisplayMetrics
+    final HashMap<CompatibilityInfo, DisplayMetrics> mDefaultDisplayMetrics
             = new HashMap<CompatibilityInfo, DisplayMetrics>();
     final HashMap<ResourcesKey, WeakReference<Resources> > mActiveResources
             = new HashMap<ResourcesKey, WeakReference<Resources> >();
@@ -1033,7 +1038,7 @@ public final class ActivityThread {
         @Override
         public void dumpGfxInfo(FileDescriptor fd, String[] args) {
             dumpGraphicsInfo(fd);
-            WindowManagerImpl.getDefault().dumpGfxInfo(fd);
+            WindowManagerGlobal.getInstance().dumpGfxInfo(fd);
         }
 
         private void printRow(PrintWriter pw, String format, Object...objs) {
@@ -1364,12 +1369,14 @@ public final class ActivityThread {
 
     private static class ResourcesKey {
         final private String mResDir;
+        final private int mDisplayId;
         final private float mScale;
         final private boolean mIsThemeable;
         final private int mHash;
 
-        ResourcesKey(String resDir, float scale, boolean isThemeable) {
+        ResourcesKey(String resDir, int displayId, float scale, boolean isThemeable) {
             mResDir = resDir;
+            mDisplayId = displayId;
             mScale = scale;
             mIsThemeable = isThemeable;
             mHash = mResDir.hashCode() << 3 + ((mIsThemeable ? 1 : 0) << 2) + (int) (mScale * 2);
@@ -1430,17 +1437,37 @@ public final class ActivityThread {
         return sAssetRedirectionManager;
     }
 
-    DisplayMetrics getDisplayMetricsLocked(CompatibilityInfo ci, boolean forceUpdate) {
-        DisplayMetrics dm = mDisplayMetrics.get(ci);
-        if (dm != null && !forceUpdate) {
+    DisplayMetrics getDisplayMetricsLocked(int displayId, CompatibilityInfo ci) {
+        boolean isDefaultDisplay = (displayId == Display.DEFAULT_DISPLAY);
+        DisplayMetrics dm = isDefaultDisplay ? mDefaultDisplayMetrics.get(ci) : null;
+        if (dm != null) {
             return dm;
         }
-        if (dm == null) {
-            dm = new DisplayMetrics();
-            mDisplayMetrics.put(ci, dm);
+        dm = new DisplayMetrics();
+
+        DisplayManagerGlobal displayManager = DisplayManagerGlobal.getInstance();
+        if (displayManager == null) {
+            // may be null early in system startup
+            dm.setToDefaults();
+            return dm;
         }
-        Display d = WindowManagerImpl.getDefault(ci).getDefaultDisplay();
-        d.getMetrics(dm);
+
+        if (isDefaultDisplay) {
+            mDefaultDisplayMetrics.put(ci, dm);
+        }
+
+        CompatibilityInfoHolder cih = new CompatibilityInfoHolder();
+        cih.set(ci);
+        Display d = displayManager.getCompatibleDisplay(displayId, cih);
+        if (d != null) {
+            d.getMetrics(dm);
+        } else {
+            // Display no longer exists
+            // FIXME: This would not be a problem if we kept the Display object around
+            // instead of using the raw display id everywhere.  The Display object caches
+            // its information even after the display has been removed.
+            dm.setToDefaults();
+        }
         //Slog.i("foo", "New metrics: w=" + metrics.widthPixels + " h="
         //        + metrics.heightPixels + " den=" + metrics.density
         //        + " xdpi=" + metrics.xdpi + " ydpi=" + metrics.ydpi);
@@ -1478,8 +1505,9 @@ public final class ActivityThread {
      * @param compInfo the compability info. It will use the default compatibility info when it's
      * null.
      */
-    Resources getTopLevelResources(String resDir, CompatibilityInfo compInfo) {
-        ResourcesKey key = new ResourcesKey(resDir, compInfo.applicationScale, compInfo.isThemeable);
+    Resources getTopLevelResources(String resDir, 
+            int displayId, CompatibilityInfo compInfo) {
+        ResourcesKey key = new ResourcesKey(resDir, displayId, compInfo.applicationScale, compInfo.isThemeable);
         Resources r;
         synchronized (mPackages) {
             // Resources is app scale dependent.
@@ -1523,7 +1551,7 @@ public final class ActivityThread {
         }
 
         //Slog.i(TAG, "Resource: key=" + key + ", display metrics=" + metrics);
-        DisplayMetrics metrics = getDisplayMetricsLocked(null, false);
+        DisplayMetrics metrics = getDisplayMetricsLocked(displayId, null);
         r = new Resources(assets, metrics, getConfiguration(), compInfo);
         if (false) {
             Slog.i(TAG, "Created app resources " + resDir + " " + r + ": "
@@ -1625,8 +1653,9 @@ public final class ActivityThread {
     /**
      * Creates the top level resources for the given package.
      */
-    Resources getTopLevelResources(String resDir, LoadedApk pkgInfo) {
-        return getTopLevelResources(resDir, pkgInfo.mCompatibilityInfo.get());
+    Resources getTopLevelResources(String resDir, 
+            int displayId, LoadedApk pkgInfo) {
+        return getTopLevelResources(resDir, displayId, pkgInfo.mCompatibilityInfo.get());
     }
 
     final Handler getHandler() {
@@ -1796,7 +1825,8 @@ public final class ActivityThread {
                 context.init(info, null, this);
                 context.getResources().updateConfiguration(
                         getConfiguration(), getDisplayMetricsLocked(
-                                CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO, false));
+                                Display.DEFAULT_DISPLAY,
+                                CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO));
                 mSystemContext = context;
                 //Slog.i(TAG, "Created system resources " + context.getResources()
                 //        + ": " + context.getResources().getConfiguration());
@@ -2579,7 +2609,7 @@ public final class ActivityThread {
             r.mPendingRemoveWindowManager.removeViewImmediate(r.mPendingRemoveWindow);
             IBinder wtoken = r.mPendingRemoveWindow.getWindowToken();
             if (wtoken != null) {
-                WindowManagerImpl.getDefault().closeAll(wtoken,
+                WindowManagerGlobal.getInstance().closeAll(wtoken,
                         r.activity.getClass().getName(), "Activity");
             }
         }
@@ -3083,7 +3113,7 @@ public final class ActivityThread {
             apk.mCompatibilityInfo.set(data.info);
         }
         handleConfigurationChanged(mConfiguration, data.info);
-        WindowManagerImpl.getDefault().reportNewConfiguration(mConfiguration);
+        WindowManagerGlobal.getInstance().reportNewConfiguration(mConfiguration);
     }
 
     private void deliverResults(ActivityClientRecord r, List<ResultInfo> results) {
@@ -3272,7 +3302,7 @@ public final class ActivityThread {
                     }
                 }
                 if (wtoken != null && r.mPendingRemoveWindow == null) {
-                    WindowManagerImpl.getDefault().closeAll(wtoken,
+                    WindowManagerGlobal.getInstance().closeAll(wtoken,
                             r.activity.getClass().getName(), "Activity");
                 }
                 r.activity.mDecor = null;
@@ -3284,7 +3314,7 @@ public final class ActivityThread {
                 // by the app will leak.  Well we try to warning them a lot
                 // about leaking windows, because that is a bug, so if they are
                 // using this recreate facility then they get to live with leaks.
-                WindowManagerImpl.getDefault().closeAll(token,
+                WindowManagerGlobal.getInstance().closeAll(token,
                         r.activity.getClass().getName(), "Activity");
             }
 
@@ -3612,7 +3642,7 @@ public final class ActivityThread {
             return 0;
         }
         int changes = mResConfiguration.updateFrom(config);
-        DisplayMetrics dm = getDisplayMetricsLocked(null, true);
+        DisplayMetrics dm = getDisplayMetricsLocked(Display.DEFAULT_DISPLAY, null);
 
         if (compat != null && (mResCompatibilityInfo == null ||
                 !mResCompatibilityInfo.equals(compat))) {
@@ -3715,7 +3745,7 @@ public final class ActivityThread {
         }
         
         // Cleanup hardware accelerated stuff
-        WindowManagerImpl.getDefault().trimLocalMemory();
+        WindowManagerGlobal.getInstance().trimLocalMemory();
 
         if (callbacks != null) {
             final int N = callbacks.size();
@@ -3854,7 +3884,11 @@ public final class ActivityThread {
     }
 
     final void handleTrimMemory(int level) {
-        WindowManagerImpl.getDefault().trimMemory(level);
+        if (DEBUG_MEMORY_TRIM) Slog.v(TAG, "Trimming memory to level: " + level);
+
+        final WindowManagerGlobal windowManager = WindowManagerGlobal.getInstance();
+        windowManager.startTrimMemory(level);
+
         ArrayList<ComponentCallbacks2> callbacks;
 
         synchronized (mPackages) {
@@ -3903,8 +3937,7 @@ public final class ActivityThread {
             // Persistent processes on low-memory devices do not get to
             // use hardware accelerated drawing, since this can add too much
             // overhead to the process.
-            Display display = WindowManagerImpl.getDefault().getDefaultDisplay();
-            if (!ActivityManager.isHighEndGfx(display)) {
+            if (!ActivityManager.isHighEndGfx()) {
                 HardwareRenderer.disable(false);
             }
         }

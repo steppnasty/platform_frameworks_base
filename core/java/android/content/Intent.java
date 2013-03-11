@@ -1077,6 +1077,14 @@ public class Intent implements Parcelable, Cloneable {
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String ACTION_WEB_SEARCH = "android.intent.action.WEB_SEARCH";
     /**
+     * Activity Action: Perform assist action.
+     * <p>
+     * Input: nothing
+     * Output: nothing.
+     */
+    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
+    public static final String ACTION_ASSIST = "android.intent.action.ASSIST";
+    /**
      * Activity Action: List all available applications
      * <p>Input: Nothing.
      * <p>Output: nothing.
@@ -1989,6 +1997,19 @@ public class Intent implements Parcelable, Cloneable {
             "android.intent.action.HEADSET_PLUG";
 
     /**
+     * Broadcast Action: WiFi Display video is enabled or disabled
+     *
+     * <p>The intent will have the following extra values:
+     * <ul>
+     *   <li><em>state</em> - 0 for disabled, 1 for enabled. </li>
+     * </ul>
+     * @hide
+     */
+
+    public static final String ACTION_WIFI_DISPLAY_VIDEO =
+            "qualcomm.intent.action.WIFI_DISPLAY_VIDEO";
+
+    /**
      * Broadcast Action: An analog audio speaker/headset plugged in or unplugged.
      *
      * <p>The intent will have the following extra values:
@@ -2140,6 +2161,12 @@ public class Intent implements Parcelable, Cloneable {
      */
     public static final String ACTION_PRE_BOOT_COMPLETED =
             "android.intent.action.PRE_BOOT_COMPLETED";
+
+    /**
+     * Sent when the user taps on the clock widget in the system's "quick settings" area.
+     */
+    public static final String ACTION_QUICK_CLOCK =
+            "android.intent.action.QUICK_CLOCK";
 
     /**
      * Broadcast Action: Indicate that unrecoverable error happened during app launch.
@@ -2979,6 +3006,13 @@ public class Intent implements Parcelable, Cloneable {
      */
     public static final int FLAG_RECEIVER_REPLACE_PENDING = 0x20000000;
     /**
+     * If set, when sending a broadcast the recipient is allowed to run at
+     * foreground priority, with a shorter timeout interval.  During normal
+     * broadcasts the receivers are not automatically hoisted out of the
+     * background priority class.
+     */
+    public static final int FLAG_RECEIVER_FOREGROUND = 0x10000000;
+    /**
      * If set, when sending a broadcast <i>before boot has completed</i> only
      * registered receivers will be called -- no BroadcastReceiver components
      * will be launched.  Sticky intent state will be recorded properly even
@@ -2991,14 +3025,14 @@ public class Intent implements Parcelable, Cloneable {
      *
      * @hide
      */
-    public static final int FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT = 0x10000000;
+    public static final int FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT = 0x08000000;
     /**
      * Set when this broadcast is for a boot upgrade, a special mode that
      * allows the broadcast to be sent before the system is ready and launches
      * the app process with no providers running in it.
      * @hide
      */
-    public static final int FLAG_RECEIVER_BOOT_UPGRADE = 0x08000000;
+    public static final int FLAG_RECEIVER_BOOT_UPGRADE = 0x04000000;
 
     /**
      * @hide Flags that can't be changed with PendingIntent.

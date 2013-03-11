@@ -47,8 +47,8 @@ LOCAL_SRC_FILES:= \
 	android_database_SQLiteQuery.cpp \
 	android_database_SQLiteStatement.cpp \
 	android_emoji_EmojiFactory.cpp \
-	android_view_Display.cpp \
 	android_view_Surface.cpp \
+        android_view_SurfaceSession.cpp \
 	android_view_TextureView.cpp \
 	android_view_InputChannel.cpp \
 	android_view_InputQueue.cpp \
@@ -71,6 +71,7 @@ LOCAL_SRC_FILES:= \
 	android_os_StatFs.cpp \
 	android_os_SystemClock.cpp \
 	android_os_SystemProperties.cpp \
+        android_os_Trace.cpp \
 	android_os_UEventObserver.cpp \
 	android_net_LocalSocketImpl.cpp \
 	android_net_NetUtils.cpp \
