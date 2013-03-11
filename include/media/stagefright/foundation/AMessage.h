@@ -25,6 +25,7 @@
 
 namespace android {
 
+struct ABuffer;
 struct AString;
 struct Parcel;
 
@@ -50,6 +51,7 @@ struct AMessage : public RefBase {
     void setPointer(const char *name, void *value);
     void setString(const char *name, const char *s, ssize_t len = -1);
     void setObject(const char *name, const sp<RefBase> &obj);
+    void setBuffer(const char *name, const sp<ABuffer> &buffer);
     void setMessage(const char *name, const sp<AMessage> &obj);
 
     void setRect(
@@ -64,6 +66,7 @@ struct AMessage : public RefBase {
     bool findPointer(const char *name, void **value) const;
     bool findString(const char *name, AString *value) const;
     bool findObject(const char *name, sp<RefBase> *obj) const;
+    bool findBuffer(const char *name, sp<ABuffer> *buffer) const;
     bool findMessage(const char *name, sp<AMessage> *obj) const;
 
     bool findRect(
@@ -105,6 +108,7 @@ private:
         kTypeObject,
         kTypeMessage,
         kTypeRect,
+        kTypeBuffer,
     };
 
     uint32_t mWhat;
@@ -139,6 +143,9 @@ private:
     Item *allocateItem(const char *name);
     void freeItem(Item *item);
     const Item *findItem(const char *name, Type type) const;
+
+    void setObjectInternal(
+            const char *name, const sp<RefBase> &obj, Type type);
 
     DISALLOW_EVIL_CONSTRUCTORS(AMessage);
 };

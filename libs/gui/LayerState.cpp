@@ -16,8 +16,9 @@
 
 #include <utils/Errors.h>
 #include <binder/Parcel.h>
+#include <gui/ISurfaceComposerClient.h>
+#include <gui/ISurfaceTexture.h>
 #include <private/surfaceflinger/LayerState.h>
-#include <surfaceflinger/ISurfaceComposerClient.h>
 
 namespace android {
 
@@ -67,6 +68,28 @@ status_t ComposerState::write(Parcel& output) const {
 status_t ComposerState::read(const Parcel& input) {
     client = interface_cast<ISurfaceComposerClient>(input.readStrongBinder());
     return state.read(input);
+}
+
+status_t DisplayState::write(Parcel& output) const {
+    output.writeStrongBinder(token);
+    output.writeStrongBinder(surface->asBinder());
+    output.writeInt32(what);
+    output.writeInt32(layerStack);
+    output.writeInt32(orientation);
+    output.write(viewport);
+    output.write(frame);
+    return NO_ERROR;
+}
+
+status_t DisplayState::read(const Parcel& input) {
+    token = input.readStrongBinder();
+    surface = interface_cast<ISurfaceTexture>(input.readStrongBinder());
+    what = input.readInt32();
+    layerStack = input.readInt32();
+    orientation = input.readInt32();
+    input.read(viewport);
+    input.read(frame);
+    return NO_ERROR;
 }
 
 }; // namespace android

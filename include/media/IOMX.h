@@ -29,8 +29,6 @@ Copyright (c) 2011, Code Aurora Forum. All rights reserved.
 #include <OMX_Core.h>
 #include <OMX_Video.h>
 
-#include "jni.h"
-
 namespace android {
 
 class IMemory;
@@ -48,7 +46,7 @@ public:
     // Given the calling process' pid, returns true iff
     // the implementation of the OMX interface lives in the same
     // process.
-    virtual bool livesLocally(pid_t pid) = 0;
+    virtual bool livesLocally(node_id node, pid_t pid) = 0;
 
     struct ComponentInfo {
         String8 mName;

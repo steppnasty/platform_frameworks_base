@@ -18,8 +18,8 @@
 
 #include <binder/IMemory.h>
 #include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/Surface.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/Surface.h>
+#include <gui/SurfaceComposerClient.h>
 #include <utils/String8.h>
 
 namespace android {

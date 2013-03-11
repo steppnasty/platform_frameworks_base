@@ -17,6 +17,7 @@
 #ifndef ANDROID_UI_RECT
 #define ANDROID_UI_RECT
 
+#include <utils/Flattenable.h>
 #include <utils/TypeHelpers.h>
 #include <ui/Point.h>
 
@@ -24,7 +25,7 @@
 
 namespace android {
 
-class Rect : public ARect
+class Rect : public ARect, public LightFlattenablePod<Rect>
 {
 public:
     typedef ARect::value_type value_type;
@@ -65,14 +66,21 @@ public:
     }
 
     // rectangle's width
-    inline int32_t width() const {
+    inline int32_t getWidth() const {
         return right-left;
     }
     
     // rectangle's height
-    inline int32_t height() const {
+    inline int32_t getHeight() const {
         return bottom-top;
     }
+
+    inline Rect getBounds() const {
+        return Rect(right-left, bottom-top);
+    }
+
+    inline int32_t width() const { return getWidth(); }
+    inline int32_t height() const { return getHeight(); }
 
     void setLeftTop(const Point& lt) {
         left = lt.x;
@@ -136,10 +144,18 @@ public:
     void translate(int32_t dx, int32_t dy) { // legacy, don't use.
         offsetBy(dx, dy);
     }
- 
+
     Rect&   offsetTo(int32_t x, int32_t y);
     Rect&   offsetBy(int32_t x, int32_t y);
     bool    intersect(const Rect& with, Rect* result) const;
+
+    // Create a new Rect by transforming this one using a graphics HAL
+    // transform.  This rectangle is defined in a coordinate space starting at
+    // the origin and extending to (width, height).  If the transform includes
+    // a ROT90 then the output rectangle is defined in a space extending to
+    // (height, width).  Otherwise the output rectangle is in the same space as
+    // the input.
+    Rect transform(uint32_t xform, int32_t width, int32_t height) const;
 };
 
 ANDROID_BASIC_TYPES_TRAITS(Rect)

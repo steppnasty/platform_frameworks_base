@@ -15,17 +15,22 @@
  */
 
 #define LOG_TAG "SurfaceTextureClient"
+#define ATRACE_TAG ATRACE_TAG_GRAPHICS
 //#define LOG_NDEBUG 0
 
-#include <gui/SurfaceTextureClient.h>
-#include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <android/native_window.h>
 
 #include <utils/Log.h>
+#include <utils/Trace.h>
 
-#ifdef QCOM_HARDWARE
-#include <qcom_ui.h>
-#endif
+#include <ui/Fence.h>
+
+#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/SurfaceComposerClient.h>
+#include <gui/SurfaceTexture.h>
+#include <gui/SurfaceTextureClient.h>
+
+#include <private/surfaceflinger/ComposerService.h>
 
 namespace android {
 
@@ -34,6 +39,14 @@ SurfaceTextureClient::SurfaceTextureClient(
 {
     SurfaceTextureClient::init();
     SurfaceTextureClient::setISurfaceTexture(surfaceTexture);
+}
+
+// see SurfaceTextureClient.h
+SurfaceTextureClient::SurfaceTextureClient(const
+         sp<SurfaceTexture>& surfaceTexture)
+{
+    SurfaceTextureClient::init();
+    SurfaceTextureClient::setISurfaceTexture(surfaceTexture->getBufferQueue());
 }
 
 SurfaceTextureClient::SurfaceTextureClient() {
@@ -51,10 +64,14 @@ void SurfaceTextureClient::init() {
     ANativeWindow::setSwapInterval  = hook_setSwapInterval;
     ANativeWindow::dequeueBuffer    = hook_dequeueBuffer;
     ANativeWindow::cancelBuffer     = hook_cancelBuffer;
-    ANativeWindow::lockBuffer       = hook_lockBuffer;
     ANativeWindow::queueBuffer      = hook_queueBuffer;
     ANativeWindow::query            = hook_query;
     ANativeWindow::perform          = hook_perform;
+
+    ANativeWindow::dequeueBuffer_DEPRECATED = hook_dequeueBuffer_DEPRECATED;
+    ANativeWindow::cancelBuffer_DEPRECATED  = hook_cancelBuffer_DEPRECATED;
+    ANativeWindow::lockBuffer_DEPRECATED    = hook_lockBuffer_DEPRECATED;
+    ANativeWindow::queueBuffer_DEPRECATED   = hook_queueBuffer_DEPRECATED;
 
     const_cast<int&>(ANativeWindow::minSwapInterval) = 0;
     const_cast<int&>(ANativeWindow::maxSwapInterval) = 1;
@@ -63,11 +80,16 @@ void SurfaceTextureClient::init() {
     mReqHeight = 0;
     mReqFormat = 0;
     mReqUsage = 0;
-    mReqExtUsage = 0;
     mTimestamp = NATIVE_WINDOW_TIMESTAMP_AUTO;
+    mCrop.clear();
+    mScalingMode = NATIVE_WINDOW_SCALING_MODE_FREEZE;
+    mTransform = 0;
     mDefaultWidth = 0;
     mDefaultHeight = 0;
+    mUserWidth = 0;
+    mUserHeight = 0;
     mTransformHint = 0;
+    mConsumerRunningBehind = false;
     mConnectedToCpu = false;
 }
 
@@ -87,27 +109,57 @@ int SurfaceTextureClient::hook_setSwapInterval(ANativeWindow* window, int interv
 }
 
 int SurfaceTextureClient::hook_dequeueBuffer(ANativeWindow* window,
-        ANativeWindowBuffer** buffer) {
+        ANativeWindowBuffer** buffer, int* fenceFd) {
     SurfaceTextureClient* c = getSelf(window);
-    return c->dequeueBuffer(buffer);
+    return c->dequeueBuffer(buffer, fenceFd);
 }
 
 int SurfaceTextureClient::hook_cancelBuffer(ANativeWindow* window,
-        ANativeWindowBuffer* buffer) {
+        ANativeWindowBuffer* buffer, int fenceFd) {
     SurfaceTextureClient* c = getSelf(window);
-    return c->cancelBuffer(buffer);
-}
-
-int SurfaceTextureClient::hook_lockBuffer(ANativeWindow* window,
-        ANativeWindowBuffer* buffer) {
-    SurfaceTextureClient* c = getSelf(window);
-    return c->lockBuffer(buffer);
+    return c->cancelBuffer(buffer, fenceFd);
 }
 
 int SurfaceTextureClient::hook_queueBuffer(ANativeWindow* window,
+        ANativeWindowBuffer* buffer, int fenceFd) {
+    SurfaceTextureClient* c = getSelf(window);
+    return c->queueBuffer(buffer, fenceFd);
+}
+
+int SurfaceTextureClient::hook_dequeueBuffer_DEPRECATED(ANativeWindow* window,
+        ANativeWindowBuffer** buffer) {
+    SurfaceTextureClient* c = getSelf(window);
+    ANativeWindowBuffer* buf;
+    int fenceFd = -1;
+    int result = c->dequeueBuffer(&buf, &fenceFd);
+    sp<Fence> fence(new Fence(fenceFd));
+    int waitResult = fence->waitForever(1000, "dequeueBuffer_DEPRECATED");
+    if (waitResult != OK) {
+        ALOGE("dequeueBuffer_DEPRECATED: Fence::wait returned an error: %d",
+                waitResult);
+        c->cancelBuffer(buf, -1);
+        return waitResult;
+    }
+    *buffer = buf;
+    return result;
+}
+
+int SurfaceTextureClient::hook_cancelBuffer_DEPRECATED(ANativeWindow* window,
         ANativeWindowBuffer* buffer) {
     SurfaceTextureClient* c = getSelf(window);
-    return c->queueBuffer(buffer);
+    return c->cancelBuffer(buffer, -1);
+}
+
+int SurfaceTextureClient::hook_lockBuffer_DEPRECATED(ANativeWindow* window,
+        ANativeWindowBuffer* buffer) {
+    SurfaceTextureClient* c = getSelf(window);
+    return c->lockBuffer_DEPRECATED(buffer);
+}
+
+int SurfaceTextureClient::hook_queueBuffer_DEPRECATED(ANativeWindow* window,
+        ANativeWindowBuffer* buffer) {
+    SurfaceTextureClient* c = getSelf(window);
+    return c->queueBuffer(buffer, -1);
 }
 
 int SurfaceTextureClient::hook_query(const ANativeWindow* window,
@@ -124,6 +176,7 @@ int SurfaceTextureClient::hook_perform(ANativeWindow* window, int operation, ...
 }
 
 int SurfaceTextureClient::setSwapInterval(int interval) {
+    ATRACE_CALL();
     // EGL specification states:
     //  interval is silently clamped to minimum and maximum implementation
     //  dependent values before being stored.
@@ -140,11 +193,16 @@ int SurfaceTextureClient::setSwapInterval(int interval) {
     return res;
 }
 
-int SurfaceTextureClient::dequeueBuffer(android_native_buffer_t** buffer) {
+int SurfaceTextureClient::dequeueBuffer(android_native_buffer_t** buffer,
+        int* fenceFd) {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::dequeueBuffer");
     Mutex::Autolock lock(mMutex);
     int buf = -1;
-    status_t result = mSurfaceTexture->dequeueBuffer(&buf, mReqWidth, mReqHeight,
+    int reqW = mReqWidth ? mReqWidth : mUserWidth;
+    int reqH = mReqHeight ? mReqHeight : mUserHeight;
+    sp<Fence> fence;
+    status_t result = mSurfaceTexture->dequeueBuffer(&buf, fence, reqW, reqH,
             mReqFormat, mReqUsage);
     if (result < 0) {
         ALOGV("dequeueBuffer: ISurfaceTexture::dequeueBuffer(%d, %d, %d, %d)"
@@ -152,7 +210,7 @@ int SurfaceTextureClient::dequeueBuffer(android_native_buffer_t** buffer) {
              result);
         return result;
     }
-    sp<GraphicBuffer>& gbuf(mSlots[buf]);
+    sp<GraphicBuffer>& gbuf(mSlots[buf].buffer);
     if (result & ISurfaceTexture::RELEASE_ALL_BUFFERS) {
         freeAllBuffers();
     }
@@ -165,49 +223,43 @@ int SurfaceTextureClient::dequeueBuffer(android_native_buffer_t** buffer) {
             return result;
         }
     }
+
+    if (fence.get()) {
+        *fenceFd = fence->dup();
+        if (*fenceFd == -1) {
+            ALOGE("dequeueBuffer: error duping fence: %d", errno);
+            // dup() should never fail; something is badly wrong. Soldier on
+            // and hope for the best; the worst that should happen is some
+            // visible corruption that lasts until the next frame.
+        }
+    } else {
+        *fenceFd = -1;
+    }
+
     *buffer = gbuf.get();
     return OK;
 }
 
-int SurfaceTextureClient::cancelBuffer(android_native_buffer_t* buffer) {
+int SurfaceTextureClient::cancelBuffer(android_native_buffer_t* buffer,
+        int fenceFd) {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::cancelBuffer");
     Mutex::Autolock lock(mMutex);
     int i = getSlotFromBufferLocked(buffer);
     if (i < 0) {
         return i;
     }
-    mSurfaceTexture->cancelBuffer(i);
+    sp<Fence> fence(fenceFd >= 0 ? new Fence(fenceFd) : NULL);
+    mSurfaceTexture->cancelBuffer(i, fence);
     return OK;
 }
 
 int SurfaceTextureClient::getSlotFromBufferLocked(
         android_native_buffer_t* buffer) const {
-
-    if (buffer == NULL) {
-        LOGE("getSlotFromBufferLocked: encountered NULL buffer");
-        return BAD_VALUE;
-    }
-
     bool dumpedState = false;
     for (int i = 0; i < NUM_BUFFER_SLOTS; i++) {
-        // XXX: Dump the slots whenever we hit a NULL entry while searching for
-        // a buffer.
-        if (mSlots[i] == NULL) {
-            if (!dumpedState) {
-                ALOGD("getSlotFromBufferLocked: encountered NULL buffer in slot %d "
-                        "looking for buffer %p", i, buffer->handle);
-                for (int j = 0; j < NUM_BUFFER_SLOTS; j++) {
-                    if (mSlots[j] == NULL) {
-                        ALOGD("getSlotFromBufferLocked:   %02d: NULL", j);
-                    } else {
-                        ALOGD("getSlotFromBufferLocked:   %02d: %p", j, mSlots[j]->handle);
-                    }
-                }
-                dumpedState = true;
-            }
-        }
-
-        if (mSlots[i] != NULL && mSlots[i]->handle == buffer->handle) {
+        if (mSlots[i].buffer != NULL &&
+                mSlots[i].buffer->handle == buffer->handle) {
             return i;
         }
     }
@@ -215,13 +267,14 @@ int SurfaceTextureClient::getSlotFromBufferLocked(
     return BAD_VALUE;
 }
 
-int SurfaceTextureClient::lockBuffer(android_native_buffer_t* buffer) {
+int SurfaceTextureClient::lockBuffer_DEPRECATED(android_native_buffer_t* buffer) {
     ALOGV("SurfaceTextureClient::lockBuffer");
     Mutex::Autolock lock(mMutex);
     return OK;
 }
 
-int SurfaceTextureClient::queueBuffer(android_native_buffer_t* buffer) {
+int SurfaceTextureClient::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::queueBuffer");
     Mutex::Autolock lock(mMutex);
     int64_t timestamp;
@@ -236,15 +289,31 @@ int SurfaceTextureClient::queueBuffer(android_native_buffer_t* buffer) {
     if (i < 0) {
         return i;
     }
-    status_t err = mSurfaceTexture->queueBuffer(i, timestamp,
-            &mDefaultWidth, &mDefaultHeight, &mTransformHint);
+
+
+    // Make sure the crop rectangle is entirely inside the buffer.
+    Rect crop;
+    mCrop.intersect(Rect(buffer->width, buffer->height), &crop);
+
+    sp<Fence> fence(fenceFd >= 0 ? new Fence(fenceFd) : NULL);
+    ISurfaceTexture::QueueBufferOutput output;
+    ISurfaceTexture::QueueBufferInput input(timestamp, crop, mScalingMode,
+            mTransform, fence);
+    status_t err = mSurfaceTexture->queueBuffer(i, input, &output);
     if (err != OK)  {
         ALOGE("queueBuffer: error queuing buffer to SurfaceTexture, %d", err);
     }
+    uint32_t numPendingBuffers = 0;
+    output.deflate(&mDefaultWidth, &mDefaultHeight, &mTransformHint,
+            &numPendingBuffers);
+
+    mConsumerRunningBehind = (numPendingBuffers >= 2);
+
     return err;
 }
 
 int SurfaceTextureClient::query(int what, int* value) const {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::query");
     { // scope for the lock
         Mutex::Autolock lock(mMutex);
@@ -255,28 +324,40 @@ int SurfaceTextureClient::query(int what, int* value) const {
                     return NO_ERROR;
                 }
                 break;
-            case NATIVE_WINDOW_QUEUES_TO_WINDOW_COMPOSER:
-                {
-                    sp<ISurfaceComposer> composer(
-                            ComposerService::getComposerService());
-                    if (composer->authenticateSurfaceTexture(mSurfaceTexture)) {
-                        *value = 1;
-                    } else {
-                        *value = 0;
-                    }
+            case NATIVE_WINDOW_QUEUES_TO_WINDOW_COMPOSER: {
+                sp<ISurfaceComposer> composer(
+                        ComposerService::getComposerService());
+                if (composer->authenticateSurfaceTexture(mSurfaceTexture)) {
+                    *value = 1;
+                } else {
+                    *value = 0;
                 }
                 return NO_ERROR;
+            }
             case NATIVE_WINDOW_CONCRETE_TYPE:
                 *value = NATIVE_WINDOW_SURFACE_TEXTURE_CLIENT;
                 return NO_ERROR;
             case NATIVE_WINDOW_DEFAULT_WIDTH:
-                *value = mDefaultWidth;
+                *value = mUserWidth ? mUserWidth : mDefaultWidth;
                 return NO_ERROR;
             case NATIVE_WINDOW_DEFAULT_HEIGHT:
-                *value = mDefaultHeight;
+                *value = mUserHeight ? mUserHeight : mDefaultHeight;
                 return NO_ERROR;
             case NATIVE_WINDOW_TRANSFORM_HINT:
-                return mSurfaceTexture->query(what, value);
+                *value = mTransformHint;
+                return NO_ERROR;
+            case NATIVE_WINDOW_CONSUMER_RUNNING_BEHIND: {
+                status_t err = NO_ERROR;
+                if (!mConsumerRunningBehind) {
+                    *value = 0;
+                } else {
+                    err = mSurfaceTexture->query(what, value);
+                    if (err == NO_ERROR) {
+                        mConsumerRunningBehind = *value;
+                    }
+                }
+                return err;
+            }
         }
     }
     return mSurfaceTexture->query(what, value);
@@ -313,6 +394,9 @@ int SurfaceTextureClient::perform(int operation, va_list args)
     case NATIVE_WINDOW_SET_BUFFERS_DIMENSIONS:
         res = dispatchSetBuffersDimensions(args);
         break;
+    case NATIVE_WINDOW_SET_BUFFERS_USER_DIMENSIONS:
+        res = dispatchSetBuffersUserDimensions(args);
+        break;
     case NATIVE_WINDOW_SET_BUFFERS_FORMAT:
         res = dispatchSetBuffersFormat(args);
         break;
@@ -332,34 +416,11 @@ int SurfaceTextureClient::perform(int operation, va_list args)
         res = dispatchDisconnect(args);
         break;
     default:
-#ifdef QCOM_HARDWARE
-        res = dispatchPerformQcomOperation(operation, args);
-#else
-	res = NAME_NOT_FOUND;
-#endif
+        res = NAME_NOT_FOUND;
         break;
     }
     return res;
 }
-
-#ifdef QCOM_HARDWARE
-int SurfaceTextureClient::dispatchPerformQcomOperation(int operation,
-                                                       va_list args) {
-    int num_args = getNumberOfArgsForOperation(operation);
-    if (-EINVAL == num_args) {
-        LOGE("%s: invalid arguments for operation (operation = 0x%x)",
-             __FUNCTION__, operation);
-        return -1;
-    }
-
-    LOGV("%s: num_args = %d", __FUNCTION__, num_args);
-    int arg[3] = {0, 0, 0};
-    for (int i =0; i < num_args; i++) {
-        arg[i] = va_arg(args, int);
-    }
-    return performQcomOperation(operation, arg[0], arg[1], arg[2]);
-}
-#endif
 
 int SurfaceTextureClient::dispatchConnect(va_list args) {
     int api = va_arg(args, int);
@@ -394,23 +455,19 @@ int SurfaceTextureClient::dispatchSetBuffersGeometry(va_list args) {
     if (err != 0) {
         return err;
     }
-    LOGV("Resetting the Buffer size to 0 after SET GEOMETRY");
-    err = performQcomOperation(NATIVE_WINDOW_SET_BUFFERS_SIZE, 0, 0, 0);
-    if (err != 0) {
-        return err;
-    }
     return setBuffersFormat(f);
 }
 
 int SurfaceTextureClient::dispatchSetBuffersDimensions(va_list args) {
     int w = va_arg(args, int);
     int h = va_arg(args, int);
-    int err = setBuffersDimensions(w, h);
-    if (err != 0) {
-        return err;
-    }
-    LOGV("Resetting the Buffer size to 0 after SET DIMENSIONS");
-    return performQcomOperation(NATIVE_WINDOW_SET_BUFFERS_SIZE, 0, 0, 0);
+    return setBuffersDimensions(w, h);
+}
+
+int SurfaceTextureClient::dispatchSetBuffersUserDimensions(va_list args) {
+    int w = va_arg(args, int);
+    int h = va_arg(args, int);
+    return setBuffersUserDimensions(w, h);
 }
 
 int SurfaceTextureClient::dispatchSetBuffersFormat(va_list args) {
@@ -443,21 +500,19 @@ int SurfaceTextureClient::dispatchUnlockAndPost(va_list args) {
     return unlockAndPost();
 }
 
-#ifdef QCOM_HARDWARE
-int SurfaceTextureClient::performQcomOperation(int operation, int arg1,
-                                               int arg2, int arg3) {
-    LOGV("SurfaceTextureClient::performQcomOperation");
-    Mutex::Autolock lock(mMutex);
-    int err = mSurfaceTexture->performQcomOperation(operation, arg1, arg2, arg3);
-    return err;
-}
-#endif
 
 int SurfaceTextureClient::connect(int api) {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::connect");
     Mutex::Autolock lock(mMutex);
-    int err = mSurfaceTexture->connect(api,
-            &mDefaultWidth, &mDefaultHeight, &mTransformHint);
+    ISurfaceTexture::QueueBufferOutput output;
+    int err = mSurfaceTexture->connect(api, &output);
+    if (err == NO_ERROR) {
+        uint32_t numPendingBuffers = 0;
+        output.deflate(&mDefaultWidth, &mDefaultHeight, &mTransformHint,
+                &numPendingBuffers);
+        mConsumerRunningBehind = (numPendingBuffers >= 2);
+    }
     if (!err && api == NATIVE_WINDOW_API_CPU) {
         mConnectedToCpu = true;
     }
@@ -465,6 +520,7 @@ int SurfaceTextureClient::connect(int api) {
 }
 
 int SurfaceTextureClient::disconnect(int api) {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::disconnect");
     Mutex::Autolock lock(mMutex);
     freeAllBuffers();
@@ -474,6 +530,9 @@ int SurfaceTextureClient::disconnect(int api) {
         mReqWidth = 0;
         mReqHeight = 0;
         mReqUsage = 0;
+        mCrop.clear();
+        mScalingMode = NATIVE_WINDOW_SCALING_MODE_FREEZE;
+        mTransform = 0;
         if (api == NATIVE_WINDOW_API_CPU) {
             mConnectedToCpu = false;
         }
@@ -485,44 +544,32 @@ int SurfaceTextureClient::setUsage(uint32_t reqUsage)
 {
     ALOGV("SurfaceTextureClient::setUsage");
     Mutex::Autolock lock(mMutex);
-    if (reqUsage & GRALLOC_USAGE_EXTERNAL_ONLY) {
-        //Set explicitly, since reqUsage may have other values.
-        mReqExtUsage = GRALLOC_USAGE_EXTERNAL_ONLY;
-        //This flag is never independent. Always an add-on to
-        //GRALLOC_USAGE_EXTERNAL_ONLY
-        if(reqUsage & GRALLOC_USAGE_EXTERNAL_BLOCK) {
-            mReqExtUsage |= GRALLOC_USAGE_EXTERNAL_BLOCK;
-        }
-    }
-    // For most cases mReqExtUsage will be 0.
-    // reqUsage could come from app or driver. When it comes from app
-    // and subsequently from driver, the latter ends up overwriting
-    // the existing values. We cache certain values in mReqExtUsage
-    // to avoid being overwritten.
-    mReqUsage = reqUsage | mReqExtUsage;
+    mReqUsage = reqUsage;
     return OK;
 }
 
 int SurfaceTextureClient::setCrop(Rect const* rect)
 {
-    ALOGV("SurfaceTextureClient::setCrop");
-    Mutex::Autolock lock(mMutex);
+    ATRACE_CALL();
 
     Rect realRect;
     if (rect == NULL || rect->isEmpty()) {
-        realRect = Rect(0, 0);
+        realRect.clear();
     } else {
         realRect = *rect;
     }
 
-    status_t err = mSurfaceTexture->setCrop(*rect);
-    ALOGE_IF(err, "ISurfaceTexture::setCrop(...) returned %s", strerror(-err));
+    ALOGV("SurfaceTextureClient::setCrop rect=[%d %d %d %d]",
+            realRect.left, realRect.top, realRect.right, realRect.bottom);
 
-    return err;
+    Mutex::Autolock lock(mMutex);
+    mCrop = realRect;
+    return NO_ERROR;
 }
 
 int SurfaceTextureClient::setBufferCount(int bufferCount)
 {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::setBufferCount");
     Mutex::Autolock lock(mMutex);
 
@@ -539,8 +586,8 @@ int SurfaceTextureClient::setBufferCount(int bufferCount)
 
 int SurfaceTextureClient::setBuffersDimensions(int w, int h)
 {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::setBuffersDimensions");
-    Mutex::Autolock lock(mMutex);
 
     if (w<0 || h<0)
         return BAD_VALUE;
@@ -548,46 +595,68 @@ int SurfaceTextureClient::setBuffersDimensions(int w, int h)
     if ((w && !h) || (!w && h))
         return BAD_VALUE;
 
+    Mutex::Autolock lock(mMutex);
     mReqWidth = w;
     mReqHeight = h;
+    return NO_ERROR;
+}
 
-    status_t err = mSurfaceTexture->setCrop(Rect(0, 0));
-    ALOGE_IF(err, "ISurfaceTexture::setCrop(...) returned %s", strerror(-err));
+int SurfaceTextureClient::setBuffersUserDimensions(int w, int h)
+{
+    ATRACE_CALL();
+    ALOGV("SurfaceTextureClient::setBuffersUserDimensions");
 
-    return err;
+    if (w<0 || h<0)
+        return BAD_VALUE;
+
+    if ((w && !h) || (!w && h))
+        return BAD_VALUE;
+
+    Mutex::Autolock lock(mMutex);
+    mUserWidth = w;
+    mUserHeight = h;
+    return NO_ERROR;
 }
 
 int SurfaceTextureClient::setBuffersFormat(int format)
 {
     ALOGV("SurfaceTextureClient::setBuffersFormat");
-    Mutex::Autolock lock(mMutex);
 
     if (format<0)
         return BAD_VALUE;
 
+    Mutex::Autolock lock(mMutex);
     mReqFormat = format;
-
     return NO_ERROR;
 }
 
 int SurfaceTextureClient::setScalingMode(int mode)
 {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::setScalingMode(%d)", mode);
-    Mutex::Autolock lock(mMutex);
-    // mode is validated on the server
-    status_t err = mSurfaceTexture->setScalingMode(mode);
-    ALOGE_IF(err, "ISurfaceTexture::setScalingMode(%d) returned %s",
-            mode, strerror(-err));
 
-    return err;
+    switch (mode) {
+        case NATIVE_WINDOW_SCALING_MODE_FREEZE:
+        case NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW:
+        case NATIVE_WINDOW_SCALING_MODE_SCALE_CROP:
+            break;
+        default:
+            ALOGE("unknown scaling mode: %d", mode);
+            return BAD_VALUE;
+    }
+
+    Mutex::Autolock lock(mMutex);
+    mScalingMode = mode;
+    return NO_ERROR;
 }
 
 int SurfaceTextureClient::setBuffersTransform(int transform)
 {
+    ATRACE_CALL();
     ALOGV("SurfaceTextureClient::setBuffersTransform");
     Mutex::Autolock lock(mMutex);
-    status_t err = mSurfaceTexture->setTransform(transform);
-    return err;
+    mTransform = transform;
+    return NO_ERROR;
 }
 
 int SurfaceTextureClient::setBuffersTimestamp(int64_t timestamp)
@@ -600,7 +669,7 @@ int SurfaceTextureClient::setBuffersTimestamp(int64_t timestamp)
 
 void SurfaceTextureClient::freeAllBuffers() {
     for (int i = 0; i < NUM_BUFFER_SLOTS; i++) {
-        mSlots[i] = 0;
+        mSlots[i].buffer = 0;
     }
 }
 
@@ -678,82 +747,86 @@ status_t SurfaceTextureClient::lock(
     }
 
     ANativeWindowBuffer* out;
-    status_t err = dequeueBuffer(&out);
+    int fenceFd = -1;
+    status_t err = dequeueBuffer(&out, &fenceFd);
     ALOGE_IF(err, "dequeueBuffer failed (%s)", strerror(-err));
     if (err == NO_ERROR) {
         sp<GraphicBuffer> backBuffer(GraphicBuffer::getSelf(out));
-        err = lockBuffer(backBuffer.get());
-        ALOGE_IF(err, "lockBuffer (handle=%p) failed (%s)",
-                backBuffer->handle, strerror(-err));
-        if (err == NO_ERROR) {
-            const Rect bounds(backBuffer->width, backBuffer->height);
+        sp<Fence> fence(new Fence(fenceFd));
 
-            Region newDirtyRegion;
-            if (inOutDirtyBounds) {
-                newDirtyRegion.set(static_cast<Rect const&>(*inOutDirtyBounds));
-                newDirtyRegion.andSelf(bounds);
-            } else {
-                newDirtyRegion.set(bounds);
+        err = fence->waitForever(1000, "SurfaceTextureClient::lock");
+        if (err != OK) {
+            ALOGE("Fence::wait failed (%s)", strerror(-err));
+            cancelBuffer(out, fenceFd);
+            return err;
+        }
+
+        const Rect bounds(backBuffer->width, backBuffer->height);
+
+        Region newDirtyRegion;
+        if (inOutDirtyBounds) {
+            newDirtyRegion.set(static_cast<Rect const&>(*inOutDirtyBounds));
+            newDirtyRegion.andSelf(bounds);
+        } else {
+            newDirtyRegion.set(bounds);
+        }
+
+        // figure out if we can copy the frontbuffer back
+        const sp<GraphicBuffer>& frontBuffer(mPostedBuffer);
+        const bool canCopyBack = (frontBuffer != 0 &&
+                backBuffer->width  == frontBuffer->width &&
+                backBuffer->height == frontBuffer->height &&
+                backBuffer->format == frontBuffer->format);
+
+        if (canCopyBack) {
+            // copy the area that is invalid and not repainted this round
+            const Region copyback(mDirtyRegion.subtract(newDirtyRegion));
+            if (!copyback.isEmpty())
+                copyBlt(backBuffer, frontBuffer, copyback);
+        } else {
+            // if we can't copy-back anything, modify the user's dirty
+            // region to make sure they redraw the whole buffer
+            newDirtyRegion.set(bounds);
+            mDirtyRegion.clear();
+            Mutex::Autolock lock(mMutex);
+            for (size_t i=0 ; i<NUM_BUFFER_SLOTS ; i++) {
+                mSlots[i].dirtyRegion.clear();
             }
+        }
 
-            // figure out if we can copy the frontbuffer back
-            const sp<GraphicBuffer>& frontBuffer(mPostedBuffer);
-            const bool canCopyBack = (frontBuffer != 0 &&
-                    backBuffer->width  == frontBuffer->width &&
-                    backBuffer->height == frontBuffer->height &&
-                    backBuffer->format == frontBuffer->format);
 
-            int bufferCount;
-
-            mSurfaceTexture->query(NATIVE_WINDOW_NUM_BUFFERS, &bufferCount);
-            const int backBufferidx = getSlotFromBufferLocked(out);
-
-            if (canCopyBack) {
-                // copy the area that is invalid and not repainted this round
-                Region oldDirtyRegion;
-                for(int i = 0 ; i < bufferCount; i++ ) {
-                    if(i != backBufferidx  && !mOldDirtyRegion[i].isEmpty())
-                        oldDirtyRegion.orSelf(mOldDirtyRegion[i]);
-                }
-
-                const Region copyback(oldDirtyRegion.subtract(newDirtyRegion));
-                if (!copyback.isEmpty())
-                    copyBlt(backBuffer, frontBuffer, copyback);
-            } else {
-                // if we can't copy-back anything, modify the user's dirty
-                // region to make sure they redraw the whole buffer
-                newDirtyRegion.set(bounds);
-                for(int i = 0 ; i < bufferCount; i++ ) {
-                     mOldDirtyRegion[i].clear();
-                }
+        { // scope for the lock
+            Mutex::Autolock lock(mMutex);
+            int backBufferSlot(getSlotFromBufferLocked(backBuffer.get()));
+            if (backBufferSlot >= 0) {
+                Region& dirtyRegion(mSlots[backBufferSlot].dirtyRegion);
+                mDirtyRegion.subtract(dirtyRegion);
+                dirtyRegion = newDirtyRegion;
             }
+        }
 
-            // keep track of the are of the buffer that is "clean"
-            // (ie: that will be redrawn)
-            mOldDirtyRegion[backBufferidx] = newDirtyRegion;
+        mDirtyRegion.orSelf(newDirtyRegion);
+        if (inOutDirtyBounds) {
+            *inOutDirtyBounds = newDirtyRegion.getBounds();
+        }
 
-            if (inOutDirtyBounds) {
-                *inOutDirtyBounds = newDirtyRegion.getBounds();
-            }
+        void* vaddr;
+        status_t res = backBuffer->lock(
+                GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
+                newDirtyRegion.bounds(), &vaddr);
 
-            void* vaddr;
-            status_t res = backBuffer->lock(
-                    GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
-                    newDirtyRegion.bounds(), &vaddr);
+        ALOGW_IF(res, "failed locking buffer (handle = %p)",
+                backBuffer->handle);
 
-            ALOGW_IF(res, "failed locking buffer (handle = %p)",
-                    backBuffer->handle);
-
-            if (res != 0) {
-                err = INVALID_OPERATION;
-            } else {
-                mLockedBuffer = backBuffer;
-                outBuffer->width  = backBuffer->width;
-                outBuffer->height = backBuffer->height;
-                outBuffer->stride = backBuffer->stride;
-                outBuffer->format = backBuffer->format;
-                outBuffer->bits   = vaddr;
-            }
+        if (res != 0) {
+            err = INVALID_OPERATION;
+        } else {
+            mLockedBuffer = backBuffer;
+            outBuffer->width  = backBuffer->width;
+            outBuffer->height = backBuffer->height;
+            outBuffer->stride = backBuffer->stride;
+            outBuffer->format = backBuffer->format;
+            outBuffer->bits   = vaddr;
         }
     }
     return err;
@@ -769,7 +842,7 @@ status_t SurfaceTextureClient::unlockAndPost()
     status_t err = mLockedBuffer->unlock();
     ALOGE_IF(err, "failed unlocking buffer (%p)", mLockedBuffer->handle);
 
-    err = queueBuffer(mLockedBuffer.get());
+    err = queueBuffer(mLockedBuffer.get(), -1);
     ALOGE_IF(err, "queueBuffer (handle=%p) failed (%s)",
             mLockedBuffer->handle, strerror(-err));
 

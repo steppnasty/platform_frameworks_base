@@ -56,7 +56,10 @@ public:
     inline  size_t          capacity() const            { return mVector.capacity(); }
     //! setst the capacity. capacity can never be reduced less than size()
     inline ssize_t          setCapacity(size_t size)    { return mVector.setCapacity(size); }
-    
+
+    // returns true if the arguments is known to be identical to this vector
+    inline bool isIdenticalTo(const KeyedVector& rhs) const;
+
     /*! 
      * accessors
      */
@@ -64,9 +67,10 @@ public:
             const VALUE&    valueAt(size_t index) const;
             const KEY&      keyAt(size_t index) const;
             ssize_t         indexOfKey(const KEY& key) const;
+            const VALUE&    operator[] (size_t index) const;
 
     /*!
-     * modifing the array
+     * modifying the array
      */
 
             VALUE&          editValueFor(const KEY& key);
@@ -116,6 +120,11 @@ KeyedVector<KEY,VALUE>::KeyedVector()
 }
 
 template<typename KEY, typename VALUE> inline
+bool KeyedVector<KEY,VALUE>::isIdenticalTo(const KeyedVector<KEY,VALUE>& rhs) const {
+    return mVector.array() == rhs.mVector.array();
+}
+
+template<typename KEY, typename VALUE> inline
 ssize_t KeyedVector<KEY,VALUE>::indexOfKey(const KEY& key) const {
     return mVector.indexOf( key_value_pair_t<KEY,VALUE>(key) );
 }
@@ -130,6 +139,11 @@ const VALUE& KeyedVector<KEY,VALUE>::valueFor(const KEY& key) const {
 template<typename KEY, typename VALUE> inline
 const VALUE& KeyedVector<KEY,VALUE>::valueAt(size_t index) const {
     return mVector.itemAt(index).value;
+}
+
+template<typename KEY, typename VALUE> inline
+const VALUE& KeyedVector<KEY,VALUE>::operator[] (size_t index) const {
+    return valueAt(index);
 }
 
 template<typename KEY, typename VALUE> inline

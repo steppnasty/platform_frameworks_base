@@ -32,13 +32,10 @@ namespace android {
 
 // --- KeyMap ---
 
-KeyMap::KeyMap() :
-        keyLayoutMap(NULL), keyCharacterMap(NULL) {
+KeyMap::KeyMap() {
 }
 
 KeyMap::~KeyMap() {
-    delete keyLayoutMap;
-    delete keyCharacterMap;
 }
 
 status_t KeyMap::load(const InputDeviceIdentifier& deviceIdenfifier,

@@ -25,6 +25,7 @@
 
 #include <binder/IInterface.h>
 
+#include <ui/Fence.h>
 #include <ui/GraphicBuffer.h>
 #include <ui/Rect.h>
 
@@ -37,9 +38,6 @@ class ISurfaceTexture : public IInterface
 {
 public:
     DECLARE_META_INTERFACE(SurfaceTexture);
-
-protected:
-    friend class SurfaceTextureClient;
 
     enum {
         BUFFER_NEEDS_REALLOCATION = 0x1,
@@ -67,8 +65,13 @@ protected:
     // in the contents of its associated buffer contents and call queueBuffer.
     // If dequeueBuffer return BUFFER_NEEDS_REALLOCATION, the client is
     // expected to call requestBuffer immediately.
-    virtual status_t dequeueBuffer(int *slot, uint32_t w, uint32_t h,
-            uint32_t format, uint32_t usage) = 0;
+    //
+    // The fence parameter will be updated to hold the fence associated with
+    // the buffer. The contents of the buffer must not be overwritten until the
+    // fence signals. If the fence is NULL, the buffer may be written
+    // immediately.
+    virtual status_t dequeueBuffer(int *slot, sp<Fence>& fence,
+            uint32_t w, uint32_t h, uint32_t format, uint32_t usage) = 0;
 
     // queueBuffer indicates that the client has finished filling in the
     // contents of the buffer associated with slot and transfers ownership of
@@ -82,17 +85,73 @@ protected:
     // outWidth, outHeight and outTransform are filled with the default width
     // and height of the window and current transform applied to buffers,
     // respectively.
-    virtual status_t queueBuffer(int slot, int64_t timestamp,
-            uint32_t* outWidth, uint32_t* outHeight, uint32_t* outTransform) = 0;
+
+    struct QueueBufferInput : public Flattenable {
+        inline QueueBufferInput(const Parcel& parcel);
+        inline QueueBufferInput(int64_t timestamp,
+                const Rect& crop, int scalingMode, uint32_t transform,
+                sp<Fence> fence)
+        : timestamp(timestamp), crop(crop), scalingMode(scalingMode),
+          transform(transform), fence(fence) { }
+        inline void deflate(int64_t* outTimestamp, Rect* outCrop,
+                int* outScalingMode, uint32_t* outTransform,
+                sp<Fence>* outFence) const {
+            *outTimestamp = timestamp;
+            *outCrop = crop;
+            *outScalingMode = scalingMode;
+            *outTransform = transform;
+            *outFence = fence;
+        }
+
+        // Flattenable interface
+        virtual size_t getFlattenedSize() const;
+        virtual size_t getFdCount() const;
+        virtual status_t flatten(void* buffer, size_t size,
+                int fds[], size_t count) const;
+        virtual status_t unflatten(void const* buffer, size_t size,
+                int fds[], size_t count);
+
+    private:
+        int64_t timestamp;
+        Rect crop;
+        int scalingMode;
+        uint32_t transform;
+        sp<Fence> fence;
+    };
+
+    // QueueBufferOutput must be a POD structure
+    struct QueueBufferOutput {
+        inline QueueBufferOutput() { }
+        inline void deflate(uint32_t* outWidth,
+                uint32_t* outHeight,
+                uint32_t* outTransformHint,
+                uint32_t* outNumPendingBuffers) const {
+            *outWidth = width;
+            *outHeight = height;
+            *outTransformHint = transformHint;
+            *outNumPendingBuffers = numPendingBuffers;
+        }
+        inline void inflate(uint32_t inWidth, uint32_t inHeight,
+                uint32_t inTransformHint, uint32_t inNumPendingBuffers) {
+            width = inWidth;
+            height = inHeight;
+            transformHint = inTransformHint;
+            numPendingBuffers = inNumPendingBuffers;
+        }
+    private:
+        uint32_t width;
+        uint32_t height;
+        uint32_t transformHint;
+        uint32_t numPendingBuffers;
+    };
+
+    virtual status_t queueBuffer(int slot,
+            const QueueBufferInput& input, QueueBufferOutput* output) = 0;
 
     // cancelBuffer indicates that the client does not wish to fill in the
     // buffer associated with slot and transfers ownership of the slot back to
     // the server.
-    virtual void cancelBuffer(int slot) = 0;
-
-    virtual status_t setCrop(const Rect& reg) = 0;
-    virtual status_t setTransform(uint32_t transform) = 0;
-    virtual status_t setScalingMode(int mode) = 0;
+    virtual void cancelBuffer(int slot, sp<Fence> fence) = 0;
 
     // query retrieves some information for this surface
     // 'what' tokens allowed are that of android_natives.h
@@ -115,8 +174,7 @@ protected:
     // outWidth, outHeight and outTransform are filled with the default width
     // and height of the window and current transform applied to buffers,
     // respectively.
-    virtual status_t connect(int api,
-            uint32_t* outWidth, uint32_t* outHeight, uint32_t* outTransform) = 0;
+    virtual status_t connect(int api, QueueBufferOutput* output) = 0;
 
     // disconnect attempts to disconnect a client API from the SurfaceTexture.
     // Calling this method will cause any subsequent calls to other
@@ -127,20 +185,6 @@ protected:
     // This method will fail if the the SurfaceTexture is not currently
     // connected to the specified client API.
     virtual status_t disconnect(int api) = 0;
-
-#ifdef QCOM_HARDWARE
-    // performQcomOperation performs Qcom specific operations. The actual
-    // operation to be performed depends on the operation specified.
-    //
-    // The argument list is filled by the client based on the operation that
-    // the client wants to specify.
-    //
-    // This method will fail if the operation is invalid or the arguments
-    // specified in the operation are invalid.
-    virtual status_t performQcomOperation(int operation, int arg1, int  arg2,
-                                          int arg3) = 0;
-#endif
-
 };
 
 // ----------------------------------------------------------------------------

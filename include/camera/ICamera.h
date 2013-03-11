@@ -20,7 +20,7 @@
 #include <utils/RefBase.h>
 #include <binder/IInterface.h>
 #include <binder/Parcel.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <binder/IMemory.h>
 #include <utils/String8.h>
 #include <camera/Camera.h>

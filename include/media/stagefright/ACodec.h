@@ -38,6 +38,8 @@ struct ACodec : public AHierarchicalStateMachine {
         kWhatFlushCompleted      = 'fcom',
         kWhatOutputFormatChanged = 'outC',
         kWhatError               = 'erro',
+        kWhatComponentAllocated  = 'cAll',
+        kWhatComponentConfigured = 'cCon',
     };
 
     ACodec();
@@ -54,6 +56,7 @@ protected:
 private:
     struct BaseState;
     struct UninitializedState;
+    struct LoadedState;
     struct LoadedToIdleState;
     struct IdleToExecutingState;
     struct ExecutingState;
@@ -72,12 +75,19 @@ private:
         kWhatFlush                   = 'flus',
         kWhatResume                  = 'resm',
         kWhatDrainDeferredMessages   = 'drai',
+        kWhatConfigureComponent      = 'conf',
+        kWhatStart                   = 'star',
     };
 
     enum {
         kPortIndexInput  = 0,
         kPortIndexOutput = 1
     };
+
+    enum {
+        kFlagIsSecure   = 1,
+    };
+
 
     struct BufferInfo {
         enum Status {
@@ -98,6 +108,7 @@ private:
     sp<AMessage> mNotify;
 
     sp<UninitializedState> mUninitializedState;
+    sp<LoadedState> mLoadedState;
     sp<LoadedToIdleState> mLoadedToIdleState;
     sp<IdleToExecutingState> mIdleToExecutingState;
     sp<ExecutingState> mExecutingState;
@@ -108,6 +119,8 @@ private:
     sp<FlushingOutputState> mFlushingOutputState;
 
     AString mComponentName;
+    uint32_t mFlags;
+    uint32_t mQuirks;
     sp<IOMX> mOMX;
     IOMX::node_id mNode;
     sp<MemoryDealer> mDealer[2];
@@ -121,6 +134,12 @@ private:
     List<sp<AMessage> > mDeferredQueue;
 
     bool mSentFormat;
+
+    bool mShutdownInProgress;
+
+    // If "mKeepComponentAllocated" we only transition back to Loaded state
+    // and do not release the component instance.
+    bool mKeepComponentAllocated;
 
     status_t allocateBuffersOnPort(OMX_U32 portIndex);
     status_t freeBuffersOnPort(OMX_U32 portIndex);
@@ -176,12 +195,8 @@ private:
 
     void sendFormatChange();
 
-    void signalError(OMX_ERRORTYPE error = OMX_ErrorUndefined);
-
-    //Smooth streaming related
-    status_t InitSmoothStreaming();
-    OMX_PARAM_PORTDEFINITIONTYPE mOutputPortDef;
-    bool mSmoothStreaming;
+    void signalError(OMX_ERRORTYPE error = OMX_ErrorUndefined,
+            status_t internalError = UNKNOWN_ERROR);
 
     DISALLOW_EVIL_CONSTRUCTORS(ACodec);
 };

@@ -34,6 +34,9 @@
 # include <pthread.h>
 # include <sched.h>
 # include <sys/resource.h>
+#ifdef HAVE_ANDROID_OS
+# include <bionic_pthread.h>
+#endif
 #elif defined(HAVE_WIN32_THREADS)
 # include <windows.h>
 # include <stdint.h>
@@ -86,7 +89,7 @@ struct thread_data_t {
     char *          threadName;
 
     // we use this trampoline when we need to set the priority with
-    // nice/setpriority.
+    // nice/setpriority, and name with prctl.
     static int trampoline(const thread_data_t* t) {
         thread_func_t f = t->entryFunction;
         void* u = t->userData;
@@ -98,8 +101,10 @@ struct thread_data_t {
         if (gDoSchedulingGroup) {
             if (prio >= ANDROID_PRIORITY_BACKGROUND) {
                 set_sched_policy(androidGetTid(), SP_BACKGROUND);
-            } else {
+            } else if (prio > ANDROID_PRIORITY_AUDIO) {
                 set_sched_policy(androidGetTid(), SP_FOREGROUND);
+            } else {
+                // defaults to that of parent, or as set by requestPriority()
             }
         }
         
@@ -141,8 +146,13 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
 
 #ifdef HAVE_ANDROID_OS  /* valgrind is rejecting RT-priority create reqs */
     if (threadPriority != PRIORITY_DEFAULT || threadName != NULL) {
-        // We could avoid the trampoline if there was a way to get to the
-        // android_thread_id_t (pid) from pthread_t
+        // Now that the pthread_t has a method to find the associated
+        // android_thread_id_t (pid) from pthread_t, it would be possible to avoid
+        // this trampoline in some cases as the parent could set the properties
+        // for the child.  However, there would be a race condition because the
+        // child becomes ready immediately, and it doesn't work for the name.
+        // prctl(PR_SET_NAME) only works for self; prctl(PR_SET_THREAD_NAME) was
+        // proposed but not yet accepted.
         thread_data_t* t = new thread_data_t;
         t->priority = threadPriority;
         t->threadName = threadName ? strdup(threadName) : NULL;
@@ -177,6 +187,13 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
     }
     return 1;
 }
+
+#ifdef HAVE_ANDROID_OS
+static pthread_t android_thread_id_t_to_pthread(android_thread_id_t thread)
+{
+    return (pthread_t) thread;
+}
+#endif
 
 android_thread_id_t androidGetThreadId()
 {
@@ -308,29 +325,7 @@ pid_t androidGetTid()
 #endif
 }
 
-int androidSetThreadSchedulingGroup(pid_t tid, int grp)
-{
-    if (grp > ANDROID_TGROUP_MAX || grp < 0) { 
-        return BAD_VALUE;
-    }
-
-#if defined(HAVE_PTHREADS)
-    pthread_once(&gDoSchedulingGroupOnce, checkDoSchedulingGroup);
-    if (gDoSchedulingGroup) {
-        // set_sched_policy does not support tid == 0
-        if (tid == 0) {
-            tid = androidGetTid();
-        }
-        if (set_sched_policy(tid, (grp == ANDROID_TGROUP_BG_NONINTERACT) ?
-                                          SP_BACKGROUND : SP_FOREGROUND)) {
-            return PERMISSION_DENIED;
-        }
-    }
-#endif
-    
-    return NO_ERROR;
-}
-
+#ifdef HAVE_ANDROID_OS
 int androidSetThreadPriority(pid_t tid, int pri)
 {
     int rc = 0;
@@ -376,40 +371,7 @@ int androidGetThreadPriority(pid_t tid) {
 #endif
 }
 
-int androidGetThreadSchedulingGroup(pid_t tid)
-{
-    int ret = ANDROID_TGROUP_DEFAULT;
-
-#if defined(HAVE_PTHREADS)
-    // convention is to not call get/set_sched_policy methods if disabled by property
-    pthread_once(&gDoSchedulingGroupOnce, checkDoSchedulingGroup);
-    if (gDoSchedulingGroup) {
-        SchedPolicy policy;
-        // get_sched_policy does not support tid == 0
-        if (tid == 0) {
-            tid = androidGetTid();
-        }
-        if (get_sched_policy(tid, &policy) < 0) {
-            ret = INVALID_OPERATION;
-        } else {
-            switch (policy) {
-            case SP_BACKGROUND:
-                ret = ANDROID_TGROUP_BG_NONINTERACT;
-                break;
-            case SP_FOREGROUND:
-                ret = ANDROID_TGROUP_FG_BOOST;
-                break;
-            default:
-                // should not happen, as enum SchedPolicy does not have any other values
-                ret = INVALID_OPERATION;
-                break;
-            }
-        }
-    }
 #endif
-
-    return ret;
-}
 
 namespace android {
 
@@ -908,6 +870,23 @@ status_t Thread::join()
 
     return mStatus;
 }
+
+#ifdef HAVE_ANDROID_OS
+pid_t Thread::getTid() const
+{
+    // mTid is not defined until the child initializes it, and the caller may need it earlier
+    Mutex::Autolock _l(mLock);
+    pid_t tid;
+    if (mRunning) {
+        pthread_t pthread = android_thread_id_t_to_pthread(mThread);
+        tid = __pthread_gettid(pthread);
+    } else {
+        ALOGW("Thread (this=%p): getTid() is undefined before run()", this);
+        tid = -1;
+    }
+    return tid;
+}
+#endif
 
 bool Thread::exitPending() const
 {

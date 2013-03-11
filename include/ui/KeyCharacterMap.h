@@ -25,6 +25,7 @@
 #include <utils/Tokenizer.h>
 #include <utils/String8.h>
 #include <utils/Unicode.h>
+#include <utils/RefBase.h>
 
 namespace android {
 
@@ -33,7 +34,7 @@ namespace android {
  * Also specifies other functions of the keyboard such as the keyboard type
  * and key modifier semantics.
  */
-class KeyCharacterMap {
+class KeyCharacterMap : public RefBase {
 public:
     enum KeyboardType {
         KEYBOARD_TYPE_UNKNOWN = 0,
@@ -49,8 +50,6 @@ public:
         int32_t keyCode;
         int32_t metaState;
     };
-
-    ~KeyCharacterMap();
 
     static status_t load(const String8& filename, KeyCharacterMap** outMap);
 
@@ -91,6 +90,17 @@ public:
      */
     bool getEvents(int32_t deviceId, const char16_t* chars, size_t numChars,
             Vector<KeyEvent>& outEvents) const;
+
+#if HAVE_ANDROID_OS
+    /* Reads a key map from a parcel. */
+    static sp<KeyCharacterMap> readFromParcel(Parcel* parcel);
+
+    /* Writes a key map to a parcel. */
+    void writeToParcel(Parcel* parcel) const;
+#endif
+
+protected:
+    virtual ~KeyCharacterMap();
 
 private:
     struct Behavior {
@@ -162,10 +172,16 @@ private:
         status_t parseCharacterLiteral(char16_t* outCharacter);
     };
 
+    static sp<KeyCharacterMap> sEmpty;
+
     KeyedVector<int32_t, Key*> mKeys;
     int mType;
 
+    KeyedVector<int32_t, int32_t> mKeysByScanCode;
+    KeyedVector<int32_t, int32_t> mKeysByUsageCode;
+
     KeyCharacterMap();
+    KeyCharacterMap(const KeyCharacterMap& other);
 
     bool getKey(int32_t keyCode, const Key** outKey) const;
     bool getKeyBehavior(int32_t keyCode, int32_t metaState,

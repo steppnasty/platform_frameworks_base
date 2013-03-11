@@ -27,7 +27,7 @@
 #include <camera/ICameraRecordingProxyListener.h>
 #include <camera/ICameraService.h>
 
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 
 namespace android {
 

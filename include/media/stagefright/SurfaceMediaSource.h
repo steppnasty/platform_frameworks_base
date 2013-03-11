@@ -18,6 +18,7 @@
 #define ANDROID_GUI_SURFACEMEDIASOURCE_H
 
 #include <gui/ISurfaceTexture.h>
+#include <gui/BufferQueue.h>
 
 #include <utils/threads.h>
 #include <utils/Vector.h>
@@ -48,8 +49,9 @@ class IGraphicBufferAlloc;
 class String8;
 class GraphicBuffer;
 
-class SurfaceMediaSource : public BnSurfaceTexture, public MediaSource,
-                                            public MediaBufferObserver {
+class SurfaceMediaSource : public MediaSource,
+                               public MediaBufferObserver,
+                               protected BufferQueue::ConsumerListener {
 public:
     enum { MIN_UNDEQUEUED_BUFFERS = 4 };
     enum {
@@ -103,23 +105,6 @@ public:
     virtual status_t setBufferCount(int bufferCount);
 
     virtual status_t requestBuffer(int slot, sp<GraphicBuffer>* buf);
-
-    // dequeueBuffer gets the next buffer slot index for the client to use. If a
-    // buffer slot is available then that slot index is written to the location
-    // pointed to by the buf argument and a status of OK is returned.  If no
-    // slot is available then a status of -EBUSY is returned and buf is
-    // unmodified.
-    virtual status_t dequeueBuffer(int *buf, uint32_t w, uint32_t h,
-            uint32_t format, uint32_t usage);
-
-    // queueBuffer returns a filled buffer to the SurfaceMediaSource. In addition, a
-    // timestamp must be provided for the buffer. The timestamp is in
-    // nanoseconds, and must be monotonically increasing. Its other semantics
-    // (zero point, etc) are client-dependent and should be documented by the
-    // client.
-    virtual status_t queueBuffer(int buf, int64_t timestamp,
-            uint32_t* outWidth, uint32_t* outHeight, uint32_t* outTransform);
-    virtual void cancelBuffer(int buf);
 
     // onFrameReceivedLocked informs the buffer consumers (StageFrightRecorder)
     // or listeners that a frame has been received
@@ -209,7 +194,27 @@ public:
     // pass metadata through the buffers. Currently, it is force set to true
     bool isMetaDataStoredInVideoBuffers() const;
 
+    sp<BufferQueue> getBufferQueue() const { return mBufferQueue; }
+
 protected:
+
+    // Implementation of the BufferQueue::ConsumerListener interface.  These
+    // calls are used to notify the SurfaceTexture of asynchronous events in the
+    // BufferQueue.
+    virtual void onFrameAvailable();
+
+    // Used as a hook to BufferQueue::disconnect()
+    // This is called by the client side when it is done
+    // TODO: Currently, this also sets mStopped to true which
+    // is needed for unblocking the encoder which might be
+    // waiting to read more frames. So if on the client side,
+    // the same thread supplies the frames and also calls stop
+    // on the encoder, the client has to call disconnect before
+    // it calls stop.
+    // In the case of the camera,
+    // that need not be required since the thread supplying the
+    // frames is separate than the one calling stop.
+    virtual void onBuffersReleased();
 
     // freeAllBuffersLocked frees the resources (both GraphicBuffer and EGLImage) for
     // all slots.
@@ -217,6 +222,29 @@ protected:
     static bool isExternalFormat(uint32_t format);
 
 private:
+    // mBufferQueue is the exchange point between the producer and
+    // this consumer
+    sp<BufferQueue> mBufferQueue;
+
+    // mBufferSlot caches GraphicBuffers from the buffer queue
+    sp<GraphicBuffer> mBufferSlot[BufferQueue::NUM_BUFFER_SLOTS];
+
+    // The permenent width and height of SMS buffers
+    int mWidth;
+    int mHeight;
+
+    // mCurrentSlot is the buffer slot index of the buffer that is currently
+    // being used by buffer consumer
+    // (e.g. StageFrightRecorder in the case of SurfaceMediaSource or GLTexture
+    // in the case of SurfaceTexture).
+    // It is initialized to INVALID_BUFFER_SLOT,
+    // indicating that no buffer slot is currently bound to the texture. Note,
+    // however, that a value of INVALID_BUFFER_SLOT does not necessarily mean
+    // that no buffer is bound to the texture. A call to setBufferCount will
+    // reset mCurrentTexture to INVALID_BUFFER_SLOT.
+    int mCurrentSlot;
+
+    size_t mNumPendingBuffers;
 
     status_t setBufferCountServerLocked(int bufferCount);
 
@@ -309,18 +337,6 @@ private:
     // mServerBufferCount buffer count requested by the server-side
     int mServerBufferCount;
 
-    // mCurrentSlot is the buffer slot index of the buffer that is currently
-    // being used by buffer consumer
-    // (e.g. StageFrightRecorder in the case of SurfaceMediaSource or GLTexture
-    // in the case of SurfaceTexture).
-    // It is initialized to INVALID_BUFFER_SLOT,
-    // indicating that no buffer slot is currently bound to the texture. Note,
-    // however, that a value of INVALID_BUFFER_SLOT does not necessarily mean
-    // that no buffer is bound to the texture. A call to setBufferCount will
-    // reset mCurrentTexture to INVALID_BUFFER_SLOT.
-    int mCurrentSlot;
-
-
     // mCurrentBuf is the graphic buffer of the current slot to be used by
     // buffer consumer. It's possible that this buffer is not associated
     // with any buffer slot, so we must track it separately in order to
@@ -366,6 +382,9 @@ private:
     // Set to a default of 30 fps if not specified by the client side
     int32_t mFrameRate;
 
+    // mStarted is a flag to check if the recording is going on
+    bool mStarted;
+
     // mStopped is a flag to check if the recording is going on
     bool mStopped;
 
@@ -382,6 +401,10 @@ private:
     // mStartTimeNs is the start time passed into the source at start, used to
     // offset timestamps.
     int64_t mStartTimeNs;
+
+    size_t mMaxAcquiredBufferCount;
+
+    bool mUseAbsoluteTimestamps;
 
     // mFrameAvailableCondition condition used to indicate whether there
     // is a frame available for dequeuing

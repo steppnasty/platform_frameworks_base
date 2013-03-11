@@ -1,8 +1,13 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES:= \
-	ISensorEventConnection.cpp \
+LOCAL_SRC_FILES:=                   \
+        BitTube.cpp                 \
+        BufferQueue.cpp             \
+        ConsumerBase.cpp            \
+        DisplayEventReceiver.cpp    \
+        IDisplayEventConnection.cpp \
+	ISensorEventConnection.cpp  \
 	ISensorServer.cpp \
 	ISurfaceTexture.cpp \
 	Sensor.cpp \
@@ -18,6 +23,7 @@ LOCAL_SRC_FILES:= \
 	LayerState.cpp \
 	Surface.cpp \
 	SurfaceComposerClient.cpp \
+        GuiConfig.cpp             \
 
 LOCAL_SHARED_LIBRARIES := \
 	libcutils \

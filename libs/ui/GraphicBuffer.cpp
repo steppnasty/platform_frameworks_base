@@ -28,8 +28,6 @@
 #include <ui/GraphicBufferMapper.h>
 #include <ui/PixelFormat.h>
 
-#include <pixelflinger/pixelflinger.h>
-
 namespace android {
 
 // ===========================================================================
@@ -182,21 +180,6 @@ status_t GraphicBuffer::unlock()
     return res;
 }
 
-status_t GraphicBuffer::lock(GGLSurface* sur, uint32_t usage) 
-{
-    void* vaddr;
-    status_t res = GraphicBuffer::lock(usage, &vaddr);
-    if (res == NO_ERROR && sur) {
-        sur->version = sizeof(GGLSurface);
-        sur->width = width;
-        sur->height = height;
-        sur->stride = stride;
-        sur->format = format;
-        sur->data = static_cast<GGLubyte*>(vaddr);
-    }
-    return res;
-}
-
 size_t GraphicBuffer::getFlattenedSize() const {
     return (8 + (handle ? handle->numInts : 0))*sizeof(int);
 }
@@ -275,7 +258,12 @@ status_t GraphicBuffer::unflatten(void const* buffer, size_t size,
     mOwner = ownHandle;
 
     if (handle != 0) {
-        mBufferMapper.registerBuffer(handle);
+        status_t err = mBufferMapper.registerBuffer(handle);
+        if (err != NO_ERROR) {
+            ALOGE("unflatten: registerBuffer failed: %s (%d)",
+                    strerror(-err), err);
+            return err;
+        }
     }
 
     return NO_ERROR;

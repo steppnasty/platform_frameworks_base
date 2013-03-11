@@ -18,7 +18,7 @@
 
 #define NATIVE_WINDOW_WRAPPER_H_
 
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <gui/SurfaceTextureClient.h>
 
 namespace android {

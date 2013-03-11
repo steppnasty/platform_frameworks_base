@@ -21,6 +21,11 @@
 #include <android/keycodes.h>
 #include <ui/Keyboard.h>
 #include <ui/KeyCharacterMap.h>
+
+#if HAVE_ANDROID_OS
+#include <binder/Parcel.h>
+#endif
+
 #include <utils/Log.h>
 #include <utils/Errors.h>
 #include <utils/Tokenizer.h>
@@ -78,8 +83,18 @@ static String8 toString(const char16_t* chars, size_t numChars) {
 
 // --- KeyCharacterMap ---
 
+sp<KeyCharacterMap> KeyCharacterMap::sEmpty = new KeyCharacterMap();
+
 KeyCharacterMap::KeyCharacterMap() :
     mType(KEYBOARD_TYPE_UNKNOWN) {
+}
+
+KeyCharacterMap::KeyCharacterMap(const KeyCharacterMap& other) :
+    RefBase(), mType(other.mType), mKeysByScanCode(other.mKeysByScanCode),
+    mKeysByUsageCode(other.mKeysByUsageCode) {
+    for (size_t i = 0; i < other.mKeys.size(); i++) {
+        mKeys.add(other.mKeys.keyAt(i), new Key(*other.mKeys.valueAt(i)));
+    }
 }
 
 KeyCharacterMap::~KeyCharacterMap() {
@@ -419,6 +434,78 @@ void KeyCharacterMap::addLockedMetaKey(Vector<KeyEvent>& outEvents,
     }
 }
 
+#if HAVE_ANDROID_OS
+sp<KeyCharacterMap> KeyCharacterMap::readFromParcel(Parcel* parcel) {
+    sp<KeyCharacterMap> map = new KeyCharacterMap();
+    map->mType = parcel->readInt32();
+    size_t numKeys = parcel->readInt32();
+    if (parcel->errorCheck()) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < numKeys; i++) {
+        int32_t keyCode = parcel->readInt32();
+        char16_t label = parcel->readInt32();
+        char16_t number = parcel->readInt32();
+        if (parcel->errorCheck()) {
+            return NULL;
+        }
+
+        Key* key = new Key();
+        key->label = label;
+        key->number = number;
+        map->mKeys.add(keyCode, key);
+
+        Behavior* lastBehavior = NULL;
+        while (parcel->readInt32()) {
+            int32_t metaState = parcel->readInt32();
+            char16_t character = parcel->readInt32();
+            int32_t fallbackKeyCode = parcel->readInt32();
+            if (parcel->errorCheck()) {
+                return NULL;
+            }
+
+            Behavior* behavior = new Behavior();
+            behavior->metaState = metaState;
+            behavior->character = character;
+            behavior->fallbackKeyCode = fallbackKeyCode;
+            if (lastBehavior) {
+                lastBehavior->next = behavior;
+            } else {
+                key->firstBehavior = behavior;
+            }
+            lastBehavior = behavior;
+        }
+
+        if (parcel->errorCheck()) {
+            return NULL;
+        }
+    }
+    return map;
+}
+
+void KeyCharacterMap::writeToParcel(Parcel* parcel) const {
+    parcel->writeInt32(mType);
+
+    size_t numKeys = mKeys.size();
+    parcel->writeInt32(numKeys);
+    for (size_t i = 0; i < numKeys; i++) {
+        int32_t keyCode = mKeys.keyAt(i);
+        const Key* key = mKeys.valueAt(i);
+        parcel->writeInt32(keyCode);
+        parcel->writeInt32(key->label);
+        parcel->writeInt32(key->number);
+        for (const Behavior* behavior = key->firstBehavior; behavior != NULL;
+                behavior = behavior->next) {
+            parcel->writeInt32(1);
+            parcel->writeInt32(behavior->metaState);
+            parcel->writeInt32(behavior->character);
+            parcel->writeInt32(behavior->fallbackKeyCode);
+        }
+        parcel->writeInt32(0);
+    }
+}
+#endif
 
 // --- KeyCharacterMap::Key ---
 

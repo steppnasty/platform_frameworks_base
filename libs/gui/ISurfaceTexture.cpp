@@ -36,16 +36,10 @@ enum {
     DEQUEUE_BUFFER,
     QUEUE_BUFFER,
     CANCEL_BUFFER,
-    SET_CROP,
-    SET_TRANSFORM,
     QUERY,
     SET_SYNCHRONOUS_MODE,
     CONNECT,
     DISCONNECT,
-    SET_SCALING_MODE,
-#ifdef QCOM_HARDWARE
-    PERFORM_QCOM_OPERATION,
-#endif
 };
 
 
@@ -87,8 +81,8 @@ public:
         return result;
     }
 
-    virtual status_t dequeueBuffer(int *buf, uint32_t w, uint32_t h,
-            uint32_t format, uint32_t usage) {
+    virtual status_t dequeueBuffer(int *buf, sp<Fence>& fence,
+            uint32_t w, uint32_t h, uint32_t format, uint32_t usage) {
         Parcel data, reply;
         data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
         data.writeInt32(w);
@@ -100,71 +94,41 @@ public:
             return result;
         }
         *buf = reply.readInt32();
+        fence.clear();
+        bool hasFence = reply.readInt32();
+        if (hasFence) {
+            fence = new Fence();
+            reply.read(*fence.get());
+        }
         result = reply.readInt32();
         return result;
     }
 
-    virtual status_t queueBuffer(int buf, int64_t timestamp,
-            uint32_t* outWidth, uint32_t* outHeight, uint32_t* outTransform) {
+    virtual status_t queueBuffer(int buf,
+            const QueueBufferInput& input, QueueBufferOutput* output) {
         Parcel data, reply;
         data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
         data.writeInt32(buf);
-        data.writeInt64(timestamp);
+        data.write(input);
         status_t result = remote()->transact(QUEUE_BUFFER, data, &reply);
         if (result != NO_ERROR) {
             return result;
         }
-        *outWidth = reply.readInt32();
-        *outHeight = reply.readInt32();
-        *outTransform = reply.readInt32();
+        memcpy(output, reply.readInplace(sizeof(*output)), sizeof(*output));
         result = reply.readInt32();
         return result;
     }
 
-    virtual void cancelBuffer(int buf) {
+    virtual void cancelBuffer(int buf, sp<Fence> fence) {
         Parcel data, reply;
+        bool hasFence = fence.get() && fence->isValid();
         data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
         data.writeInt32(buf);
+        data.writeInt32(hasFence);
+        if (hasFence) {
+            data.write(*fence.get());
+        }
         remote()->transact(CANCEL_BUFFER, data, &reply);
-    }
-
-    virtual status_t setCrop(const Rect& reg) {
-        Parcel data, reply;
-        data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
-        data.writeFloat(reg.left);
-        data.writeFloat(reg.top);
-        data.writeFloat(reg.right);
-        data.writeFloat(reg.bottom);
-        status_t result = remote()->transact(SET_CROP, data, &reply);
-        if (result != NO_ERROR) {
-            return result;
-        }
-        result = reply.readInt32();
-        return result;
-    }
-
-    virtual status_t setTransform(uint32_t transform) {
-        Parcel data, reply;
-        data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
-        data.writeInt32(transform);
-        status_t result = remote()->transact(SET_TRANSFORM, data, &reply);
-        if (result != NO_ERROR) {
-            return result;
-        }
-        result = reply.readInt32();
-        return result;
-    }
-
-    virtual status_t setScalingMode(int mode) {
-        Parcel data, reply;
-        data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
-        data.writeInt32(mode);
-        status_t result = remote()->transact(SET_SCALING_MODE, data, &reply);
-        if (result != NO_ERROR) {
-            return result;
-        }
-        result = reply.readInt32();
-        return result;
     }
 
     virtual int query(int what, int* value) {
@@ -192,8 +156,7 @@ public:
         return result;
     }
 
-    virtual status_t connect(int api,
-            uint32_t* outWidth, uint32_t* outHeight, uint32_t* outTransform) {
+    virtual status_t connect(int api, QueueBufferOutput* output) {
         Parcel data, reply;
         data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
         data.writeInt32(api);
@@ -201,9 +164,7 @@ public:
         if (result != NO_ERROR) {
             return result;
         }
-        *outWidth = reply.readInt32();
-        *outHeight = reply.readInt32();
-        *outTransform = reply.readInt32();
+        memcpy(output, reply.readInplace(sizeof(*output)), sizeof(*output));
         result = reply.readInt32();
         return result;
     }
@@ -219,24 +180,6 @@ public:
         result = reply.readInt32();
         return result;
     }
-
-#ifdef QCOM_HARDWARE
-    virtual status_t performQcomOperation(int operation, int arg1, int arg2, int arg3) {
-        Parcel data, reply;
-        data.writeInterfaceToken(ISurfaceTexture::getInterfaceDescriptor());
-
-        data.writeInt32(operation);
-        data.writeInt32(arg1);
-        data.writeInt32(arg2);
-        data.writeInt32(arg3);
-        status_t result =remote()->transact(PERFORM_QCOM_OPERATION, data, &reply);
-        if (result != NO_ERROR) {
-            return result;
-        }
-        result = reply.readInt32();
-        return result;
-    }
-#endif
 };
 
 IMPLEMENT_META_INTERFACE(SurfaceTexture, "android.gui.SurfaceTexture");
@@ -273,53 +216,38 @@ status_t BnSurfaceTexture::onTransact(
             uint32_t format = data.readInt32();
             uint32_t usage  = data.readInt32();
             int buf;
-            int result = dequeueBuffer(&buf, w, h, format, usage);
+            sp<Fence> fence;
+            int result = dequeueBuffer(&buf, fence, w, h, format, usage);
+            bool hasFence = fence.get() && fence->isValid();
             reply->writeInt32(buf);
+            reply->writeInt32(hasFence);
+            if (hasFence) {
+                reply->write(*fence.get());
+            }
             reply->writeInt32(result);
             return NO_ERROR;
         } break;
         case QUEUE_BUFFER: {
             CHECK_INTERFACE(ISurfaceTexture, data, reply);
             int buf = data.readInt32();
-            int64_t timestamp = data.readInt64();
-            uint32_t outWidth, outHeight, outTransform;
-            status_t result = queueBuffer(buf, timestamp,
-                    &outWidth, &outHeight, &outTransform);
-            reply->writeInt32(outWidth);
-            reply->writeInt32(outHeight);
-            reply->writeInt32(outTransform);
+            QueueBufferInput input(data);
+            QueueBufferOutput* const output =
+                    reinterpret_cast<QueueBufferOutput *>(
+                            reply->writeInplace(sizeof(QueueBufferOutput)));
+            status_t result = queueBuffer(buf, input, output);
             reply->writeInt32(result);
             return NO_ERROR;
         } break;
         case CANCEL_BUFFER: {
             CHECK_INTERFACE(ISurfaceTexture, data, reply);
             int buf = data.readInt32();
-            cancelBuffer(buf);
-            return NO_ERROR;
-        } break;
-        case SET_CROP: {
-            Rect reg;
-            CHECK_INTERFACE(ISurfaceTexture, data, reply);
-            reg.left = data.readFloat();
-            reg.top = data.readFloat();
-            reg.right = data.readFloat();
-            reg.bottom = data.readFloat();
-            status_t result = setCrop(reg);
-            reply->writeInt32(result);
-            return NO_ERROR;
-        } break;
-        case SET_TRANSFORM: {
-            CHECK_INTERFACE(ISurfaceTexture, data, reply);
-            uint32_t transform = data.readInt32();
-            status_t result = setTransform(transform);
-            reply->writeInt32(result);
-            return NO_ERROR;
-        } break;
-        case SET_SCALING_MODE: {
-            CHECK_INTERFACE(ISurfaceTexture, data, reply);
-            int mode = data.readInt32();
-            status_t result = setScalingMode(mode);
-            reply->writeInt32(result);
+            sp<Fence> fence;
+            bool hasFence = data.readInt32();
+            if (hasFence) {
+                fence = new Fence();
+                data.read(*fence.get());
+            }
+            cancelBuffer(buf, fence);
             return NO_ERROR;
         } break;
         case QUERY: {
@@ -341,12 +269,10 @@ status_t BnSurfaceTexture::onTransact(
         case CONNECT: {
             CHECK_INTERFACE(ISurfaceTexture, data, reply);
             int api = data.readInt32();
-            uint32_t outWidth, outHeight, outTransform;
-            status_t res = connect(api,
-                    &outWidth, &outHeight, &outTransform);
-            reply->writeInt32(outWidth);
-            reply->writeInt32(outHeight);
-            reply->writeInt32(outTransform);
+            QueueBufferOutput* const output =
+                    reinterpret_cast<QueueBufferOutput *>(
+                            reply->writeInplace(sizeof(QueueBufferOutput)));
+            status_t res = connect(api, output);
             reply->writeInt32(res);
             return NO_ERROR;
         } break;
@@ -357,22 +283,68 @@ status_t BnSurfaceTexture::onTransact(
             reply->writeInt32(res);
             return NO_ERROR;
         } break;
-#ifdef QCOM_HARDWARE
-        case PERFORM_QCOM_OPERATION: {
-            CHECK_INTERFACE(ISurfaceTexture, data, reply);
-            int operation = data.readInt32();
-            int arg1 = data.readInt32();
-            int arg2 = data.readInt32();
-            int arg3 = data.readInt32();
-            status_t res = performQcomOperation(operation, arg1, arg2, arg3);
-            reply->writeInt32(res);
-            return NO_ERROR;
-        } break;
-#endif
     }
     return BBinder::onTransact(code, data, reply, flags);
 }
 
 // ----------------------------------------------------------------------------
+
+static bool isValid(const sp<Fence>& fence) {
+    return fence.get() && fence->isValid();
+}
+
+ISurfaceTexture::QueueBufferInput::QueueBufferInput(const Parcel& parcel) {
+    parcel.read(*this);
+}
+
+size_t ISurfaceTexture::QueueBufferInput::getFlattenedSize() const
+{
+    return sizeof(timestamp)
+         + sizeof(crop)
+         + sizeof(scalingMode)
+         + sizeof(transform)
+         + sizeof(bool)
+         + (isValid(fence) ? fence->getFlattenedSize() : 0);
+}
+
+size_t ISurfaceTexture::QueueBufferInput::getFdCount() const
+{
+    return isValid(fence) ? fence->getFdCount() : 0;
+}
+
+status_t ISurfaceTexture::QueueBufferInput::flatten(void* buffer, size_t size,
+        int fds[], size_t count) const
+{
+    status_t err = NO_ERROR;
+    bool haveFence = isValid(fence);
+    char* p = (char*)buffer;
+    memcpy(p, &timestamp,   sizeof(timestamp));   p += sizeof(timestamp);
+    memcpy(p, &crop,        sizeof(crop));        p += sizeof(crop);
+    memcpy(p, &scalingMode, sizeof(scalingMode)); p += sizeof(scalingMode);
+    memcpy(p, &transform,   sizeof(transform));   p += sizeof(transform);
+    memcpy(p, &haveFence,   sizeof(haveFence));   p += sizeof(haveFence);
+    if (haveFence) {
+        err = fence->flatten(p, size - (p - (char*)buffer), fds, count);
+    }
+    return err;
+}
+
+status_t ISurfaceTexture::QueueBufferInput::unflatten(void const* buffer,
+        size_t size, int fds[], size_t count)
+{
+    status_t err = NO_ERROR;
+    bool haveFence;
+    const char* p = (const char*)buffer;
+    memcpy(&timestamp,   p, sizeof(timestamp));   p += sizeof(timestamp);
+    memcpy(&crop,        p, sizeof(crop));        p += sizeof(crop);
+    memcpy(&scalingMode, p, sizeof(scalingMode)); p += sizeof(scalingMode);
+    memcpy(&transform,   p, sizeof(transform));   p += sizeof(transform);
+    memcpy(&haveFence,   p, sizeof(haveFence));   p += sizeof(haveFence);
+    if (haveFence) {
+        fence = new Fence();
+        err = fence->unflatten(p, size - (p - (const char*)buffer), fds, count);
+    }
+    return err;
+}
 
 }; // namespace android

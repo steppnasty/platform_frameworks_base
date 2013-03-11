@@ -16,12 +16,12 @@ LOCAL_PATH:= $(call my-dir)
 
 # libui is partially built for the host (used by build time keymap validation tool)
 # These files are common to host and target builds.
-commonSources:= \
-	Input.cpp \
-	Keyboard.cpp \
-	KeyLayoutMap.cpp \
+commonSources:=             \
+	Input.cpp           \
+	Keyboard.cpp        \
+	KeyLayoutMap.cpp    \
 	KeyCharacterMap.cpp \
-	VirtualKeyMap.cpp
+	VirtualKeyMap.cpp   \
 
 # For the host
 # =====================================================
@@ -40,18 +40,20 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES:= \
-	$(commonSources) \
-	EGLUtils.cpp \
-	FramebufferNativeWindow.cpp \
-	GraphicBuffer.cpp \
-	GraphicBufferAllocator.cpp \
-	GraphicBufferMapper.cpp \
-	GraphicLog.cpp \
-	InputTransport.cpp \
-	PixelFormat.cpp \
-	Rect.cpp \
-	Region.cpp
+LOCAL_SRC_FILES:=                    \
+	$(commonSources)             \
+        Fence.cpp                    \
+	EGLUtils.cpp                 \
+	FramebufferNativeWindow.cpp  \
+	GraphicBuffer.cpp            \
+	GraphicBufferAllocator.cpp   \
+	GraphicBufferMapper.cpp      \
+	GraphicLog.cpp               \
+	InputTransport.cpp           \
+	PixelFormat.cpp              \
+	Rect.cpp                     \
+	Region.cpp                   \
+        UiConfig.cpp
 
 LOCAL_SHARED_LIBRARIES := \
 	libcutils \
@@ -60,6 +62,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libpixelflinger \
 	libhardware \
 	libhardware_legacy \
+        libsync            \
 	libskia \
 	libbinder
 

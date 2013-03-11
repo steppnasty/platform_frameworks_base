@@ -27,6 +27,7 @@
 namespace android {
 // ---------------------------------------------------------------------------
 
+class SharedBuffer;
 class String8;
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,11 @@ public:
     
             const_iterator begin() const;
             const_iterator end() const;
+
+    // returns a SharedBuffer as well as the number of rects.
+    // ownership is transfered to the caller.
+    // the caller must call SharedBuffer::release() to free the memory.
+    SharedBuffer const* getSharedBuffer(size_t* count) const;
 
     /* no user serviceable parts here... */
             

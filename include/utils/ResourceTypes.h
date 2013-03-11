@@ -453,16 +453,21 @@ public:
 
     const char* string8At(size_t idx, size_t* outLen) const;
 
+    // Return string whether the pool is UTF8 or UTF16.  Does not allow you
+    // to distinguish null.
+    const String8 string8ObjectAt(size_t idx) const;
+
     const ResStringPool_span* styleAt(const ResStringPool_ref& ref) const;
     const ResStringPool_span* styleAt(size_t idx) const;
 
     ssize_t indexOfString(const char16_t* str, size_t strLen) const;
 
     size_t size() const;
+    size_t styleCount() const;
+    size_t bytes() const;
 
-#ifndef HAVE_ANDROID_OS
+    bool isSorted() const;   
     bool isUTF8() const;
-#endif
 
 private:
     status_t                    mError;
@@ -845,6 +850,8 @@ struct ResTable_config
         DENSITY_MEDIUM = ACONFIGURATION_DENSITY_MEDIUM,
         DENSITY_TV = ACONFIGURATION_DENSITY_TV,
         DENSITY_HIGH = ACONFIGURATION_DENSITY_HIGH,
+        DENSITY_XHIGH = ACONFIGURATION_DENSITY_XHIGH,
+        DENSITY_XXHIGH = ACONFIGURATION_DENSITY_XXHIGH,
         DENSITY_NONE = ACONFIGURATION_DENSITY_NONE
     };
     
@@ -947,6 +954,13 @@ struct ResTable_config
         SCREENLONG_ANY = ACONFIGURATION_SCREENLONG_ANY << SHIFT_SCREENLONG,
         SCREENLONG_NO = ACONFIGURATION_SCREENLONG_NO << SHIFT_SCREENLONG,
         SCREENLONG_YES = ACONFIGURATION_SCREENLONG_YES << SHIFT_SCREENLONG,
+
+        // screenLayout bits for layout direction.
+        MASK_LAYOUTDIR = 0xC0,
+        SHIFT_LAYOUTDIR = 6,
+        LAYOUTDIR_ANY = ACONFIGURATION_LAYOUTDIR_ANY << SHIFT_LAYOUTDIR,
+        LAYOUTDIR_LTR = ACONFIGURATION_LAYOUTDIR_LTR << SHIFT_LAYOUTDIR,
+        LAYOUTDIR_RTL = ACONFIGURATION_LAYOUTDIR_RTL << SHIFT_LAYOUTDIR,
     };
     
     enum {
@@ -957,6 +971,7 @@ struct ResTable_config
         UI_MODE_TYPE_DESK = ACONFIGURATION_UI_MODE_TYPE_DESK,
         UI_MODE_TYPE_CAR = ACONFIGURATION_UI_MODE_TYPE_CAR,
         UI_MODE_TYPE_TELEVISION = ACONFIGURATION_UI_MODE_TYPE_TELEVISION,
+        UI_MODE_TYPE_APPLIANCE = ACONFIGURATION_UI_MODE_TYPE_APPLIANCE,
 
         // uiMode bits for the night switch.
         MASK_UI_MODE_NIGHT = 0x30,
@@ -1044,6 +1059,8 @@ struct ResTable_config
         diff = (int32_t)(screenSizeDp - o.screenSizeDp);
         return (int)diff;
     }
+
+    int compareLogical(const ResTable_config& o) const;
     
     // Flags indicating a set of config values.  These flag constants must
     // match the corresponding ones in android.content.pm.ActivityInfo and

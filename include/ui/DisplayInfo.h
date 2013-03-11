@@ -33,6 +33,7 @@ struct DisplayInfo {
     uint8_t             reserved[3];
     float               fps;
     float               density;
+    bool                secure;
     float               xdpi;
     float               ydpi;
 };
