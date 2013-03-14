@@ -63,6 +63,7 @@ import android.os.SystemClock;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
+import android.view.Display;
 import android.view.WindowManagerPolicy;
 
 import java.io.IOException;
@@ -860,7 +861,8 @@ final class ActivityStack {
         }
 
         if (w > 0) {
-            return mService.mWindowManager.screenshotApplications(who.appToken, w, h);
+            return mService.mWindowManager.screenshotApplications(who.appToken,
+                    Display.DEFAULT_DISPLAY, w, h);
         }
         return null;
     }
@@ -1637,7 +1639,7 @@ final class ActivityStack {
     }
 
     private final void startActivityLocked(ActivityRecord r, boolean newTask,
-            boolean doResume, boolean keepCurTransition) {
+            boolean doResume, boolean keepCurTransition, Bundle options) {
         final int NH = mHistory.size();
 
         int addPos = -1;
@@ -1665,7 +1667,8 @@ final class ActivityStack {
                         mHistory.add(addPos, r);
                         r.putInHistory();
                         mService.mWindowManager.addAppToken(addPos, r.appToken, r.task.taskId,
-                                r.info.screenOrientation, r.fullscreen);
+                                r.info.screenOrientation, r.fullscreen,
+                                (r.info.flags & ActivityInfo.FLAG_SHOW_ON_LOCK_SCREEN) != 0);
                         if (VALIDATE_TOKENS) {
                             validateAppTokensLocked();
                         }
@@ -1731,7 +1734,8 @@ final class ActivityStack {
                 mNoAnimActivities.remove(r);
             }
             mService.mWindowManager.addAppToken(
-                    addPos, r.appToken, r.task.taskId, r.info.screenOrientation, r.fullscreen);
+                    addPos, r.appToken, r.task.taskId, r.info.screenOrientation, r.fullscreen,
+                    (r.info.flags & ActivityInfo.FLAG_SHOW_ON_LOCK_SCREEN) != 0);
             boolean doShow = true;
             if (newTask) {
                 // Even though this activity is starting fresh, we still need
@@ -1769,7 +1773,8 @@ final class ActivityStack {
             // If this is the first activity, don't do any fancy animations,
             // because there is nothing for it to animate on top of.
             mService.mWindowManager.addAppToken(addPos, r.appToken, r.task.taskId,
-                    r.info.screenOrientation, r.fullscreen);
+                    r.info.screenOrientation, r.fullscreen,
+                    (r.info.flags & ActivityInfo.FLAG_SHOW_ON_LOCK_SCREEN) != 0);
         }
         if (VALIDATE_TOKENS) {
             validateAppTokensLocked();
@@ -2266,11 +2271,9 @@ final class ActivityStack {
     }
 
     final int startActivityLocked(IApplicationThread caller,
-            Intent intent, String resolvedType,
-            Uri[] grantedUriPermissions,
-            int grantedMode, ActivityInfo aInfo, IBinder resultTo,
+            Intent intent, String resolvedType, ActivityInfo aInfo, IBinder resultTo,
             String resultWho, int requestCode,
-            int callingPid, int callingUid, boolean onlyIfNeeded,
+            int callingPid, int callingUid, int startFlags, Bundle options,
             boolean componentSpecified, ActivityRecord[] outActivity) {
 
         int err = START_SUCCESS;
@@ -2415,9 +2418,6 @@ final class ActivityStack {
                     PendingActivityLaunch pal = new PendingActivityLaunch();
                     pal.r = r;
                     pal.sourceRecord = sourceRecord;
-                    pal.grantedUriPermissions = grantedUriPermissions;
-                    pal.grantedMode = grantedMode;
-                    pal.onlyIfNeeded = onlyIfNeeded;
                     mService.mPendingActivityLaunches.add(pal);
                     mDismissKeyguardOnNextActivity = false;
                     return START_SWITCHES_CANCELED;
@@ -2439,7 +2439,7 @@ final class ActivityStack {
         }
         
         err = startActivityUncheckedLocked(r, sourceRecord,
-                grantedUriPermissions, grantedMode, onlyIfNeeded, true);
+                startFlags, true, options);
         if (mDismissKeyguardOnNextActivity && mPausingActivity == null) {
             // Someone asked to have the keyguard dismissed on the next
             // activity start, but we are not actually doing an activity
@@ -2462,8 +2462,8 @@ final class ActivityStack {
     }
 
     final int startActivityUncheckedLocked(ActivityRecord r,
-            ActivityRecord sourceRecord, Uri[] grantedUriPermissions,
-            int grantedMode, boolean onlyIfNeeded, boolean doResume) {
+            ActivityRecord sourceRecord, int startFlags, boolean doResume,
+            Bundle options) {
         final Intent intent = r.intent;
         final int callingUid = r.launchedFromUid;
         
@@ -2489,14 +2489,14 @@ final class ActivityStack {
         // being launched is the same as the one making the call...  or, as
         // a special case, if we do not know the caller then we count the
         // current top activity as the caller.
-        if (onlyIfNeeded) {
+        if ((startFlags&ActivityManager.START_FLAG_ONLY_IF_NEEDED) != 0) {
             ActivityRecord checkedCaller = sourceRecord;
             if (checkedCaller == null) {
                 checkedCaller = topRunningNonDelayedActivityLocked(notTop);
             }
             if (!checkedCaller.realActivity.equals(r.realActivity)) {
                 // Caller is not the same as launcher, so always needed.
-                onlyIfNeeded = false;
+                startFlags &= ~ActivityManager.START_FLAG_ONLY_IF_NEEDED;
             }
         }
 
@@ -2574,6 +2574,7 @@ final class ActivityStack {
                             // user's face, right now.
                             moveHomeToFrontFromLaunchLocked(launchFlags);
                             moveTaskToFrontLocked(taskTop.task, r);
+                            options = null;
                         }
                     }
                     // If the caller has requested that the target task be
@@ -2581,7 +2582,7 @@ final class ActivityStack {
                     if ((launchFlags&Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) != 0) {
                         taskTop = resetTaskIfNeededLocked(taskTop, r);
                     }
-                    if (onlyIfNeeded) {
+                    if ((startFlags&ActivityManager.START_FLAG_ONLY_IF_NEEDED) != 0) {
                         // We don't need to start a new activity, and
                         // the client said not to do anything if that
                         // is the case, so this is it!  And for paranoia, make
@@ -2705,7 +2706,7 @@ final class ActivityStack {
                             if (doResume) {
                                 resumeTopActivityLocked(null);
                             }
-                            if (onlyIfNeeded) {
+                            if ((startFlags&ActivityManager.START_FLAG_ONLY_IF_NEEDED) != 0) {
                                 // We don't need to start a new activity, and
                                 // the client said not to do anything if that
                                 // is the case, so this is it!
@@ -2804,13 +2805,6 @@ final class ActivityStack {
                     + " in new guessed " + r.task);
         }
 
-        if (grantedUriPermissions != null && callingUid > 0) {
-            for (int i=0; i<grantedUriPermissions.length; i++) {
-                mService.grantUriPermissionLocked(callingUid, r.packageName,
-                        grantedUriPermissions[i], grantedMode, r.getUriPermissionsLocked());
-            }
-        }
-
         mService.grantUriPermissionFromIntentLocked(callingUid, r.packageName,
                 intent, r.getUriPermissionsLocked());
 
@@ -2818,12 +2812,12 @@ final class ActivityStack {
             EventLog.writeEvent(EventLogTags.AM_CREATE_TASK, r.task.taskId);
         }
         logStartActivity(EventLogTags.AM_CREATE_ACTIVITY, r, r.task);
-        startActivityLocked(r, newTask, doResume, keepCurTransition);
+        startActivityLocked(r, newTask, doResume, keepCurTransition, options);
         return START_SUCCESS;
     }
 
-    ActivityInfo resolveActivity(Intent intent, String resolvedType, boolean debug,
-            String profileFile, ParcelFileDescriptor profileFd, boolean autoStopProfiler) {
+    ActivityInfo resolveActivity(Intent intent, String resolvedType, int startFlags,
+            String profileFile, ParcelFileDescriptor profileFd, int userId) {
         // Collect information about the target of the Intent.
         ActivityInfo aInfo;
         try {
@@ -2846,7 +2840,7 @@ final class ActivityStack {
                     aInfo.applicationInfo.packageName, aInfo.name));
 
             // Don't debug things in the system process
-            if (debug) {
+            if ((startFlags&ActivityManager.START_FLAG_DEBUG) != 0) {
                 if (!aInfo.processName.equals("system")) {
                     mService.setDebugApp(aInfo.processName, true, false);
                 }
@@ -2855,7 +2849,8 @@ final class ActivityStack {
             if (profileFile != null) {
                 if (!aInfo.processName.equals("system")) {
                     mService.setProfileApp(aInfo.applicationInfo, aInfo.processName,
-                            profileFile, profileFd, autoStopProfiler);
+                            profileFile, profileFd,
+                            (startFlags&ActivityManager.START_FLAG_AUTO_STOP_PROFILER) != 0);
                 }
             }
         }
@@ -2863,11 +2858,10 @@ final class ActivityStack {
     }
 
     final int startActivityMayWait(IApplicationThread caller, int callingUid,
-            Intent intent, String resolvedType, Uri[] grantedUriPermissions,
-            int grantedMode, IBinder resultTo,
-            String resultWho, int requestCode, boolean onlyIfNeeded,
-            boolean debug, String profileFile, ParcelFileDescriptor profileFd,
-            boolean autoStopProfiler, WaitResult outResult, Configuration config) {
+            Intent intent, String resolvedType, IBinder resultTo,
+            String resultWho, int requestCode, int startFlags, String profileFile,
+            ParcelFileDescriptor profileFd, WaitResult outResult, Configuration config,
+            Bundle options, int userId) {
         // Refuse possible leaked file descriptors
         if (intent != null && intent.hasFileDescriptors()) {
             throw new IllegalArgumentException("File descriptors passed in Intent");
@@ -2879,8 +2873,8 @@ final class ActivityStack {
         intent = new Intent(intent);
 
         // Collect information about the target of the Intent.
-        ActivityInfo aInfo = resolveActivity(intent, resolvedType, debug,
-                profileFile, profileFd, autoStopProfiler);
+        ActivityInfo aInfo = resolveActivity(intent, resolvedType, startFlags,
+                profileFile, profileFd, userId);
 
         synchronized (mService) {
             int callingPid;
@@ -2927,7 +2921,7 @@ final class ActivityStack {
                                 IActivityManager.INTENT_SENDER_ACTIVITY, "android",
                                 realCallingUid, null, null, 0, new Intent[] { intent },
                                 new String[] { resolvedType }, PendingIntent.FLAG_CANCEL_CURRENT
-                                | PendingIntent.FLAG_ONE_SHOT);
+                                | PendingIntent.FLAG_ONE_SHOT, null);
                         
                         Intent newIntent = new Intent();
                         if (requestCode >= 0) {
@@ -2969,9 +2963,8 @@ final class ActivityStack {
             }
             
             int res = startActivityLocked(caller, intent, resolvedType,
-                    grantedUriPermissions, grantedMode, aInfo,
-                    resultTo, resultWho, requestCode, callingPid, callingUid,
-                    onlyIfNeeded, componentSpecified, null);
+                    aInfo, resultTo, resultWho, requestCode, callingPid, callingUid,
+                    startFlags, options, componentSpecified, null);
             
             if (mConfigWillChange && mMainStack) {
                 // If the caller also wants to switch to a new configuration,
@@ -3023,7 +3016,8 @@ final class ActivityStack {
     }
     
     final int startActivities(IApplicationThread caller, int callingUid,
-            Intent[] intents, String[] resolvedTypes, IBinder resultTo) {
+            Intent[] intents, String[] resolvedTypes, IBinder resultTo,
+            Bundle options, int userId) {
         if (intents == null) {
             throw new NullPointerException("intents is null");
         }
@@ -3066,8 +3060,8 @@ final class ActivityStack {
                     intent = new Intent(intent);
 
                     // Collect information about the target of the Intent.
-                    ActivityInfo aInfo = resolveActivity(intent, resolvedTypes[i], false,
-                            null, null, false);
+                    ActivityInfo aInfo = resolveActivity(intent, resolvedTypes[i],
+                            0, null, null, userId);
 
                     if (mMainStack && aInfo != null && (aInfo.applicationInfo.flags
                             & ApplicationInfo.FLAG_CANT_SAVE_STATE) != 0) {
@@ -3075,9 +3069,15 @@ final class ActivityStack {
                                 "FLAG_CANT_SAVE_STATE not supported here");
                     }
 
+                    Bundle theseOptions;
+                    if (options != null && i == intents.length-1) {
+                        theseOptions = options;
+                    } else {
+                        theseOptions = null;
+                    }
                     int res = startActivityLocked(caller, intent, resolvedTypes[i],
-                            null, 0, aInfo, resultTo, null, -1, callingPid, callingUid,
-                            false, componentSpecified, outActivity);
+                            aInfo, resultTo, null, -1, callingPid, callingUid,
+                            0, theseOptions, componentSpecified, outActivity);
                     if (res < 0) {
                         return res;
                     }
@@ -4018,6 +4018,23 @@ final class ActivityStack {
             info.mainThumbnail = tr.lastThumbnail;
         }
         return info;
+    }
+
+    public Bitmap getTaskTopThumbnailLocked(TaskRecord tr) {
+        ActivityRecord resumed = mResumedActivity;
+        if (resumed != null && resumed.task == tr) {
+            // This task is the current resumed task, we just need to take
+            // a screenshot of it and return that.
+            return resumed.stack.screenshotActivities(resumed);
+        }
+        // Return the information about the task, to figure out the top
+        // thumbnail to return.
+        TaskAccessInfo info = getTaskAccessInfoLocked(tr.taskId, true);
+        if (info.numSubThumbbails <= 0) {
+            return info.mainThumbnail != null ? info.mainThumbnail : tr.lastThumbnail;
+        } else {
+            return info.subtasks.get(info.numSubThumbbails-1).holder.lastThumbnail;
+        }
     }
 
     public ActivityRecord removeTaskActivitiesLocked(int taskId, int subTaskIndex) {

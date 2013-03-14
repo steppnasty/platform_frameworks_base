@@ -29,10 +29,11 @@
 #include <hardware/hardware.h>
 
 #include "clz.h"
+#include "Client.h"
 #include "LayerBase.h"
+#include "Layer.h"
 #include "SurfaceFlinger.h"
-#include "DisplayHardware/DisplayHardware.h"
-#include "qcom_ui.h"
+#include "DisplayDevice.h"
 
 namespace android {
 
@@ -40,25 +41,18 @@ namespace android {
 
 int32_t LayerBase::sSequence = 1;
 
-LayerBase::LayerBase(SurfaceFlinger* flinger, DisplayID display)
-    : dpy(display), contentDirty(false),
+LayerBase::LayerBase(SurfaceFlinger* flinger)
+    : contentDirty(false),
       sequence(uint32_t(android_atomic_inc(&sSequence))),
       mFlinger(flinger), mFiltering(false),
-      mNeedsFiltering(false), mInOverlay(false),
-      mOrientation(0),
-      mPlaneOrientation(0),
+      mNeedsFiltering(false),
       mTransactionFlags(0),
-      mPremultipliedAlpha(true), mName("unnamed"), mDebug(false),
-      mInvalidate(0)
+      mPremultipliedAlpha(true), mName("unnamed"), mDebug(false)
 {
-    const DisplayHardware& hw(flinger->graphicPlane(0).displayHardware());
-    mFlags = hw.getFlags();
-    mQCLayer = new QCBaseLayer;
 }
 
 LayerBase::~LayerBase()
 {
-    delete mQCLayer;
 }
 
 void LayerBase::setName(const String8& name) {
@@ -69,37 +63,32 @@ String8 LayerBase::getName() const {
     return mName;
 }
 
-const GraphicPlane& LayerBase::graphicPlane(int dpy) const
-{ 
-    return mFlinger->graphicPlane(dpy);
-}
-
-GraphicPlane& LayerBase::graphicPlane(int dpy)
-{
-    return mFlinger->graphicPlane(dpy); 
-}
-
 void LayerBase::initStates(uint32_t w, uint32_t h, uint32_t flags)
 {
     uint32_t layerFlags = 0;
-    if (flags & ISurfaceComposer::eHidden)
-        layerFlags = ISurfaceComposer::eLayerHidden;
+    if (flags & ISurfaceComposerClient::eHidden)
+        layerFlags = layer_state_t::eLayerHidden;
 
-    if (flags & ISurfaceComposer::eNonPremultiplied)
+    if (flags & ISurfaceComposerClient::eNonPremultiplied)
         mPremultipliedAlpha = false;
 
-    mCurrentState.z             = 0;
-    mCurrentState.w             = w;
-    mCurrentState.h             = h;
-    mCurrentState.requested_w   = w;
-    mCurrentState.requested_h   = h;
-    mCurrentState.alpha         = 0xFF;
-    mCurrentState.flags         = layerFlags;
-    mCurrentState.sequence      = 0;
+    mCurrentState.active.w = w;
+    mCurrentState.active.h = h;
+    mCurrentState.active.crop.makeInvalid();
+    mCurrentState.z = 0;
+    mCurrentState.alpha = 0xFF;
+    mCurrentState.layerStack = 0;
+    mCurrentState.flags = layerFlags;
+    mCurrentState.sequence = 0;
     mCurrentState.transform.set(0, 0);
+    mCurrentState.requested = mCurrentState.active;
 
     // drawing state & current state are identical
     mDrawingState = mCurrentState;
+}
+
+bool LayerBase::needsFiltering(const sp<const DisplayDevice>& hw) const {
+    return mNeedsFiltering || hw->needsFiltering();
 }
 
 void LayerBase::commitTransaction() {
@@ -139,10 +128,10 @@ bool LayerBase::setLayer(uint32_t z) {
     return true;
 }
 bool LayerBase::setSize(uint32_t w, uint32_t h) {
-    if (mCurrentState.requested_w == w && mCurrentState.requested_h == h)
+    if (mCurrentState.requested.w == w && mCurrentState.requested.h == h)
         return false;
-    mCurrentState.requested_w = w;
-    mCurrentState.requested_h = h;
+    mCurrentState.requested.w = w;
+    mCurrentState.requested.h = h;
     requestTransaction();
     return true;
 }
@@ -176,20 +165,38 @@ bool LayerBase::setFlags(uint8_t flags, uint8_t mask) {
     requestTransaction();
     return true;
 }
+bool LayerBase::setCrop(const Rect& crop) {
+    if (mCurrentState.requested.crop == crop)
+        return false;
+    mCurrentState.sequence++;
+    mCurrentState.requested.crop = crop;
+    requestTransaction();
+    return true;
+}
 
-Rect LayerBase::visibleBounds() const
-{
-    return mTransformedBounds;
-}      
+bool LayerBase::setLayerStack(uint32_t layerStack) {
+    if (mCurrentState.layerStack == layerStack)
+        return false;
+    mCurrentState.sequence++;
+    mCurrentState.layerStack = layerStack;
+    requestTransaction();
+    return true;
+}
 
 void LayerBase::setVisibleRegion(const Region& visibleRegion) {
     // always called from main thread
-    visibleRegionScreen = visibleRegion;
+    this->visibleRegion = visibleRegion;
 }
 
 void LayerBase::setCoveredRegion(const Region& coveredRegion) {
     // always called from main thread
-    coveredRegionScreen = coveredRegion;
+    this->coveredRegion = coveredRegion;
+}
+
+void LayerBase::setVisibleNonTransparentRegion(const Region&
+        setVisibleNonTransparentRegion) {
+    // always called from main thread
+    this->visibleNonTransparentRegion = setVisibleNonTransparentRegion;
 }
 
 uint32_t LayerBase::doTransaction(uint32_t flags)
@@ -197,15 +204,15 @@ uint32_t LayerBase::doTransaction(uint32_t flags)
     const Layer::State& front(drawingState());
     const Layer::State& temp(currentState());
 
-    if ((front.requested_w != temp.requested_w) ||
-        (front.requested_h != temp.requested_h))  {
-        // resize the layer, set the physical size to the requested size
+    // always set active to requested, unless we're asked not to
+    // this is used by Layer, which special cases resizes.
+    if (flags & eDontUpdateGeometryState)  {
+    } else {
         Layer::State& editTemp(currentState());
-        editTemp.w = temp.requested_w;
-        editTemp.h = temp.requested_h;
+        editTemp.active = temp.requested;
     }
 
-    if ((front.w != temp.w) || (front.h != temp.h)) {
+    if (front.active != temp.active) {
         // invalidate and recompute the visible regions if needed
         flags |= Layer::eVisibleRegion;
     }
@@ -226,135 +233,91 @@ uint32_t LayerBase::doTransaction(uint32_t flags)
     return flags;
 }
 
-void LayerBase::validateVisibility(const Transform& planeTransform)
+void LayerBase::computeGeometry(const sp<const DisplayDevice>& hw, LayerMesh* mesh) const
 {
     const Layer::State& s(drawingState());
-    const Transform tr(planeTransform * s.transform);
-    const bool transformed = tr.transformed();
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    const uint32_t hw_h = hw.getHeight();
-
-    uint32_t w = s.w;
-    uint32_t h = s.h;    
-    tr.transform(mVertices[0], 0, 0);
-    tr.transform(mVertices[1], 0, h);
-    tr.transform(mVertices[2], w, h);
-    tr.transform(mVertices[3], w, 0);
-    for (size_t i=0 ; i<4 ; i++)
-        mVertices[i][1] = hw_h - mVertices[i][1];
-
-    if (UNLIKELY(transformed)) {
-        // NOTE: here we could also punt if we have too many rectangles
-        // in the transparent region
-        if (tr.preserveRects()) {
-            // transform the transparent region
-            transparentRegionScreen = tr.transform(s.transparentRegion);
-        } else {
-            // transformation too complex, can't do the transparent region
-            // optimization.
-            transparentRegionScreen.clear();
-        }
-    } else {
-        transparentRegionScreen = s.transparentRegion;
+    const Transform tr(hw->getTransform() * s.transform);
+    const uint32_t hw_h = hw->getHeight();
+    Rect win(s.active.w, s.active.h);
+    if (!s.active.crop.isEmpty()) {
+        win.intersect(s.active.crop, &win);
     }
-
-    // cache a few things...
-    mOrientation = tr.getOrientation();
-    mPlaneOrientation = planeTransform.getOrientation();
-    mTransform = tr;
-    mTransformedBounds = tr.makeBounds(w, h);
-}
-
-void LayerBase::lockPageFlip(bool& recomputeVisibleRegions)
-{
-}
-
-void LayerBase::unlockPageFlip(
-        const Transform& planeTransform, Region& outDirtyRegion)
-{
-    if ((android_atomic_and(~1, &mInvalidate)&1) == 1) {
-        outDirtyRegion.orSelf(visibleRegionScreen);
-    }
-}
-
-void LayerBase::invalidate()
-{
-    if ((android_atomic_or(1, &mInvalidate)&1) == 0) {
-        mFlinger->signalEvent();
-    }
-}
-
-void LayerBase::drawRegion(const Region& reg) const
-{
-    Region::const_iterator it = reg.begin();
-    Region::const_iterator const end = reg.end();
-    if (it != end) {
-        Rect r;
-        const DisplayHardware& hw(graphicPlane(0).displayHardware());
-        const int32_t fbWidth  = hw.getWidth();
-        const int32_t fbHeight = hw.getHeight();
-        const GLshort vertices[][2] = { { 0, 0 }, { fbWidth, 0 }, 
-                { fbWidth, fbHeight }, { 0, fbHeight }  };
-        glVertexPointer(2, GL_SHORT, 0, vertices);
-        while (it != end) {
-            const Rect& r = *it++;
-            const GLint sy = fbHeight - (r.top + r.height());
-            glScissor(r.left, sy, r.width(), r.height());
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4); 
+    if (mesh) {
+        tr.transform(mesh->mVertices[0], win.left,  win.top);
+        tr.transform(mesh->mVertices[1], win.left,  win.bottom);
+        tr.transform(mesh->mVertices[2], win.right, win.bottom);
+        tr.transform(mesh->mVertices[3], win.right, win.top);
+        for (size_t i=0 ; i<4 ; i++) {
+            mesh->mVertices[i][1] = hw_h - mesh->mVertices[i][1];
         }
     }
 }
 
-void LayerBase::setGeometry(hwc_layer_t* hwcl)
+Rect LayerBase::computeBounds() const {
+    const Layer::State& s(drawingState());
+    Rect win(s.active.w, s.active.h);
+    if (!s.active.crop.isEmpty()) {
+        win.intersect(s.active.crop, &win);
+    }
+    return s.transform.transform(win);
+}
+
+Region LayerBase::latchBuffer(bool& recomputeVisibleRegions) {
+    Region result;
+    return result;
+}
+
+void LayerBase::setGeometry(
+    const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer)
 {
-    hwcl->compositionType = HWC_FRAMEBUFFER;
-    hwcl->hints = 0;
-    hwcl->flags = HWC_SKIP_LAYER;
-    hwcl->transform = 0;
-    hwcl->blending = HWC_BLENDING_NONE;
+    layer.setDefaultState();
 
     // this gives us only the "orientation" component of the transform
     const State& s(drawingState());
     const uint32_t finalTransform = s.transform.getOrientation();
     // we can only handle simple transformation
     if (finalTransform & Transform::ROT_INVALID) {
-        hwcl->flags = HWC_SKIP_LAYER;
+        layer.setTransform(0);
     } else {
-        hwcl->transform = finalTransform;
+        layer.setTransform(finalTransform);
     }
 
     if (!isOpaque()) {
-        hwcl->blending = mPremultipliedAlpha ?
-                HWC_BLENDING_PREMULT : HWC_BLENDING_COVERAGE;
+        layer.setBlending(mPremultipliedAlpha ?
+                HWC_BLENDING_PREMULT :
+                HWC_BLENDING_COVERAGE);
     }
 
-    // scaling is already applied in mTransformedBounds
-    hwcl->displayFrame.left   = mTransformedBounds.left;
-    hwcl->displayFrame.top    = mTransformedBounds.top;
-    hwcl->displayFrame.right  = mTransformedBounds.right;
-    hwcl->displayFrame.bottom = mTransformedBounds.bottom;
-    hwcl->visibleRegionScreen.rects =
-            reinterpret_cast<hwc_rect_t const *>(
-                    visibleRegionScreen.getArray(
-                            &hwcl->visibleRegionScreen.numRects));
+    const Transform& tr = hw->getTransform();
+    Rect transformedBounds(computeBounds());
+    transformedBounds = tr.transform(transformedBounds);
 
-    hwcl->sourceCrop.left   = 0;
-    hwcl->sourceCrop.top    = 0;
-    hwcl->sourceCrop.right  = mTransformedBounds.width();
-    hwcl->sourceCrop.bottom = mTransformedBounds.height();
+    // scaling is already applied in transformedBounds
+    layer.setFrame(transformedBounds);
+    layer.setCrop(transformedBounds.getBounds());
 }
 
-void LayerBase::setPerFrameData(hwc_layer_t* hwcl) {
-    hwcl->compositionType = HWC_FRAMEBUFFER;
-    hwcl->handle = NULL;
+void LayerBase::setPerFrameData(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer) {
+    layer.setPerFrameDefaultState();
+    // we have to set the visible region on every frame because
+    // we currently free it during onLayerDisplayed(), which is called
+    // after HWComposer::commit() -- every frame.
+    const Transform& tr = hw->getTransform();
+    layer.setVisibleRegionScreen(tr.transform(visibleRegion));
 }
 
-void LayerBase::setOverlay(bool inOverlay) {
-    mInOverlay = inOverlay;
+void LayerBase::setAcquireFence(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer) {
+    layer.setAcquireFenceFd(-1);
 }
 
-bool LayerBase::isOverlay() const {
-    return mInOverlay;
+void LayerBase::onLayerDisplayed(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface* layer) {
+    if (layer) {
+        layer->onDisplayed();
+    }
 }
 
 void LayerBase::setFiltering(bool filtering)
@@ -367,59 +330,50 @@ bool LayerBase::getFiltering() const
     return mFiltering;
 }
 
-void LayerBase::draw(const Region& clip) const
-{
-    // reset GL state
-    glEnable(GL_SCISSOR_TEST);
-
-    onDraw(clip);
+bool LayerBase::isVisible() const {
+    const Layer::State& s(mDrawingState);
+    return !(s.flags & layer_state_t::eLayerHidden) && s.alpha;
 }
 
-void LayerBase::drawForSreenShot()
+void LayerBase::draw(const sp<const DisplayDevice>& hw, const Region& clip) const
 {
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    setFiltering(true);
-    onDraw( Region(hw.bounds()) );
-    setFiltering(false);
+    onDraw(hw, clip);
 }
 
-void LayerBase::clearWithOpenGL(const Region& clip, GLclampf red,
-                                GLclampf green, GLclampf blue,
-                                GLclampf alpha) const
+void LayerBase::draw(const sp<const DisplayDevice>& hw)
 {
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    const uint32_t fbHeight = hw.getHeight();
+    onDraw( hw, Region(hw->bounds()) );
+}
+
+void LayerBase::clearWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip,
+        GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) const
+{
+    const uint32_t fbHeight = hw->getHeight();
     glColor4f(red,green,blue,alpha);
 
     glDisable(GL_TEXTURE_EXTERNAL_OES);
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_BLEND);
 
-    Region::const_iterator it = clip.begin();
-    Region::const_iterator const end = clip.end();
-    glEnable(GL_SCISSOR_TEST);
-    glVertexPointer(2, GL_FLOAT, 0, mVertices);
-    while (it != end) {
-        const Rect& r = *it++;
-        const GLint sy = fbHeight - (r.top + r.height());
-        glScissor(r.left, sy, r.width(), r.height());
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4); 
-    }
+    LayerMesh mesh;
+    computeGeometry(hw, &mesh);
+
+    glVertexPointer(2, GL_FLOAT, 0, mesh.getVertices());
+    glDrawArrays(GL_TRIANGLE_FAN, 0, mesh.getVertexCount());
 }
 
-void LayerBase::clearWithOpenGL(const Region& clip) const
+void LayerBase::clearWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip) const
 {
-    clearWithOpenGL(clip,0,0,0,0);
+    clearWithOpenGL(hw, clip, 0,0,0,0);
 }
 
-void LayerBase::drawWithOpenGL(const Region& clip) const
+void LayerBase::drawWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip) const
 {
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    const uint32_t fbHeight = hw.getHeight();
+    const uint32_t fbHeight = hw->getHeight();
     const State& s(drawingState());
 
     GLenum src = mPremultipliedAlpha ? GL_ONE : GL_SRC_ALPHA;
-    if (UNLIKELY(s.alpha < 0xFF)) {
+    if (CC_UNLIKELY(s.alpha < 0xFF)) {
         const GLfloat alpha = s.alpha * (1.0f/255.0f);
         if (mPremultipliedAlpha) {
             glColor4f(alpha, alpha, alpha, alpha);
@@ -440,155 +394,45 @@ void LayerBase::drawWithOpenGL(const Region& clip) const
         }
     }
 
+    LayerMesh mesh;
+    computeGeometry(hw, &mesh);
+
+    // TODO: we probably want to generate the texture coords with the mesh
+    // here we assume that we only have 4 vertices
+
     struct TexCoords {
         GLfloat u;
         GLfloat v;
     };
 
+    Rect win(s.active.w, s.active.h);
+    if (!s.active.crop.isEmpty()) {
+        win.intersect(s.active.crop, &win);
+    }
+
+    GLfloat left   = GLfloat(win.left)   / GLfloat(s.active.w);
+    GLfloat top    = GLfloat(win.top)    / GLfloat(s.active.h);
+    GLfloat right  = GLfloat(win.right)  / GLfloat(s.active.w);
+    GLfloat bottom = GLfloat(win.bottom) / GLfloat(s.active.h);
+
     TexCoords texCoords[4];
-    texCoords[0].u = 0;
-    texCoords[0].v = 1;
-    texCoords[1].u = 0;
-    texCoords[1].v = 0;
-    texCoords[2].u = 1;
-    texCoords[2].v = 0;
-    texCoords[3].u = 1;
-    texCoords[3].v = 1;
+    texCoords[0].u = left;
+    texCoords[0].v = top;
+    texCoords[1].u = left;
+    texCoords[1].v = bottom;
+    texCoords[2].u = right;
+    texCoords[2].v = bottom;
+    texCoords[3].u = right;
+    texCoords[3].v = top;
+    for (int i = 0; i < 4; i++) {
+        texCoords[i].v = 1.0f - texCoords[i].v;
+    }
 
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glVertexPointer(2, GL_FLOAT, 0, mVertices);
     glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
+    glVertexPointer(2, GL_FLOAT, 0, mesh.getVertices());
+    glDrawArrays(GL_TRIANGLE_FAN, 0, mesh.getVertexCount());
 
-    Region::const_iterator it = clip.begin();
-    Region::const_iterator const end = clip.end();
-    while (it != end) {
-        const Rect& r = *it++;
-        const GLint sy = fbHeight - (r.top + r.height());
-        glScissor(r.left, sy, r.width(), r.height());
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    }
-    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    glDisable(GL_BLEND);
-}
-
-void LayerBase::drawS3DUIWithOpenGL(const Region& clip) const
-{
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    const uint32_t fbHeight = hw.getHeight();
-    const uint32_t fbWidth = hw.getWidth();
-    const State& s(drawingState());
-
-    GLfloat tmpVertices[8][2];
-
-    GLenum src = mPremultipliedAlpha ? GL_ONE : GL_SRC_ALPHA;
-    if (UNLIKELY(s.alpha < 0xFF)) {
-        const GLfloat alpha = s.alpha * (1.0f/255.0f);
-        if (mPremultipliedAlpha) {
-            glColor4f(alpha, alpha, alpha, alpha);
-        } else {
-            glColor4f(1, 1, 1, alpha);
-        }
-        glEnable(GL_BLEND);
-        glBlendFunc(src, GL_ONE_MINUS_SRC_ALPHA);
-        glTexEnvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-    } else {
-        glColor4f(1, 1, 1, 1);
-        glTexEnvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-        if (!isOpaque()) {
-            glEnable(GL_BLEND);
-            glBlendFunc(src, GL_ONE_MINUS_SRC_ALPHA);
-        } else {
-            glDisable(GL_BLEND);
-        }
-    }
-
-    struct TexCoords {
-        GLfloat u;
-        GLfloat v;
-    };
-
-    TexCoords texCoords[4];
-    texCoords[0].u = 0;
-    texCoords[0].v = 1;
-    texCoords[1].u = 0;
-    texCoords[1].v = 0;
-    texCoords[2].u = 1;
-    texCoords[2].v = 0;
-    texCoords[3].u = 1;
-    texCoords[3].v = 1;
-
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-    Region::const_iterator it = clip.begin();
-    Region::const_iterator const end = clip.end();
-
-    // Check if layer needs to be converted to S3D format
-    int composeS3DFormat = mQCLayer->needsS3DCompose();
-    int xoffset = fbWidth/2 ;
-    int yoffset = fbHeight/2;
-    glClearColor(0,0,0,0);
-    // Calculate the new vertices for S3D conversion
-    switch (composeS3DFormat) {
-        case QCBaseLayer::eS3D_SIDE_BY_SIDE:
-            for (int i = 0; i < 4; i++) {
-                tmpVertices[i][0] = mVertices[i][0]/2;
-                tmpVertices[i][1] = mVertices[i][1];
-                tmpVertices[i+4][0] = xoffset + mVertices[i][0]/2;
-                tmpVertices[i+4][1] = mVertices[i][1];
-            }
-            glVertexPointer(2, GL_FLOAT, 0, tmpVertices);
-            glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-            while (it != end) {
-                const Rect& r = *it++;
-                const GLint sy = fbHeight - (r.top + r.height());
-                glScissor(r.left/2, sy, r.width()/2, r.height());
-                glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);//glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, pindices);
-            }
-
-            glVertexPointer(2, GL_FLOAT, 0, tmpVertices[4]);
-            glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-            it = clip.begin();
-            while (it != end) {
-                const Rect& r = *it++;
-                const GLint sy = fbHeight - (r.top + r.height());
-                glScissor(xoffset+r.left/2, sy, r.width()/2, r.height());
-                glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);//glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, pindices);
-            }
-            break;
-        case QCBaseLayer::eS3D_TOP_BOTTOM:
-            for (int i = 0; i < 4; i++) {
-                tmpVertices[i][0] = mVertices[i][0];
-                tmpVertices[i][1] = mVertices[i][1]/2;
-                tmpVertices[i+4][0] = mVertices[i][0];
-                tmpVertices[i+4][1] = yoffset + mVertices[i][1]/2;
-            }
-            glVertexPointer(2, GL_FLOAT, 0, tmpVertices);
-            glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-            while (it != end) {
-                const Rect& r = *it++;
-                const GLint sy = fbHeight - (r.top + r.height());
-                glScissor(r.left, sy/2, r.width(), r.height()/2);
-                glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);//glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, pindices);
-            }
-
-            glVertexPointer(2, GL_FLOAT, 0, tmpVertices[4]);
-            glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-            it = clip.begin();
-            while (it != end) {
-                const Rect& r = *it++;
-                const GLint sy = fbHeight - (r.top + r.height());
-                glScissor(r.left, yoffset+sy/2, r.width(), r.height()/2);
-                glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);//glDrawElements(GL_TRIANGLE_STRIP, 4, GL_UNSIGNED_BYTE, pindices);
-            }
-            break;
-        default:
-            LOGE("%s: Unknown S3D format", __FUNCTION__);
-            break;
-    }
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     glDisable(GL_BLEND);
 }
@@ -596,14 +440,23 @@ void LayerBase::drawS3DUIWithOpenGL(const Region& clip) const
 void LayerBase::dump(String8& result, char* buffer, size_t SIZE) const
 {
     const Layer::State& s(drawingState());
+
     snprintf(buffer, SIZE,
-            "+ %s %p (%s)\n"
+            "+ %s %p (%s)\n",
+            getTypeId(), this, getName().string());
+    result.append(buffer);
+
+    s.transparentRegion.dump(result, "transparentRegion");
+    visibleRegion.dump(result, "visibleRegion");
+
+    snprintf(buffer, SIZE,
             "      "
-            "z=%9d, pos=(%g,%g), size=(%4d,%4d), "
+            "layerStack=%4d, z=%9d, pos=(%g,%g), size=(%4d,%4d), crop=(%4d,%4d,%4d,%4d), "
             "isOpaque=%1d, needsDithering=%1d, invalidate=%1d, "
             "alpha=0x%02x, flags=0x%08x, tr=[%.2f, %.2f][%.2f, %.2f]\n",
-            getTypeId(), this, getName().string(),
-            s.z, s.transform.tx(), s.transform.ty(), s.w, s.h,
+            s.layerStack, s.z, s.transform.tx(), s.transform.ty(), s.active.w, s.active.h,
+            s.active.crop.left, s.active.crop.top,
+            s.active.crop.right, s.active.crop.bottom,
             isOpaque(), needsDithering(), contentDirty,
             s.alpha, s.flags,
             s.transform[0][0], s.transform[0][1],
@@ -611,19 +464,31 @@ void LayerBase::dump(String8& result, char* buffer, size_t SIZE) const
     result.append(buffer);
 }
 
-void LayerBase::shortDump(String8& result, char* scratch, size_t size) const
-{
+void LayerBase::shortDump(String8& result, char* scratch, size_t size) const {
     LayerBase::dump(result, scratch, size);
 }
 
+void LayerBase::dumpStats(String8& result, char* scratch, size_t SIZE) const {
+}
+
+void LayerBase::clearStats() {
+}
+
+sp<LayerBaseClient> LayerBase::getLayerBaseClient() const {
+    return 0;
+}
+
+sp<Layer> LayerBase::getLayer() const {
+    return 0;
+}
 
 // ---------------------------------------------------------------------------
 
 int32_t LayerBaseClient::sIdentity = 1;
 
-LayerBaseClient::LayerBaseClient(SurfaceFlinger* flinger, DisplayID display,
+LayerBaseClient::LayerBaseClient(SurfaceFlinger* flinger,
         const sp<Client>& client)
-    : LayerBase(flinger, display),
+    : LayerBase(flinger),
       mHasSurface(false),
       mClientRef(client),
       mIdentity(uint32_t(android_atomic_inc(&sIdentity)))
@@ -700,7 +565,7 @@ LayerBaseClient::LayerCleaner::LayerCleaner(const sp<SurfaceFlinger>& flinger,
 
 LayerBaseClient::LayerCleaner::~LayerCleaner() {
     // destroy client resources
-    mFlinger->destroySurface(mLayer);
+    mFlinger->onLayerDestroyed(mLayer);
 }
 
 // ---------------------------------------------------------------------------

@@ -754,7 +754,7 @@ final class ActivityRecord {
         }
         
         if (anrApp != null) {
-            service.appNotResponding(anrApp, r, this,
+            service.appNotResponding(anrApp, r, this, false,
                     "keyDispatchingTimedOut");
         }
         

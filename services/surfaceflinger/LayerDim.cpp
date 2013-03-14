@@ -18,6 +18,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <GLES/gl.h>
+#include <GLES/glext.h>
+
 #include <utils/Errors.h>
 #include <utils/Log.h>
 
@@ -25,14 +28,13 @@
 
 #include "LayerDim.h"
 #include "SurfaceFlinger.h"
-#include "DisplayHardware/DisplayHardware.h"
+#include "DisplayDevice.h"
 
 namespace android {
 // ---------------------------------------------------------------------------
 
-LayerDim::LayerDim(SurfaceFlinger* flinger, DisplayID display,
-        const sp<Client>& client)
-    : LayerBaseClient(flinger, display, client)
+LayerDim::LayerDim(SurfaceFlinger* flinger, const sp<Client>& client)
+    : LayerBaseClient(flinger, client)
 {
 }
 
@@ -40,15 +42,12 @@ LayerDim::~LayerDim()
 {
 }
 
-void LayerDim::onDraw(const Region& clip) const
+void LayerDim::onDraw(const sp<const DisplayDevice>& hw, const Region& clip) const
 {
     const State& s(drawingState());
-    Region::const_iterator it = clip.begin();
-    Region::const_iterator const end = clip.end();
-    if (s.alpha>0 && (it != end)) {
-        const DisplayHardware& hw(graphicPlane(0).displayHardware());
+    if (s.alpha>0) {
         const GLfloat alpha = s.alpha/255.0f;
-        const uint32_t fbHeight = hw.getHeight();
+        const uint32_t fbHeight = hw->getHeight();
         glDisable(GL_TEXTURE_EXTERNAL_OES);
         glDisable(GL_TEXTURE_2D);
 
@@ -61,14 +60,12 @@ void LayerDim::onDraw(const Region& clip) const
 
         glColor4f(0, 0, 0, alpha);
 
-        glVertexPointer(2, GL_FLOAT, 0, mVertices);
+        LayerMesh mesh;
+        computeGeometry(hw, &mesh);
 
-        while (it != end) {
-            const Rect& r = *it++;
-            const GLint sy = fbHeight - (r.top + r.height());
-            glScissor(r.left, sy, r.width(), r.height());
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4); 
-        }
+        glVertexPointer(2, GL_FLOAT, 0, mesh.getVertices());
+        glDrawArrays(GL_TRIANGLE_FAN, 0, mesh.getVertexCount());
+
         glDisable(GL_BLEND);
         glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     }

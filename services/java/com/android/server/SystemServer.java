@@ -33,6 +33,8 @@ import android.database.ContentObserver;
 import android.database.Cursor;
 import android.media.AudioService;
 import android.net.wifi.p2p.WifiP2pService;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -49,14 +51,18 @@ import android.util.Log;
 import android.util.Slog;
 import android.view.WindowManager;
 
-import com.android.internal.app.ShutdownThread;
 import com.android.internal.os.BinderInternal;
 import com.android.internal.os.SamplingProfilerIntegration;
 import com.android.server.accessibility.AccessibilityManagerService;
 import com.android.server.am.ActivityManagerService;
+import com.android.server.am.BatteryStatsService;
+import com.android.server.display.DisplayManagerService;
+import com.android.server.input.InputManagerService;
 import com.android.server.net.NetworkPolicyManagerService;
 import com.android.server.net.NetworkStatsService;
 import com.android.server.pm.PackageManagerService;
+import com.android.server.power.PowerManagerService;
+import com.android.server.power.ShutdownThread;
 import com.android.server.usb.UsbService;
 import com.android.server.wm.WindowManagerService;
 
@@ -129,6 +135,7 @@ class ServerThread extends Thread {
 
         LightsService lights = null;
         PowerManagerService power = null;
+        DisplayManagerService display = null;
         DynamicMemoryManagerService dmm = null;
         BatteryService battery = null;
         AlarmManagerService alarm = null;
@@ -150,7 +157,21 @@ class ServerThread extends Thread {
         ThrottleService throttle = null;
         NetworkTimeUpdateService networkTimeUpdater = null;
         CpuGovernorService cpuGovernorManager = null;
+        InputManagerService inputManager = null;
 
+        // Create a shared handler thread for UI within the system server.
+        // This thread is used by at least the following components:
+        // - WindowManagerPolicy
+        // - KeyguardViewManager
+        // - DisplayManagerService
+        HandlerThread uiHandlerThread = new HandlerThread("UI");
+        uiHandlerThread.start();
+        Handler uiHandler = new Handler(uiHandlerThread.getLooper());
+
+        // Create a handler thread just for the window manager to enjoy.
+        HandlerThread wmHandlerThread = new HandlerThread("WindowManager");
+        wmHandlerThread.start();
+        Handler wmHandler = new Handler(wmHandlerThread.getLooper());
         // Critical services...
         try {
             Slog.i(TAG, "Entropy Service");
@@ -162,6 +183,10 @@ class ServerThread extends Thread {
 
             Slog.i(TAG, "Activity Manager");
             context = ActivityManagerService.main(factoryTest);
+
+            Slog.i(TAG, "Display Manager");
+            display = new DisplayManagerService(context, wmHandler, uiHandler);
+            ServiceManager.addService(Context.DISPLAY_SERVICE, display);
 
             Slog.i(TAG, "Telephony Registry");
             ServiceManager.addService("telephony.registry", new TelephonyRegistry(context));
@@ -223,7 +248,8 @@ class ServerThread extends Thread {
 
             // only initialize the power service after we have started the
             // lights service, content providers and the battery service.
-            power.init(context, lights, ActivityManagerService.self(), battery);
+            power.init(context, lights, ActivityManagerService.self(), battery,
+                    BatteryStatsService.getService(), display);
 
             Slog.i(TAG, "Alarm Manager");
             alarm = new AlarmManagerService(context);
@@ -233,13 +259,24 @@ class ServerThread extends Thread {
             Watchdog.getInstance().init(context, battery, power, alarm,
                     ActivityManagerService.self());
 
+            Slog.i(TAG, "Input Manager");
+            inputManager = new InputManagerService(context, wmHandler);
+
             Slog.i(TAG, "Window Manager");
-            wm = WindowManagerService.main(context, power,
+            wm = WindowManagerService.main(context, power, display, inputManager,
+                    uiHandler, wmHandler,
                     factoryTest != SystemServer.FACTORY_TEST_LOW_LEVEL,
-                    !firstBoot);
+                    !firstBoot, onlyCore);
             ServiceManager.addService(Context.WINDOW_SERVICE, wm);
+            ServiceManager.addService(Context.INPUT_SERVICE, inputManager);
 
             ActivityManagerService.self().setWindowManager(wm);
+
+            inputManager.setWindowManagerCallbacks(wm.getInputMonitor());
+            inputManager.start();
+
+            display.setWindowManager(wm);
+            display.setInputManager(inputManager);
 
             // Skip Bluetooth if we have an emulator kernel
             // TODO: Use a more reliable check to see if this product should
@@ -516,7 +553,7 @@ class ServerThread extends Thread {
             try {
                 Slog.i(TAG, "Dock Observer");
                 // Listen for dock station changes
-                dock = new DockObserver(context, power);
+                dock = new DockObserver(context);
             } catch (Throwable e) {
                 reportWtf("starting DockObserver", e);
             }
@@ -699,6 +736,7 @@ class ServerThread extends Thread {
         final NetworkTimeUpdateService networkTimeUpdaterF = networkTimeUpdater;
         final TextServicesManagerService textServiceManagerServiceF = tsms;
         final StatusBarManagerService statusBarF = statusBar;
+        final InputManagerService inputManagerF = inputManager;
 
         // We now tell the activity manager it is okay to run third party
         // code.  It will call back into us once it has gotten to the state
@@ -799,6 +837,12 @@ class ServerThread extends Thread {
                     if (textServiceManagerServiceF != null) textServiceManagerServiceF.systemReady();
                 } catch (Throwable e) {
                     reportWtf("making Text Services Manager Service ready", e);
+                }
+                try {
+                    // TODO(BT) Pass parameter to input manager
+                    if (inputManagerF != null) inputManagerF.systemReady();
+                } catch (Throwable e) {
+                    reportWtf("making InputManagerService ready", e);
                 }
             }
         });

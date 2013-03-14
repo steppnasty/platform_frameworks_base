@@ -4108,18 +4108,9 @@ AudioFlinger::RecordThread::RecordTrack::RecordTrack(
                   channelMask, frameCount, flags, 0, sessionId),
         mOverflow(false)
 {
-    uint8_t channelCount = popcount(channelMask);
     if (mCblk != NULL) {
         ALOGV("RecordTrack constructor, size %d", (int)mBufferEnd - (int)mBuffer);
-        if (format == AUDIO_FORMAT_AMR_NB) {
-            mCblk->frameSize = channelCount * 32;
-        } else if (format == AUDIO_FORMAT_EVRC) {
-            mCblk->frameSize = channelCount * 23;
-        } else if (format == AUDIO_FORMAT_QCELP) {
-            mCblk->frameSize = channelCount * 35;
-        } else if (format == AUDIO_FORMAT_AAC) {
-            mCblk->frameSize = 2048;
-        } else if (format == AUDIO_FORMAT_PCM_16_BIT) {
+        if (format == AUDIO_FORMAT_PCM_16_BIT) {
             mCblk->frameSize = mChannelCount * sizeof(int16_t);
         } else if (format == AUDIO_FORMAT_PCM_8_BIT) {
             mCblk->frameSize = mChannelCount * sizeof(int8_t);

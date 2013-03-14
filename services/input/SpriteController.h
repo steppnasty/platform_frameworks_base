@@ -20,8 +20,8 @@
 #include <utils/RefBase.h>
 #include <utils/Looper.h>
 
-#include <surfaceflinger/Surface.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/Surface.h>
+#include <gui/SurfaceComposerClient.h>
 #include <surfaceflinger/ISurfaceComposer.h>
 
 #include <SkBitmap.h>

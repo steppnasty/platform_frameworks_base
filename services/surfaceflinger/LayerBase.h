@@ -25,31 +25,28 @@
 #include <GLES/gl.h>
 
 #include <utils/RefBase.h>
+#include <utils/String8.h>
 
 #include <ui/Region.h>
 
-#include <surfaceflinger/ISurfaceComposerClient.h>
+#include <gui/ISurfaceComposerClient.h>
+
 #include <private/surfaceflinger/LayerState.h>
 
-#include <pixelflinger/pixelflinger.h>
-
-#include <hardware/hwcomposer.h>
-
-#include "DisplayHardware/DisplayHardware.h"
 #include "Transform.h"
-#include "qcom_ui.h"
+#include "DisplayHardware/HWComposer.h"
 
 namespace android {
 
 // ---------------------------------------------------------------------------
 
 class Client;
-class DisplayHardware;
+class DisplayDevice;
 class GraphicBuffer;
-class GraphicPlane;
 class Layer;
 class LayerBaseClient;
 class SurfaceFlinger;
+
 // ---------------------------------------------------------------------------
 
 class LayerBase : public RefBase
@@ -57,28 +54,52 @@ class LayerBase : public RefBase
     static int32_t sSequence;
 
 public:
-            LayerBase(SurfaceFlinger* flinger, DisplayID display);
+            LayerBase(SurfaceFlinger* flinger);
 
-    DisplayID           dpy;
     mutable bool        contentDirty;
-            Region      visibleRegionScreen;
-            Region      transparentRegionScreen;
-            Region      coveredRegionScreen;
+            // regions below are in window-manager space
+            Region      visibleRegion;
+            Region      coveredRegion;
+            Region      visibleNonTransparentRegion;
             int32_t     sequence;
             
+            struct Geometry {
+                uint32_t w;
+                uint32_t h;
+                Rect crop;
+                inline bool operator == (const Geometry& rhs) const {
+                    return (w==rhs.w && h==rhs.h && crop==rhs.crop);
+                }
+                inline bool operator != (const Geometry& rhs) const {
+                    return !operator == (rhs);
+                }
+            };
+
             struct State {
-                uint32_t        w;
-                uint32_t        h;
-                uint32_t        requested_w;
-                uint32_t        requested_h;
+                Geometry        active;
+                Geometry        requested;
                 uint32_t        z;
+                uint32_t        layerStack;
                 uint8_t         alpha;
                 uint8_t         flags;
                 uint8_t         reserved[2];
                 int32_t         sequence;   // changes when visible regions can change
-                uint32_t        tint;
                 Transform       transform;
                 Region          transparentRegion;
+            };
+
+            class LayerMesh {
+                friend class LayerBase;
+                GLfloat mVertices[4][2];
+                size_t mNumVertices;
+            public:
+                LayerMesh() : mNumVertices(4) { }
+                GLfloat const* getVertices() const {
+                    return &mVertices[0][0];
+                }
+                size_t getVertexCount() const {
+                    return mNumVertices;
+                }
             };
 
     virtual void setName(const String8& name);
@@ -90,31 +111,33 @@ public:
             bool setSize(uint32_t w, uint32_t h);
             bool setAlpha(uint8_t alpha);
             bool setMatrix(const layer_state_t::matrix22_t& matrix);
-            bool setTransparentRegionHint(const Region& opaque);
+            bool setTransparentRegionHint(const Region& transparent);
             bool setFlags(uint8_t flags, uint8_t mask);
-            
+            bool setCrop(const Rect& crop);
+            bool setLayerStack(uint32_t layerStack);
+
             void commitTransaction();
             bool requestTransaction();
             void forceVisibilityTransaction();
             
             uint32_t getTransactionFlags(uint32_t flags);
             uint32_t setTransactionFlags(uint32_t flags);
-            
-            Rect visibleBounds() const;
-            void drawRegion(const Region& reg) const;
 
-            void invalidate();
+            void computeGeometry(const sp<const DisplayDevice>& hw, LayerMesh* mesh) const;
+            Rect computeBounds() const;
 
-    virtual sp<LayerBaseClient> getLayerBaseClient() const { return 0; }
-    virtual sp<Layer> getLayer() const { return 0; }
+
+    virtual sp<LayerBaseClient> getLayerBaseClient() const;
+    virtual sp<Layer> getLayer() const;
 
     virtual const char* getTypeId() const { return "LayerBase"; }
 
-    virtual void setGeometry(hwc_layer_t* hwcl);
-    virtual void setPerFrameData(hwc_layer_t* hwcl);
-            void setOverlay(bool inOverlay);
-            bool isOverlay() const;
-
+    virtual void setGeometry(const sp<const DisplayDevice>& hw,
+            HWComposer::HWCLayerInterface& layer);
+    virtual void setPerFrameData(const sp<const DisplayDevice>& hw,
+            HWComposer::HWCLayerInterface& layer);
+    virtual void setAcquireFence(const sp<const DisplayDevice>& hw,
+            HWComposer::HWCLayerInterface& layer);
 
     /**
      * draw - performs some global clipping optimizations
@@ -122,13 +145,13 @@ public:
      * Typically this method is not overridden, instead implement onDraw()
      * to perform the actual drawing.  
      */
-    virtual void draw(const Region& clip) const;
-    virtual void drawForSreenShot();
+    virtual void draw(const sp<const DisplayDevice>& hw, const Region& clip) const;
+    virtual void draw(const sp<const DisplayDevice>& hw);
     
     /**
      * onDraw - draws the surface.
      */
-    virtual void onDraw(const Region& clip) const = 0;
+    virtual void onDraw(const sp<const DisplayDevice>& hw, const Region& clip) const = 0;
     
     /**
      * initStates - called just after construction
@@ -155,26 +178,20 @@ public:
     virtual void setCoveredRegion(const Region& coveredRegion);
 
     /**
-     * validateVisibility - cache a bunch of things
+     * setVisibleNonTransparentRegion - called when the visible and
+     * non-transparent region changes.
      */
-    virtual void validateVisibility(const Transform& globalTransform);
+    virtual void setVisibleNonTransparentRegion(const Region&
+            visibleNonTransparentRegion);
 
     /**
-     * lockPageFlip - called each time the screen is redrawn and returns whether
+     * latchBuffer - called each time the screen is redrawn and returns whether
      * the visible regions need to be recomputed (this is a fairly heavy
      * operation, so this should be set only if needed). Typically this is used
      * to figure out if the content or size of a surface has changed.
      */
-    virtual void lockPageFlip(bool& recomputeVisibleRegions);
-    
-    /**
-     * unlockPageFlip - called each time the screen is redrawn. updates the
-     * final dirty region wrt the planeTransform.
-     * At this point, all visible regions, surface position and size, etc... are
-     * correct.
-     */
-    virtual void unlockPageFlip(const Transform& planeTransform, Region& outDirtyRegion);
-    
+    virtual Region latchBuffer(bool& recomputeVisibleRegions);
+
     /**
      * isOpaque - true if this surface is opaque
      */
@@ -188,7 +205,7 @@ public:
     /**
      * needsLinearFiltering - true if this surface's state requires filtering
      */
-    virtual bool needsFiltering() const { return mNeedsFiltering; }
+    virtual bool needsFiltering(const sp<const DisplayDevice>& hw) const;
 
     /**
      * isSecure - true if this surface is secure, that is if it prevents
@@ -202,22 +219,45 @@ public:
      */
     virtual bool isProtected() const   { return false; }
 
+    /*
+     * isVisible - true if this layer is visibile, false otherwise
+     */
+    virtual bool isVisible() const;
+
     /** called with the state lock when the surface is removed from the
      *  current list */
-    virtual void onRemoved() { };
+    virtual void onRemoved() { }
 
-#ifdef QCOM_HARDWARE
-    /** Called from surfaceFlinger to update the layer */
-    virtual void setIsUpdating(bool isUpdating) { };
-#endif
+    /** called after page-flip
+     */
+    virtual void onLayerDisplayed(const sp<const DisplayDevice>& hw,
+            HWComposer::HWCLayerInterface* layer);
+
+    /** called before composition.
+     * returns true if the layer has pending updates.
+     */
+    virtual bool onPreComposition() { return false; }
+
+    /** called before composition.
+     */
+    virtual void onPostComposition() { }
+
+    /**
+     * Updates the SurfaceTexture's transform hint, for layers that have
+     * a SurfaceTexture.
+     */
+    virtual void updateTransformHint(const sp<const DisplayDevice>& hw) const { }
 
     /** always call base class first */
     virtual void dump(String8& result, char* scratch, size_t size) const;
     virtual void shortDump(String8& result, char* scratch, size_t size) const;
+    virtual void dumpStats(String8& result, char* buffer, size_t SIZE) const;
+    virtual void clearStats();
 
 
     enum { // flags for doTransaction()
-        eVisibleRegion      = 0x00000002,
+        eDontUpdateGeometryState = 0x00000001,
+        eVisibleRegion           = 0x00000002,
     };
 
 
@@ -225,48 +265,27 @@ public:
     inline  const State&    currentState() const    { return mCurrentState; }
     inline  State&          currentState()          { return mCurrentState; }
 
-    int32_t  getOrientation() const { return mOrientation; }
-    int32_t  getPlaneOrientation() const { return mPlaneOrientation; }
-    QCBaseLayer * mQCLayer;
-    
+    void clearWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip) const;
+
+    void setFiltering(bool filtering);
+    bool getFiltering() const;
+
 protected:
-    const GraphicPlane& graphicPlane(int dpy) const;
-          GraphicPlane& graphicPlane(int dpy);
-
-          void clearWithOpenGL(const Region& clip, GLclampf r, GLclampf g,
-                               GLclampf b, GLclampf alpha) const;
-          void clearWithOpenGL(const Region& clip) const;
-          void drawWithOpenGL(const Region& clip) const;
-          void drawS3DUIWithOpenGL(const Region& clip) const;
-
-          void setFiltering(bool filtering);
-          bool getFiltering() const;
+          void clearWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip,
+                  GLclampf r, GLclampf g, GLclampf b, GLclampf alpha) const;
+          void drawWithOpenGL(const sp<const DisplayDevice>& hw, const Region& clip) const;
 
                 sp<SurfaceFlinger> mFlinger;
-                uint32_t        mFlags;
 
 private:
                 // accessed only in the main thread
                 // Whether filtering is forced on or not
                 bool            mFiltering;
 
-                // cached during validateVisibility()
                 // Whether filtering is needed b/c of the drawingstate
                 bool            mNeedsFiltering;
 
-                // this layer is currently handled by the hwc. this is
-                // updated at composition time, always frmo the composition
-                // thread.
-                bool            mInOverlay;
-
 protected:
-                // cached during validateVisibility()
-                int32_t         mOrientation;
-                int32_t         mPlaneOrientation;
-                Transform       mTransform;
-                GLfloat         mVertices[4][2];
-                Rect            mTransformedBounds;
-            
                 // these are protected by an external lock
                 State           mCurrentState;
                 State           mDrawingState;
@@ -277,10 +296,6 @@ protected:
                 String8         mName;
     mutable     bool            mDebug;
 
-
-                // atomic
-    volatile    int32_t         mInvalidate;
-                
 
 public:
     // called from class SurfaceFlinger
@@ -296,8 +311,7 @@ private:
 class LayerBaseClient : public LayerBase
 {
 public:
-            LayerBaseClient(SurfaceFlinger* flinger, DisplayID display,
-                        const sp<Client>& client);
+            LayerBaseClient(SurfaceFlinger* flinger, const sp<Client>& client);
 
             virtual ~LayerBaseClient();
 

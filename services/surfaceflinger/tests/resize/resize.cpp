@@ -22,9 +22,9 @@
 #include <binder/ProcessState.h>
 #include <binder/IServiceManager.h>
 
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <surfaceflinger/ISurface.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/SurfaceComposerClient.h>
 
 using namespace android;
 

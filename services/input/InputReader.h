@@ -21,8 +21,9 @@
 #include "PointerController.h"
 #include "InputListener.h"
 
-#include <ui/Input.h>
-#include <ui/DisplayInfo.h>
+#include <androidfw/Input.h>
+#include <androidfw/VelocityControl.h>
+#include <androidfw/VelocityTracker.h>
 #include <utils/KeyedVector.h>
 #include <utils/threads.h>
 #include <utils/Timers.h>
@@ -33,11 +34,82 @@
 #include <stddef.h>
 #include <unistd.h>
 
+// Maximum supported size of a vibration pattern.
+// Must be at least 2.
+#define MAX_VIBRATE_PATTERN_SIZE 100
+
+// Maximum allowable delay value in a vibration pattern before
+// which the delay will be truncated.
+#define MAX_VIBRATE_PATTERN_DELAY_NSECS (1000000 * 1000000000LL)
+
 namespace android {
 
 class InputDevice;
 class InputMapper;
 
+/*
+ * Describes how coordinates are mapped on a physical display.
+ * See com.android.server.display.DisplayViewport.
+ */
+struct DisplayViewport {
+    int32_t displayId; // -1 if invalid
+    int32_t orientation;
+    int32_t logicalLeft;
+    int32_t logicalTop;
+    int32_t logicalRight;
+    int32_t logicalBottom;
+    int32_t physicalLeft;
+    int32_t physicalTop;
+    int32_t physicalRight;
+    int32_t physicalBottom;
+    int32_t deviceWidth;
+    int32_t deviceHeight;
+
+    DisplayViewport() :
+            displayId(ADISPLAY_ID_NONE), orientation(DISPLAY_ORIENTATION_0),
+            logicalLeft(0), logicalTop(0), logicalRight(0), logicalBottom(0),
+            physicalLeft(0), physicalTop(0), physicalRight(0), physicalBottom(0),
+            deviceWidth(0), deviceHeight(0) {
+    }
+
+    bool operator==(const DisplayViewport& other) const {
+        return displayId == other.displayId
+                && orientation == other.orientation
+                && logicalLeft == other.logicalLeft
+                && logicalTop == other.logicalTop
+                && logicalRight == other.logicalRight
+                && logicalBottom == other.logicalBottom
+                && physicalLeft == other.physicalLeft
+                && physicalTop == other.physicalTop
+                && physicalRight == other.physicalRight
+                && physicalBottom == other.physicalBottom
+                && deviceWidth == other.deviceWidth
+                && deviceHeight == other.deviceHeight;
+    }
+
+    bool operator!=(const DisplayViewport& other) const {
+        return !(*this == other);
+    }
+
+    inline bool isValid() const {
+        return displayId >= 0;
+    }
+
+    void setNonDisplayViewport(int32_t width, int32_t height) {
+        displayId = ADISPLAY_ID_NONE;
+        orientation = DISPLAY_ORIENTATION_0;
+        logicalLeft = 0;
+        logicalTop = 0;
+        logicalRight = width;
+        logicalBottom = height;
+        physicalLeft = 0;
+        physicalTop = 0;
+        physicalRight = width;
+        physicalBottom = height;
+        deviceWidth = width;
+        deviceHeight = height;
+    }
+};
 
 /*
  * Input reader configuration.
@@ -58,6 +130,15 @@ struct InputReaderConfiguration {
 
         // The visible touches option changed.
         CHANGE_SHOW_TOUCHES = 1 << 3,
+
+        // The keyboard layouts must be reloaded.
+        CHANGE_KEYBOARD_LAYOUTS = 1 << 4,
+
+        // The device name alias supplied by the may have changed for some devices.
+        CHANGE_DEVICE_ALIAS = 1 << 5,
+
+        // Stylus icon option changed.
+        CHANGE_STYLUS_ICON_ENABLED = 1 << 6,
 
         // All devices must be reopened.
         CHANGE_MUST_REOPEN = 1 << 31,
@@ -146,6 +227,12 @@ struct InputReaderConfiguration {
     // True to show the location of touches on the touch screen as spots.
     bool showTouches;
 
+    // True to show the pointer icon when a stylus is used.
+    bool stylusIconEnabled;
+
+    // Ignore finger touches this long after the stylus has been used (including hover)
+    nsecs_t stylusPalmRejectionTime;
+
     InputReaderConfiguration() :
             virtualKeyQuietTime(0),
             pointerVelocityControlParameters(1.0f, 500.0f, 3000.0f, 3.0f),
@@ -162,27 +249,17 @@ struct InputReaderConfiguration {
             pointerGestureSwipeMaxWidthRatio(0.25f),
             pointerGestureMovementSpeedRatio(0.8f),
             pointerGestureZoomSpeedRatio(0.3f),
-            showTouches(false) { }
+	    showTouches(false),
+            stylusIconEnabled(false),
+            stylusPalmRejectionTime(50 * 10000000LL) // 50 ms
+    { }
 
-    bool getDisplayInfo(int32_t displayId, bool external,
-            int32_t* width, int32_t* height, int32_t* orientation) const;
-
-    void setDisplayInfo(int32_t displayId, bool external,
-            int32_t width, int32_t height, int32_t orientation);
+    bool getDisplayInfo(bool external, DisplayViewport* outViewport) const;
+    void setDisplayInfo(bool external, const DisplayViewport& viewport);
 
 private:
-    struct DisplayInfo {
-        int32_t width;
-        int32_t height;
-        int32_t orientation;
-
-        DisplayInfo() :
-            width(-1), height(-1), orientation(DISPLAY_ORIENTATION_0) {
-        }
-    };
-
-    DisplayInfo mInternalDisplay;
-    DisplayInfo mExternalDisplay;
+    DisplayViewport mInternalDisplay;
+    DisplayViewport mExternalDisplay;
 };
 
 
@@ -209,6 +286,17 @@ public:
 
     /* Gets a pointer controller associated with the specified cursor device (ie. a mouse). */
     virtual sp<PointerControllerInterface> obtainPointerController(int32_t deviceId) = 0;
+
+    /* Notifies the input reader policy that some input devices have changed
+     * and provides information about all current input devices.
+     */
+    virtual void notifyInputDevicesChanged(const Vector<InputDeviceInfo>& inputDevices) = 0;
+
+    /* Gets the keyboard layout for a particular input device. */
+    virtual sp<KeyCharacterMap> getKeyboardLayoutOverlay(const String8& inputDeviceDescriptor) = 0;
+
+    /* Gets a user-supplied alias for a particular input device, or an empty string if none. */
+    virtual String8 getDeviceAlias(const InputDeviceIdentifier& identifier) = 0;
 };
 
 
@@ -234,22 +322,11 @@ public:
      */
     virtual void loopOnce() = 0;
 
-    /* Gets the current input device configuration.
+    /* Gets information about all input devices.
      *
      * This method may be called on any thread (usually by the input manager).
      */
-    virtual void getInputConfiguration(InputConfiguration* outConfiguration) = 0;
-
-    /* Gets information about the specified input device.
-     * Returns OK if the device information was obtained or NAME_NOT_FOUND if there
-     * was no such device.
-     *
-     * This method may be called on any thread (usually by the input manager).
-     */
-    virtual status_t getInputDeviceInfo(int32_t deviceId, InputDeviceInfo* outDeviceInfo) = 0;
-
-    /* Gets the list of all registered device ids. */
-    virtual void getInputDeviceIds(Vector<int32_t>& outDeviceIds) = 0;
+    virtual void getInputDevices(Vector<InputDeviceInfo>& outInputDevices) = 0;
 
     /* Query current input state. */
     virtual int32_t getScanCodeState(int32_t deviceId, uint32_t sourceMask,
@@ -267,6 +344,11 @@ public:
      * The changes flag is a bitfield that indicates what has changed and whether
      * the input devices must all be reopened. */
     virtual void requestRefreshConfiguration(uint32_t changes) = 0;
+
+    /* Controls the vibrator of a particular input device. */
+    virtual void vibrate(int32_t deviceId, const nsecs_t* pattern, size_t patternSize,
+            ssize_t repeat, int32_t token) = 0;
+    virtual void cancelVibrate(int32_t deviceId, int32_t token) = 0;
 };
 
 
@@ -288,6 +370,7 @@ public:
     virtual void fadePointer() = 0;
 
     virtual void requestTimeoutAtTime(nsecs_t when) = 0;
+    virtual int32_t bumpGeneration() = 0;
 
     virtual InputReaderPolicyInterface* getPolicy() = 0;
     virtual InputListenerInterface* getListener() = 0;
@@ -318,10 +401,7 @@ public:
 
     virtual void loopOnce();
 
-    virtual void getInputConfiguration(InputConfiguration* outConfiguration);
-
-    virtual status_t getInputDeviceInfo(int32_t deviceId, InputDeviceInfo* outDeviceInfo);
-    virtual void getInputDeviceIds(Vector<int32_t>& outDeviceIds);
+    virtual void getInputDevices(Vector<InputDeviceInfo>& outInputDevices);
 
     virtual int32_t getScanCodeState(int32_t deviceId, uint32_t sourceMask,
             int32_t scanCode);
@@ -335,10 +415,14 @@ public:
 
     virtual void requestRefreshConfiguration(uint32_t changes);
 
+    virtual void vibrate(int32_t deviceId, const nsecs_t* pattern, size_t patternSize,
+            ssize_t repeat, int32_t token);
+    virtual void cancelVibrate(int32_t deviceId, int32_t token);
+
 protected:
     // These members are protected so they can be instrumented by test cases.
     virtual InputDevice* createDeviceLocked(int32_t deviceId,
-            const String8& name, uint32_t classes);
+            const InputDeviceIdentifier& identifier, uint32_t classes);
 
     class ContextImpl : public InputReaderContext {
         InputReader* mReader;
@@ -353,6 +437,7 @@ protected:
                 InputDevice* device, int32_t keyCode, int32_t scanCode);
         virtual void fadePointer();
         virtual void requestTimeoutAtTime(nsecs_t when);
+        virtual int32_t bumpGeneration();
         virtual InputReaderPolicyInterface* getPolicy();
         virtual InputListenerInterface* getListener();
         virtual EventHubInterface* getEventHub();
@@ -362,6 +447,8 @@ protected:
 
 private:
     Mutex mLock;
+
+    Condition mReaderIsAliveCondition;
 
     sp<EventHubInterface> mEventHub;
     sp<InputReaderPolicyInterface> mPolicy;
@@ -391,8 +478,10 @@ private:
 
     void fadePointerLocked();
 
-    InputConfiguration mInputConfiguration;
-    void updateInputConfigurationLocked();
+    int32_t mGeneration;
+    int32_t bumpGenerationLocked();
+
+    void getInputDevicesLocked(Vector<InputDeviceInfo>& outInputDevices);
 
     nsecs_t mDisableVirtualKeysTimeout;
     void disableVirtualKeysUntilLocked(nsecs_t time);
@@ -430,12 +519,14 @@ private:
 /* Represents the state of a single input device. */
 class InputDevice {
 public:
-    InputDevice(InputReaderContext* context, int32_t id, const String8& name, uint32_t classes);
+    InputDevice(InputReaderContext* context, int32_t id, int32_t generation,
+            const InputDeviceIdentifier& identifier, uint32_t classes);
     ~InputDevice();
 
     inline InputReaderContext* getContext() { return mContext; }
     inline int32_t getId() { return mId; }
-    inline const String8& getName() { return mName; }
+    inline int32_t getGeneration() { return mGeneration; }
+    inline const String8& getName() { return mIdentifier.name; }
     inline uint32_t getClasses() { return mClasses; }
     inline uint32_t getSources() { return mSources; }
 
@@ -457,10 +548,14 @@ public:
     int32_t getSwitchState(uint32_t sourceMask, int32_t switchCode);
     bool markSupportedKeyCodes(uint32_t sourceMask, size_t numCodes,
             const int32_t* keyCodes, uint8_t* outFlags);
+    void vibrate(const nsecs_t* pattern, size_t patternSize, ssize_t repeat, int32_t token);
+    void cancelVibrate(int32_t token);
 
     int32_t getMetaState();
 
     void fadePointer();
+
+    void bumpGeneration();
 
     void notifyReset(nsecs_t when);
 
@@ -469,6 +564,12 @@ public:
 
     bool hasKey(int32_t code) {
         return getEventHub()->hasScanCode(mId, code);
+    }
+
+    bool hasAbsoluteAxis(int32_t code) {
+        RawAbsoluteAxisInfo info;
+        getEventHub()->getAbsoluteAxisInfo(mId, code, &info);
+        return info.valid;
     }
 
     bool isKeyPressed(int32_t code) {
@@ -484,7 +585,9 @@ public:
 private:
     InputReaderContext* mContext;
     int32_t mId;
-    String8 mName;
+    int32_t mGeneration;
+    InputDeviceIdentifier mIdentifier;
+    String8 mAlias;
     uint32_t mClasses;
 
     Vector<InputMapper*> mMappers;
@@ -590,9 +693,11 @@ public:
     int32_t getToolType() const;
     bool isToolActive() const;
     bool isHovering() const;
+    bool hasStylus() const;
 
 private:
     bool mHaveBtnTouch;
+    bool mHaveStylus;
 
     bool mBtnTouch;
     bool mBtnStylus;
@@ -780,10 +885,11 @@ public:
     MultiTouchMotionAccumulator();
     ~MultiTouchMotionAccumulator();
 
-    void configure(size_t slotCount, bool usingSlotsProtocol);
+    void configure(InputDevice* device, size_t slotCount, bool usingSlotsProtocol);
     void reset(InputDevice* device);
     void process(const RawEvent* rawEvent);
     void finishSync();
+    bool hasStylus() const;
 
     inline size_t getSlotCount() const { return mSlotCount; }
     inline const Slot* getSlot(size_t index) const { return &mSlots[index]; }
@@ -793,6 +899,7 @@ private:
     Slot* mSlots;
     size_t mSlotCount;
     bool mUsingSlotsProtocol;
+    bool mHaveStylus;
 
     void clearSlots(int32_t initialSlot);
 };
@@ -836,6 +943,9 @@ public:
     virtual int32_t getSwitchState(uint32_t sourceMask, int32_t switchCode);
     virtual bool markSupportedKeyCodes(uint32_t sourceMask, size_t numCodes,
             const int32_t* keyCodes, uint8_t* outFlags);
+    virtual void vibrate(const nsecs_t* pattern, size_t patternSize, ssize_t repeat,
+            int32_t token);
+    virtual void cancelVibrate(int32_t token);
 
     virtual int32_t getMetaState();
 
@@ -846,6 +956,7 @@ protected:
     InputReaderContext* mContext;
 
     status_t getAbsoluteAxisInfo(int32_t axis, RawAbsoluteAxisInfo* axisInfo);
+    void bumpGeneration();
 
     static void dumpRawAbsoluteAxisInfo(String8& dump,
             const RawAbsoluteAxisInfo& axis, const char* name);
@@ -863,7 +974,40 @@ public:
     virtual int32_t getSwitchState(uint32_t sourceMask, int32_t switchCode);
 
 private:
-    void processSwitch(nsecs_t when, int32_t switchCode, int32_t switchValue);
+    uint32_t mUpdatedSwitchValues;
+    uint32_t mUpdatedSwitchMask;
+
+    void processSwitch(int32_t switchCode, int32_t switchValue);
+    void sync(nsecs_t when);
+};
+
+
+class VibratorInputMapper : public InputMapper {
+public:
+    VibratorInputMapper(InputDevice* device);
+    virtual ~VibratorInputMapper();
+
+    virtual uint32_t getSources();
+    virtual void populateDeviceInfo(InputDeviceInfo* deviceInfo);
+    virtual void process(const RawEvent* rawEvent);
+
+    virtual void vibrate(const nsecs_t* pattern, size_t patternSize, ssize_t repeat,
+            int32_t token);
+    virtual void cancelVibrate(int32_t token);
+    virtual void timeoutExpired(nsecs_t when);
+    virtual void dump(String8& dump);
+
+private:
+    bool mVibrating;
+    nsecs_t mPattern[MAX_VIBRATE_PATTERN_SIZE];
+    size_t mPatternSize;
+    ssize_t mRepeat;
+    int32_t mToken;
+    ssize_t mIndex;
+    nsecs_t mNextStepTime;
+
+    void nextStep();
+    void stopVibrating();
 };
 
 
@@ -901,6 +1045,8 @@ private:
     int32_t mMetaState;
     nsecs_t mDownTime; // time of most recent key down
 
+    int32_t mCurrentHidUsage; // most recent HID usage seen this packet, or 0 if none
+
     struct LedState {
         bool avail; // led is available
         bool on;    // we think the led is currently on
@@ -911,7 +1057,7 @@ private:
 
     // Immutable configuration parameters.
     struct Parameters {
-        int32_t associatedDisplayId;
+        bool hasAssociatedDisplay;
         bool orientationAware;
     } mParameters;
 
@@ -961,7 +1107,7 @@ private:
         };
 
         Mode mode;
-        int32_t associatedDisplayId;
+        bool hasAssociatedDisplay;
         bool orientationAware;
     } mParameters;
 
@@ -1062,7 +1208,7 @@ protected:
         };
 
         DeviceType deviceType;
-        int32_t associatedDisplayId;
+        bool hasAssociatedDisplay;
         bool associatedDisplayIsExternal;
         bool orientationAware;
 
@@ -1081,6 +1227,7 @@ protected:
             SIZE_CALIBRATION_NONE,
             SIZE_CALIBRATION_GEOMETRIC,
             SIZE_CALIBRATION_DIAMETER,
+            SIZE_CALIBRATION_BOX,
             SIZE_CALIBRATION_AREA,
         };
 
@@ -1185,24 +1332,35 @@ protected:
     virtual void parseCalibration();
     virtual void resolveCalibration();
     virtual void dumpCalibration(String8& dump);
+    virtual bool hasStylus() const = 0;
 
     virtual void syncTouch(nsecs_t when, bool* outHavePointerIds) = 0;
 
 private:
-    // The surface orientation and width and height set by configureSurface().
-    int32_t mSurfaceOrientation;
+    // The current viewport.
+    // The components of the viewport are specified in the display's rotated orientation.
+    DisplayViewport mViewport;
+
+    // The surface orientation, width and height set by configureSurface().
+    // The width and height are derived from the viewport but are specified
+    // in the natural orientation.
+    // The surface origin specifies how the surface coordinates should be translated
+    // to align with the logical display coordinate space.
+    // The orientation may be different from the viewport orientation as it specifies
+    // the rotation of the surface coordinates required to produce the viewport's
+    // requested orientation, so it will depend on whether the device is orientation aware.
     int32_t mSurfaceWidth;
     int32_t mSurfaceHeight;
-
-    // The associated display orientation and width and height set by configureSurface().
-    int32_t mAssociatedDisplayOrientation;
-    int32_t mAssociatedDisplayWidth;
-    int32_t mAssociatedDisplayHeight;
+    int32_t mSurfaceLeft;
+    int32_t mSurfaceTop;
+    int32_t mSurfaceOrientation;
 
     // Translation and scaling factors, orientation-independent.
+    float mXTranslate;
     float mXScale;
     float mXPrecision;
 
+    float mYTranslate;
     float mYScale;
     float mYPrecision;
 
@@ -1212,7 +1370,6 @@ private:
 
     float mSizeScale;
 
-    float mOrientationCenter;
     float mOrientationScale;
 
     float mDistanceScale;
@@ -1264,8 +1421,6 @@ private:
     } mOrientedRanges;
 
     // Oriented dimensions and precision.
-    float mOrientedSurfaceWidth;
-    float mOrientedSurfaceHeight;
     float mOrientedXPrecision;
     float mOrientedYPrecision;
 
@@ -1467,6 +1622,9 @@ private:
     VelocityControl mWheelXVelocityControl;
     VelocityControl mWheelYVelocityControl;
 
+    // The time the stylus event was processed by any TouchInputMapper
+    static nsecs_t mLastStylusTime;
+
     void sync(nsecs_t when);
 
     bool consumeRawTouches(nsecs_t when, uint32_t policyFlags);
@@ -1519,6 +1677,10 @@ private:
     const VirtualKey* findVirtualKeyHit(int32_t x, int32_t y);
 
     void assignPointerIds();
+
+    void unfadePointer(PointerControllerInterface::Transition transition);
+
+    bool rejectPalm(nsecs_t when);
 };
 
 
@@ -1533,6 +1695,7 @@ public:
 protected:
     virtual void syncTouch(nsecs_t when, bool* outHavePointerIds);
     virtual void configureRawPointerAxes();
+    virtual bool hasStylus() const;
 
 private:
     SingleTouchMotionAccumulator mSingleTouchMotionAccumulator;
@@ -1550,6 +1713,7 @@ public:
 protected:
     virtual void syncTouch(nsecs_t when, bool* outHavePointerIds);
     virtual void configureRawPointerAxes();
+    virtual bool hasStylus() const;
 
 private:
     MultiTouchMotionAccumulator mMultiTouchMotionAccumulator;

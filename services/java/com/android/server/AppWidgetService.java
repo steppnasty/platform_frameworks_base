@@ -48,6 +48,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Slog;
+import android.util.SparseArray;
 import android.util.TypedValue;
 import android.util.Xml;
 import android.widget.RemoteViews;
@@ -81,6 +82,8 @@ import java.util.Set;
 class AppWidgetService extends IAppWidgetService.Stub
 {
     private static final String TAG = "AppWidgetService";
+
+    private final SparseArray<AppWidgetServiceImpl> mAppWidgetServices;
 
     private static final String SETTINGS_FILENAME = "appwidgets.xml";
     private static final int MIN_UPDATE_PERIOD = 30 * 60 * 1000; // 30 minutes
@@ -179,6 +182,7 @@ class AppWidgetService extends IAppWidgetService.Stub
 
     AppWidgetService(Context context) {
         mContext = context;
+        mAppWidgetServices = new SparseArray<AppWidgetServiceImpl>(5);
         mPackageManager = context.getPackageManager();
         mAlarmManager = (AlarmManager)mContext.getSystemService(Context.ALARM_SERVICE);
     }
@@ -676,6 +680,11 @@ class AppWidgetService extends IAppWidgetService.Stub
         }
     }
 
+    @Override
+    public Bundle getAppWidgetOptions(int appWidgetId) {
+        return getImplForUser().getAppWidgetOptions(appWidgetId);
+    }
+
     public List<AppWidgetProviderInfo> getInstalledProviders() {
         synchronized (mAppWidgetIds) {
             ensureStateLoadedLocked();
@@ -1051,7 +1060,21 @@ class AppWidgetService extends IAppWidgetService.Stub
             }
         }
     }
-    
+
+    private AppWidgetServiceImpl getImplForUser() {
+        final int userId = Binder.getOrigCallingUser();
+        AppWidgetServiceImpl service = mAppWidgetServices.get(userId);
+        if (service == null) {
+            Slog.e(TAG, "Unable to find AppWidgetServiceImpl for the current user");
+            service = new AppWidgetServiceImpl(mContext, userId);
+            service.systemReady(mSafeMode);
+            // Assume that BOOT_COMPLETED was received, as this is a non-primary user.
+            service.sendInitialBroadcasts();
+            mAppWidgetServices.append(userId, service);
+        }
+        return service;
+    }
+
     static int[] getAppWidgetIds(Provider p) {
         int instancesSize = p.instances.size();
         int appWidgetIds[] = new int[instancesSize];
@@ -1071,6 +1094,11 @@ class AppWidgetService extends IAppWidgetService.Stub
                 return new int[0];
             }
         }
+    }
+
+    @Override
+    public void updateAppWidgetOptions(int appWidgetId, Bundle options) {
+        getImplForUser().updateAppWidgetOptions(appWidgetId, options);
     }
 
     private Provider parseProviderInfoXml(ComponentName component, ResolveInfo ri) {

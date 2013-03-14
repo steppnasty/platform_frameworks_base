@@ -23,6 +23,7 @@ import android.graphics.Bitmap;
 
 final class TaskAccessInfo extends TaskThumbnails {
     final static class SubTask {
+        ThumbnailHolder holder;
         Bitmap thumbnail;
         ActivityRecord activity;
         int index;

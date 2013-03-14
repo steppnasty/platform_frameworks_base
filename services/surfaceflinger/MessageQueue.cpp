@@ -18,178 +18,168 @@
 #include <errno.h>
 #include <sys/types.h>
 
+#include <binder/IPCThreadState.h>
+
 #include <utils/threads.h>
 #include <utils/Timers.h>
 #include <utils/Log.h>
-#include <binder/IPCThreadState.h>
+
+#include <gui/IDisplayEventConnection.h>
+#include <gui/BitTube.h>
 
 #include "MessageQueue.h"
+#include "EventThread.h"
+#include "SurfaceFlinger.h"
 
 namespace android {
 
 // ---------------------------------------------------------------------------
 
-void MessageList::insert(const sp<MessageBase>& node) 
-{
-    LIST::iterator cur(mList.begin());
-    LIST::iterator end(mList.end());
-    while (cur != end) {
-        if (*node < **cur) {
-            mList.insert(cur, node);
-            return;
-        }
-        ++cur;
-    }
-    mList.insert(++end, node);
+MessageBase::MessageBase()
+    : MessageHandler() {
 }
 
-void MessageList::remove(MessageList::LIST::iterator pos) 
-{
-    mList.erase(pos);
+MessageBase::~MessageBase() {
+}
+
+void MessageBase::handleMessage(const Message&) {
+    this->handler();
+    barrier.open();
+};
+
+// ---------------------------------------------------------------------------
+
+void MessageQueue::Handler::dispatchRefresh() {
+    if ((android_atomic_or(eventMaskRefresh, &mEventMask) & eventMaskRefresh) == 0) {
+        mQueue.mLooper->sendMessage(this, Message(MessageQueue::REFRESH));
+    }
+}
+
+void MessageQueue::Handler::dispatchInvalidate() {
+    if ((android_atomic_or(eventMaskInvalidate, &mEventMask) & eventMaskInvalidate) == 0) {
+        mQueue.mLooper->sendMessage(this, Message(MessageQueue::INVALIDATE));
+    }
+}
+
+void MessageQueue::Handler::handleMessage(const Message& message) {
+    switch (message.what) {
+        case INVALIDATE:
+            android_atomic_and(~eventMaskInvalidate, &mEventMask);
+            mQueue.mFlinger->onMessageReceived(message.what);
+            break;
+        case REFRESH:
+            android_atomic_and(~eventMaskRefresh, &mEventMask);
+            mQueue.mFlinger->onMessageReceived(message.what);
+            break;
+    }
 }
 
 // ---------------------------------------------------------------------------
 
 MessageQueue::MessageQueue()
-    : mInvalidate(false)
-{
-    mInvalidateMessage = new MessageBase(INVALIDATE);
-}
-
-MessageQueue::~MessageQueue()
 {
 }
 
-sp<MessageBase> MessageQueue::waitMessage(nsecs_t timeout)
-{
-    sp<MessageBase> result;
+MessageQueue::~MessageQueue() {
+}
 
-    bool again;
+void MessageQueue::init(const sp<SurfaceFlinger>& flinger)
+{
+    mFlinger = flinger;
+    mLooper = new Looper(true);
+    mHandler = new Handler(*this);
+}
+
+void MessageQueue::setEventThread(const sp<EventThread>& eventThread)
+{
+    mEventThread = eventThread;
+    mEvents = eventThread->createEventConnection();
+    mEventTube = mEvents->getDataChannel();
+    mLooper->addFd(mEventTube->getFd(), 0, ALOOPER_EVENT_INPUT,
+            MessageQueue::cb_eventReceiver, this);
+}
+
+void MessageQueue::waitMessage() {
     do {
-        const nsecs_t timeoutTime = systemTime() + timeout;
-        while (true) {
-            Mutex::Autolock _l(mLock);
-            nsecs_t now = systemTime();
-            nsecs_t nextEventTime = -1;
-
-            LIST::iterator cur(mMessages.begin());
-            if (cur != mMessages.end()) {
-                result = *cur;
-            }
-            
-            if (result != 0) {
-                if (result->when <= now) {
-                    // there is a message to deliver
-                    mMessages.remove(cur);
-                    break;
-                }
-                nextEventTime = result->when;
-                result = 0;
-            }
-
-            // see if we have an invalidate message
-            if (mInvalidate) {
-                mInvalidate = false;
-                mInvalidateMessage->when = now;
-                result = mInvalidateMessage;
-                break;
-            }
-
-            if (timeout >= 0) {
-                if (timeoutTime < now) {
-                    // we timed-out, return a NULL message
-                    result = 0;
-                    break;
-                }
-                if (nextEventTime > 0) {
-                    if (nextEventTime > timeoutTime) {
-                        nextEventTime = timeoutTime;
-                    }
-                } else {
-                    nextEventTime = timeoutTime;
-                }
-            }
-
-            if (nextEventTime >= 0) {
-                //ALOGD("nextEventTime = %lld ms", nextEventTime);
-                if (nextEventTime > 0) {
-                    // we're about to wait, flush the binder command buffer
-                    IPCThreadState::self()->flushCommands();
-                    const nsecs_t reltime = nextEventTime - systemTime();
-                    if (reltime > 0) {
-                        mCondition.waitRelative(mLock, reltime);
-                    }
-                }
-            } else {
-                //ALOGD("going to wait");
-                // we're about to wait, flush the binder command buffer
-                IPCThreadState::self()->flushCommands();
-                mCondition.wait(mLock);
-            }
-        } 
-        // here we're not holding the lock anymore
-
-        if (result == 0)
-            break;
-
-        again = result->handler();
-        if (again) {
-            // the message has been processed. release our reference to it
-            // without holding the lock.
-            result->notify();
-            result = 0;
+        IPCThreadState::self()->flushCommands();
+        int32_t ret = mLooper->pollOnce(-1);
+        switch (ret) {
+            case ALOOPER_POLL_WAKE:
+            case ALOOPER_POLL_CALLBACK:
+                continue;
+            case ALOOPER_POLL_ERROR:
+                ALOGE("ALOOPER_POLL_ERROR");
+            case ALOOPER_POLL_TIMEOUT:
+                // timeout (should not happen)
+                continue;
+            default:
+                // should not happen
+                ALOGE("Looper::pollOnce() returned unknown status %d", ret);
+                continue;
         }
-        
-    } while (again);
-
-    return result;
+    } while (true);
 }
 
 status_t MessageQueue::postMessage(
-        const sp<MessageBase>& message, nsecs_t relTime, uint32_t flags)
+        const sp<MessageBase>& messageHandler, nsecs_t relTime)
 {
-    return queueMessage(message, relTime, flags);
-}
-
-status_t MessageQueue::invalidate() {
-    Mutex::Autolock _l(mLock);
-    mInvalidate = true;
-    mCondition.signal();
-    return NO_ERROR;
-}
-
-status_t MessageQueue::queueMessage(
-        const sp<MessageBase>& message, nsecs_t relTime, uint32_t flags)
-{
-    Mutex::Autolock _l(mLock);
-    message->when = systemTime() + relTime;
-    mMessages.insert(message);
-    
-    //ALOGD("MessageQueue::queueMessage time = %lld ms", message->when);
-    //dumpLocked(message);
-
-    mCondition.signal();
-    return NO_ERROR;
-}
-
-void MessageQueue::dump(const sp<MessageBase>& message)
-{
-    Mutex::Autolock _l(mLock);
-    dumpLocked(message);
-}
-
-void MessageQueue::dumpLocked(const sp<MessageBase>& message)
-{
-    LIST::const_iterator cur(mMessages.begin());
-    LIST::const_iterator end(mMessages.end());
-    int c = 0;
-    while (cur != end) {
-        const char tick = (*cur == message) ? '>' : ' ';
-        ALOGD("%c %d: msg{.what=%08x, when=%lld}",
-                tick, c, (*cur)->what, (*cur)->when);
-        ++cur;
-        c++;
+    const Message dummyMessage;
+    if (relTime > 0) {
+        mLooper->sendMessageDelayed(relTime, messageHandler, dummyMessage);
+    } else {
+        mLooper->sendMessage(messageHandler, dummyMessage);
     }
+    return NO_ERROR;
+}
+
+/* when INVALIDATE_ON_VSYNC is set SF only processes
+ * buffer updates on VSYNC and performs a refresh immediately
+ * after.
+ *
+ * when INVALIDATE_ON_VSYNC is set to false, SF will instead
+ * perform the buffer updates immediately, but the refresh only
+ * at the next VSYNC.
+ * THIS MODE IS BUGGY ON GALAXY NEXUS AND WILL CAUSE HANGS
+ */
+#define INVALIDATE_ON_VSYNC 1
+
+void MessageQueue::invalidate() {
+#if INVALIDATE_ON_VSYNC
+    mEvents->requestNextVsync();
+#else
+    mHandler->dispatchInvalidate();
+#endif
+}
+
+void MessageQueue::refresh() {
+#if INVALIDATE_ON_VSYNC
+    mHandler->dispatchRefresh();
+#else
+    mEvents->requestNextVsync();
+#endif
+}
+
+int MessageQueue::cb_eventReceiver(int fd, int events, void* data) {
+    MessageQueue* queue = reinterpret_cast<MessageQueue *>(data);
+    return queue->eventReceiver(fd, events);
+}
+
+int MessageQueue::eventReceiver(int fd, int events) {
+    ssize_t n;
+    DisplayEventReceiver::Event buffer[8];
+    while ((n = DisplayEventReceiver::getEvents(mEventTube, buffer, 8)) > 0) {
+        for (int i=0 ; i<n ; i++) {
+            if (buffer[i].header.type == DisplayEventReceiver::DISPLAY_EVENT_VSYNC) {
+#if INVALIDATE_ON_VSYNC
+                mHandler->dispatchInvalidate();
+#else
+                mHandler->dispatchRefresh();
+#endif
+                break;
+            }
+        }
+    }
+    return 1;
 }
 
 // ---------------------------------------------------------------------------

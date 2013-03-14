@@ -117,23 +117,34 @@ public class StatusBarManagerService extends IStatusBarService.Stub
     // ================================================================================
     // From IStatusBarService
     // ================================================================================
-    public void expand() {
+    public void expandNotificationsPanel() {
         enforceExpandStatusBar();
 
         if (mBar != null) {
             try {
-                mBar.animateExpand();
+                mBar.animateExpandNotificationsPanel();
             } catch (RemoteException ex) {
             }
         }
     }
 
-    public void collapse() {
+    public void collapsePanels() {
         enforceExpandStatusBar();
 
         if (mBar != null) {
             try {
                 mBar.animateCollapse();
+            } catch (RemoteException ex) {
+            }
+        }
+    }
+
+    public void expandSettingsPanel() {
+        enforceExpandStatusBar();
+
+        if (mBar != null) {
+            try {
+                mBar.animateExpandSettingsPanel();
             } catch (RemoteException ex) {
             }
         }
@@ -292,27 +303,27 @@ public class StatusBarManagerService extends IStatusBarService.Stub
         }
     }
 
-    public void setSystemUiVisibility(int vis) {
+    public void setSystemUiVisibility(int vis, int mask) {
         // also allows calls from window manager which is in this process.
         enforceStatusBarService();
 
         if (SPEW) Slog.d(TAG, "setSystemUiVisibility(0x" + Integer.toHexString(vis) + ")");
 
         synchronized (mLock) {
-            updateUiVisibilityLocked(vis);
+            updateUiVisibilityLocked(vis, mask);
             disableLocked(vis & StatusBarManager.DISABLE_MASK, mSysUiVisToken,
                     "WindowManager.LayoutParams");
         }
     }
 
-    private void updateUiVisibilityLocked(final int vis) {
+    private void updateUiVisibilityLocked(final int vis, final int mask) {
         if (mSystemUiVisibility != vis) {
             mSystemUiVisibility = vis;
             mHandler.post(new Runnable() {
                     public void run() {
                         if (mBar != null) {
                             try {
-                                mBar.setSystemUiVisibility(vis);
+                                mBar.setSystemUiVisibility(vis, mask);
                             } catch (RemoteException ex) {
                             }
                         }
@@ -348,6 +359,24 @@ public class StatusBarManagerService extends IStatusBarService.Stub
         if (mBar != null) {
             try {
                 mBar.toggleRecentApps();
+            } catch (RemoteException ex) {}
+        }
+    }
+
+    @Override
+    public void preloadRecentApps() {
+        if (mBar != null) {
+            try {
+                mBar.preloadRecentApps();
+            } catch (RemoteException ex) {}
+        }
+    }
+
+    @Override
+    public void cancelPreloadRecentApps() {
+        if (mBar != null) {
+            try {
+                mBar.cancelPreloadRecentApps();
             } catch (RemoteException ex) {}
         }
     }
@@ -578,7 +607,7 @@ public class StatusBarManagerService extends IStatusBarService.Stub
             String action = intent.getAction();
             if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(action)
                     || Intent.ACTION_SCREEN_OFF.equals(action)) {
-                collapse();
+                collapsePanels();
             }
             /*
             else if (Telephony.Intents.SPN_STRINGS_UPDATED_ACTION.equals(action)) {

@@ -110,6 +110,7 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
     int mFailedPasswordAttempts = 0;
 
     int mPasswordOwner = -1;
+    long mLastMaximumTimeToLock = -1;
     Handler mHandler = new Handler();
 
     final HashMap<ComponentName, ActiveAdmin> mAdminMap
@@ -826,16 +827,7 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
 
         validatePasswordOwnerLocked();
         syncDeviceCapabilitiesLocked();
-
-        long timeMs = getMaximumTimeToLock(null);
-        if (timeMs <= 0) {
-            timeMs = Integer.MAX_VALUE;
-        }
-        try {
-            getIPowerManager().setMaximumScreenOffTimeount((int)timeMs);
-        } catch (RemoteException e) {
-            Slog.w(TAG, "Failure talking with power manager", e);
-        }
+        updateMaximumTimeToLockLocked();
     }
 
     static void validateQualityConstant(int quality) {
@@ -1606,25 +1598,39 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
                     DeviceAdminInfo.USES_POLICY_FORCE_LOCK);
             if (ap.maximumTimeToUnlock != timeMs) {
                 ap.maximumTimeToUnlock = timeMs;
+                saveSettingsLocked();
+                updateMaximumTimeToLockLocked();
 
-                long ident = Binder.clearCallingIdentity();
-                try {
-                    saveSettingsLocked();
-
-                    timeMs = getMaximumTimeToLock(null);
-                    if (timeMs <= 0) {
-                        timeMs = Integer.MAX_VALUE;
-                    }
-
-                    try {
-                        getIPowerManager().setMaximumScreenOffTimeount((int)timeMs);
-                    } catch (RemoteException e) {
-                        Slog.w(TAG, "Failure talking with power manager", e);
-                    }
-                } finally {
-                    Binder.restoreCallingIdentity(ident);
-                }
             }
+        }
+    }
+
+    void updateMaximumTimeToLockLocked() {
+        long timeMs = getMaximumTimeToLock(null);
+        if (mLastMaximumTimeToLock == timeMs) {
+            return;
+        }
+
+        long ident = Binder.clearCallingIdentity();
+        try {
+            if (timeMs <= 0) {
+                timeMs = Integer.MAX_VALUE;
+            } else {
+                // Make sure KEEP_SCREEN_ON is disabled, since that
+                // would allow bypassing of the maximum time to lock.
+                Settings.System.putInt(mContext.getContentResolver(),
+                        Settings.System.STAY_ON_WHILE_PLUGGED_IN, 0);
+            }
+
+            mLastMaximumTimeToLock = timeMs;
+
+            try {
+                getIPowerManager().setMaximumScreenOffTimeoutFromDeviceAdmin((int)timeMs);
+            } catch (RemoteException e) {
+                Slog.w(TAG, "Failure talking with power manager", e);
+            }
+        } finally {
+            Binder.restoreCallingIdentity(ident);
         }
     }
 
@@ -1657,20 +1663,21 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
             // so try to retrieve it to check that the caller is one.
             getActiveAdminForCallerLocked(null,
                     DeviceAdminInfo.USES_POLICY_FORCE_LOCK);
-            long ident = Binder.clearCallingIdentity();
-            try {
-                if (mIPowerManager.isScreenOn()) {
-                    // Power off the display
-                    mIPowerManager.goToSleepWithReason(SystemClock.uptimeMillis(),
-                            WindowManagerPolicy.OFF_BECAUSE_OF_ADMIN);
-                } else {
-                    // Ensure the device is locked
-                    getWindowManager().lockNow();
-                }
-            } catch (RemoteException e) {
-            } finally {
-                Binder.restoreCallingIdentity(ident);
-            }
+            lockNowUnchecked();
+        }
+    }
+
+    private void lockNowUnchecked() {
+        long ident = Binder.clearCallingIdentity();
+        try {
+            // Power off the display
+            getIPowerManager().goToSleep(SystemClock.uptimeMillis(),
+                    PowerManager.GO_TO_SLEEP_REASON_DEVICE_ADMIN);
+            // Ensure the device is locked
+            getWindowManager().lockNow(null);
+        } catch (RemoteException e) {
+        } finally {
+            Binder.restoreCallingIdentity(ident);
         }
     }
 

@@ -107,6 +107,7 @@ import android.os.ServiceManager;
 import android.os.StrictMode;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.os.UserId;
 import android.provider.Settings;
 import android.text.format.Time;
 import android.util.EventLog;
@@ -155,6 +156,7 @@ import dalvik.system.Zygote;
 public final class ActivityManagerService extends ActivityManagerNative
         implements Watchdog.Monitor, BatteryStatsImpl.BatteryCallback {
     static final String TAG = "ActivityManager";
+    static final String TAG_MU = "ActivityManagerServiceMU";
     static final boolean DEBUG = false;
     static final boolean localLOGV = DEBUG;
     static final boolean DEBUG_SWITCH = localLOGV || false;
@@ -176,6 +178,7 @@ public final class ActivityManagerService extends ActivityManagerNative
     static final boolean DEBUG_CONFIGURATION = localLOGV || false;
     static final boolean DEBUG_POWER = localLOGV || false;
     static final boolean DEBUG_POWER_QUICK = DEBUG_POWER || false;
+    static final boolean DEBUG_MU = localLOGV || false;
     static final boolean VALIDATE_TOKENS = false;
     static final boolean SHOW_ACTIVITY_START_TIME = true;
     
@@ -274,9 +277,7 @@ public final class ActivityManagerService extends ActivityManagerNative
     static class PendingActivityLaunch {
         ActivityRecord r;
         ActivityRecord sourceRecord;
-        Uri[] grantedUriPermissions;
-        int grantedMode;
-        boolean onlyIfNeeded;
+        int startFlags;
     }
     
     final ArrayList<PendingActivityLaunch> mPendingActivityLaunches
@@ -520,6 +521,8 @@ public final class ActivityManagerService extends ActivityManagerNative
     final HashMap<String, ArrayList<Intent>> mStickyBroadcasts =
             new HashMap<String, ArrayList<Intent>>();
 
+    final ActiveServices mActiveServices;
+
     /**
      * All currently running services.
      */
@@ -717,6 +720,16 @@ public final class ActivityManagerService extends ActivityManagerNative
      * activities from being started/resumed.
      */
     boolean mSleeping = false;
+
+    /**
+     * State of external calls telling us if the device is asleep.
+     */
+    boolean mWentToSleep = false;
+
+    /**
+     * State of external call telling us if the lock screen is shown.
+     */
+    boolean mLockScreenShown = false;
 
     /**
      * Set if we are shutting down the system, similar to sleeping.
@@ -1010,7 +1023,7 @@ public final class ActivityManagerService extends ActivityManagerNative
                     mHandler.sendMessageDelayed(nmsg, SERVICE_TIMEOUT);
                     return;
                 }
-                serviceTimeout((ProcessRecord)msg.obj);
+                mActiveServices.serviceTimeout((ProcessRecord)msg.obj);
             } break;
             case UPDATE_TIME_ZONE: {
                 synchronized (ActivityManagerService.this) {
@@ -1487,7 +1500,9 @@ public final class ActivityManagerService extends ActivityManagerNative
 
     private ActivityManagerService() {
         Slog.i(TAG, "Memory class: " + ActivityManager.staticGetMemoryClass());
-        
+
+        mActiveServices = new ActiveServices(this);
+
         File dataDir = Environment.getDataDirectory();
         File systemDir = new File(dataDir, "system");
         systemDir.mkdirs();
@@ -2074,8 +2089,8 @@ public final class ActivityManagerService extends ActivityManagerNative
                     aInfo.applicationInfo.uid);
             if (app == null || app.instrumentationClass == null) {
                 intent.setFlags(intent.getFlags() | Intent.FLAG_ACTIVITY_NEW_TASK);
-                mMainStack.startActivityLocked(null, intent, null, null, 0, aInfo,
-                        null, null, 0, 0, 0, false, false, null);
+                mMainStack.startActivityLocked(null, intent, null, aInfo,
+                        null, null, 0, 0, 0, 0, null, false, null);
             }
         }
         
@@ -2130,8 +2145,8 @@ public final class ActivityManagerService extends ActivityManagerNative
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.setComponent(new ComponentName(
                             ri.activityInfo.packageName, ri.activityInfo.name));
-                    mMainStack.startActivityLocked(null, intent, null, null, 0, ri.activityInfo,
-                            null, null, 0, 0, 0, false, false, null);
+                    mMainStack.startActivityLocked(null, intent, null, ri.activityInfo,
+                            null, null, 0, 0, 0, 0, null, false, null);
                 }
             }
         }
@@ -2235,50 +2250,60 @@ public final class ActivityManagerService extends ActivityManagerNative
         for (int i=0; i<N; i++) {
             PendingActivityLaunch pal = mPendingActivityLaunches.get(i);
             mMainStack.startActivityUncheckedLocked(pal.r, pal.sourceRecord,
-                    pal.grantedUriPermissions, pal.grantedMode, pal.onlyIfNeeded,
-                    doResume && i == (N-1));
+                    pal.startFlags, doResume && i == (N-1), null);
         }
         mPendingActivityLaunches.clear();
     }
 
     public final int startActivity(IApplicationThread caller,
-            Intent intent, String resolvedType, Uri[] grantedUriPermissions,
-            int grantedMode, IBinder resultTo,
-            String resultWho, int requestCode, boolean onlyIfNeeded, boolean debug,
-            String profileFile, ParcelFileDescriptor profileFd, boolean autoStopProfiler) {
+            Intent intent, String resolvedType, IBinder resultTo,
+            String resultWho, int requestCode, int startFlags,
+            String profileFile, ParcelFileDescriptor profileFd, Bundle options) {
+        int userId = 0;
+        if (intent.getCategories() != null && intent.getCategories().contains(Intent.CATEGORY_HOME)) {
+            // Requesting home, set the identity to the current user
+            // HACK!
+            userId = mCurrentUserId;
+        } else {
+            // TODO: Fix this in a better way - calls coming from SystemUI should probably carry
+            // the current user's userId
+            if (Binder.getCallingUid() < Process.FIRST_APPLICATION_UID) {
+                userId = 0;
+            } else {
+                userId = Binder.getOrigCallingUser();
+            }
+        }
         return mMainStack.startActivityMayWait(caller, -1, intent, resolvedType,
-                grantedUriPermissions, grantedMode, resultTo, resultWho,
-                requestCode, onlyIfNeeded, debug, profileFile, profileFd, autoStopProfiler,
-                null, null);
+                resultTo, resultWho, requestCode, startFlags, profileFile, profileFd,
+                null, null, options, userId);
     }
 
     public final WaitResult startActivityAndWait(IApplicationThread caller,
-            Intent intent, String resolvedType, Uri[] grantedUriPermissions,
-            int grantedMode, IBinder resultTo,
-            String resultWho, int requestCode, boolean onlyIfNeeded, boolean debug,
-            String profileFile, ParcelFileDescriptor profileFd, boolean autoStopProfiler) {
+            Intent intent, String resolvedType, IBinder resultTo,
+            String resultWho, int requestCode, int startFlags, String profileFile,
+            ParcelFileDescriptor profileFd, Bundle options) {
         WaitResult res = new WaitResult();
+        int userId = Binder.getOrigCallingUser();
         mMainStack.startActivityMayWait(caller, -1, intent, resolvedType,
-                grantedUriPermissions, grantedMode, resultTo, resultWho,
-                requestCode, onlyIfNeeded, debug, profileFile, profileFd, autoStopProfiler,
-                res, null);
+                resultTo, resultWho, requestCode, startFlags, profileFile, profileFd,
+                res, null, options, userId);
         return res;
     }
-    
+
     public final int startActivityWithConfig(IApplicationThread caller,
-            Intent intent, String resolvedType, Uri[] grantedUriPermissions,
-            int grantedMode, IBinder resultTo,
-            String resultWho, int requestCode, boolean onlyIfNeeded,
-            boolean debug, Configuration config) {
-        return mMainStack.startActivityMayWait(caller, -1, intent, resolvedType,
-                grantedUriPermissions, grantedMode, resultTo, resultWho,
-                requestCode, onlyIfNeeded, debug, null, null, false, null, config);
+            Intent intent, String resolvedType, IBinder resultTo,
+            String resultWho, int requestCode, int startFlags, Configuration config,
+            Bundle options) {
+        int ret = mMainStack.startActivityMayWait(caller, -1, intent, resolvedType,
+                resultTo, resultWho, requestCode, startFlags,
+                null, null, null, config, options, Binder.getOrigCallingUser());
+        return ret;
     }
 
     public int startActivityIntentSender(IApplicationThread caller,
             IntentSender intent, Intent fillInIntent, String resolvedType,
             IBinder resultTo, String resultWho, int requestCode,
-            int flagsMask, int flagsValues) {
+            int flagsMask, int flagsValues, Bundle options) {
         // Refuse possible leaked file descriptors
         if (fillInIntent != null && fillInIntent.hasFileDescriptors()) {
             throw new IllegalArgumentException("File descriptors passed in Intent");
@@ -2302,11 +2327,11 @@ public final class ActivityManagerService extends ActivityManagerNative
         }
         
         return pir.sendInner(0, fillInIntent, resolvedType, null,
-                null, resultTo, resultWho, requestCode, flagsMask, flagsValues);
+                null, resultTo, resultWho, requestCode, flagsMask, flagsValues, options);
     }
     
     public boolean startNextMatchingActivity(IBinder callingActivity,
-            Intent intent) {
+            Intent intent, Bundle options) {
         // Refuse possible leaked file descriptors
         if (intent != null && intent.hasFileDescriptors() == true) {
             throw new IllegalArgumentException("File descriptors passed in Intent");
@@ -2383,12 +2408,10 @@ public final class ActivityManagerService extends ActivityManagerNative
             }
 
             final long origId = Binder.clearCallingIdentity();
-            // XXX we are not dealing with propagating grantedUriPermissions...
-            // those are not yet exposed to user code, so there is no need.
             int res = mMainStack.startActivityLocked(r.app.thread, intent,
-                    r.resolvedType, null, 0, aInfo,
-                    resultTo != null ? resultTo.appToken : null, resultWho,
-                    requestCode, -1, r.launchedFromUid, false, false, null);
+                    r.resolvedType, aInfo, resultTo != null ? resultTo.appToken : null,
+                    resultWho, requestCode, -1, r.launchedFromUid, 0,
+                    options, false, null);
             Binder.restoreCallingIdentity(origId);
 
             r.finishing = wasFinishing;
@@ -2401,10 +2424,11 @@ public final class ActivityManagerService extends ActivityManagerNative
 
     public final int startActivityInPackage(int uid,
             Intent intent, String resolvedType, IBinder resultTo,
-            String resultWho, int requestCode, boolean onlyIfNeeded) {
+            String resultWho, int requestCode, int startFlags, Bundle options) {
         
         // This is so super not safe, that only the system (or okay root)
         // can do it.
+        int userId = Binder.getOrigCallingUser();
         final int callingUid = Binder.getCallingUid();
         if (callingUid != 0 && callingUid != Process.myUid()) {
             throw new SecurityException(
@@ -2412,17 +2436,20 @@ public final class ActivityManagerService extends ActivityManagerNative
         }
 
         return mMainStack.startActivityMayWait(null, uid, intent, resolvedType,
-                null, 0, resultTo, resultWho, requestCode, onlyIfNeeded, false,
-                null, null, false, null, null);
+                resultTo, resultWho, requestCode, startFlags,
+                null, null, null, null, options, userId);
     }
 
     public final int startActivities(IApplicationThread caller,
-            Intent[] intents, String[] resolvedTypes, IBinder resultTo) {
-        return mMainStack.startActivities(caller, -1, intents, resolvedTypes, resultTo);
+            Intent[] intents, String[] resolvedTypes, IBinder resultTo, Bundle options) {
+        int ret = mMainStack.startActivities(caller, -1, intents, resolvedTypes, resultTo,
+                options, Binder.getOrigCallingUser());
+        return ret;
     }
 
     public final int startActivitiesInPackage(int uid,
-            Intent[] intents, String[] resolvedTypes, IBinder resultTo) {
+            Intent[] intents, String[] resolvedTypes, IBinder resultTo,
+            Bundle options) {
 
         // This is so super not safe, that only the system (or okay root)
         // can do it.
@@ -2431,8 +2458,9 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new SecurityException(
                     "startActivityInPackage only available to the system");
         }
-
-        return mMainStack.startActivities(null, uid, intents, resolvedTypes, resultTo);
+        int ret = mMainStack.startActivities(null, uid, intents, resolvedTypes, resultTo,
+                options, UserId.getUserId(uid));
+        return ret;
     }
 
     final void addRecentTaskLocked(TaskRecord task) {
@@ -2682,7 +2710,7 @@ public final class ActivityManagerService extends ActivityManagerNative
             if (self.state == ActivityState.RESUMED
                     || self.state == ActivityState.PAUSING) {
                 mWindowManager.overridePendingAppTransition(packageName,
-                        enterAnim, exitAnim);
+                        enterAnim, exitAnim, null);
             }
             
             Binder.restoreCallingIdentity(origId);
@@ -3000,7 +3028,7 @@ public final class ActivityManagerService extends ActivityManagerNative
 
         @Override
         public void run() {
-            appNotResponding(mApp, null, null, mAnnotation);
+            appNotResponding(mApp, null, null, false, mAnnotation);
         }
     }
 
@@ -3077,7 +3105,7 @@ public final class ActivityManagerService extends ActivityManagerNative
     }
 
     final void appNotResponding(ProcessRecord app, ActivityRecord activity,
-            ActivityRecord parent, final String annotation) {
+            ActivityRecord parent, boolean aboveSystem, final String annotation) {
         ArrayList<Integer> firstPids = new ArrayList<Integer>(5);
         SparseArray<Boolean> lastPids = new SparseArray<Boolean>(20);
 
@@ -3218,6 +3246,7 @@ public final class ActivityManagerService extends ActivityManagerNative
             HashMap map = new HashMap();
             msg.what = SHOW_NOT_RESPONDING_MSG;
             msg.obj = map;
+            msg.arg1 = aboveSystem ? 1 : 0;
             map.put("app", app);
             if (activity != null) {
                 map.put("activity", activity);
@@ -4231,7 +4260,8 @@ public final class ActivityManagerService extends ActivityManagerNative
 
     public IIntentSender getIntentSender(int type,
             String packageName, IBinder token, String resultWho,
-            int requestCode, Intent[] intents, String[] resolvedTypes, int flags) {
+            int requestCode, Intent[] intents, String[] resolvedTypes,
+            int flags, Bundle options) {
         // Refuse possible leaked file descriptors
         if (intents != null) {
             if (intents.length < 1) {
@@ -4275,7 +4305,7 @@ public final class ActivityManagerService extends ActivityManagerNative
                 }
                 
                 return getIntentSenderLocked(type, packageName, callingUid,
-                        token, resultWho, requestCode, intents, resolvedTypes, flags);
+                        token, resultWho, requestCode, intents, resolvedTypes, flags, options);
                 
             } catch (RemoteException e) {
                 throw new SecurityException(e);
@@ -4285,7 +4315,8 @@ public final class ActivityManagerService extends ActivityManagerNative
     
     IIntentSender getIntentSenderLocked(int type,
             String packageName, int callingUid, IBinder token, String resultWho,
-            int requestCode, Intent[] intents, String[] resolvedTypes, int flags) {
+            int requestCode, Intent[] intents, String[] resolvedTypes, int flags,
+            Bundle options) {
         ActivityRecord activity = null;
         if (type == INTENT_SENDER_ACTIVITY_RESULT) {
             activity = mMainStack.isInStackLocked(token);
@@ -4305,7 +4336,7 @@ public final class ActivityManagerService extends ActivityManagerNative
 
         PendingIntentRecord.Key key = new PendingIntentRecord.Key(
                 type, packageName, activity, resultWho,
-                requestCode, intents, resolvedTypes, flags);
+                requestCode, intents, resolvedTypes, flags, options);
         WeakReference<PendingIntentRecord> ref;
         ref = mIntentSenderRecords.get(key);
         PendingIntentRecord rec = ref != null ? ref.get() : null;
@@ -4405,6 +4436,21 @@ public final class ActivityManagerService extends ActivityManagerNative
                 }
             }
             return true;
+        } catch (ClassCastException e) {
+        }
+        return false;
+    }
+
+    public boolean isIntentSenderAnActivity(IIntentSender pendingResult) {
+        if (!(pendingResult instanceof PendingIntentRecord)) {
+            return false;
+        }
+        try {
+            PendingIntentRecord res = (PendingIntentRecord)pendingResult;
+            if (res.key.type == ActivityManager.INTENT_SENDER_ACTIVITY) {
+                return true;
+            }
+            return false;
         } catch (ClassCastException e) {
         }
         return false;
@@ -5393,6 +5439,18 @@ public final class ActivityManagerService extends ActivityManagerNative
             TaskRecord tr = taskForIdLocked(id);
             if (tr != null) {
                 return mMainStack.getTaskThumbnailsLocked(tr);
+            }
+        }
+        return null;
+    }
+
+    public Bitmap getTaskTopThumbnail(int id) {
+        synchronized (this) {
+            enforceCallingPermission(android.Manifest.permission.READ_FRAME_BUFFER,
+                    "getTaskTopThumbnail()");
+            TaskRecord tr = taskForIdLocked(id);
+            if (tr != null) {
+                return mMainStack.getTaskTopThumbnailLocked(tr);
             }
         }
         return null;
@@ -6497,12 +6555,35 @@ public final class ActivityManagerService extends ActivityManagerNative
         Binder.restoreCallingIdentity(origId);
     }
 
+    private void comeOutOfSleepIfNeededLocked() {
+        if (!mWentToSleep && !mLockScreenShown) {
+            if (mSleeping) {
+                mSleeping = false;
+                mMainStack.awakeFromSleepingLocked();
+                mMainStack.resumeTopActivityLocked(null);
+            }
+        }
+    }
+
     public void wakingUp() {
         synchronized(this) {
             mWindowManager.setEventDispatching(true);
             mSleeping = false;
             mMainStack.awakeFromSleepingLocked();
             mMainStack.resumeTopActivityLocked(null);
+        }
+    }
+
+    public void setLockScreenShown(boolean shown) {
+        if (checkCallingPermission(android.Manifest.permission.DEVICE_POWER)
+                != PackageManager.PERMISSION_GRANTED) {
+            throw new SecurityException("Requires permission "
+                    + android.Manifest.permission.DEVICE_POWER);
+        }
+
+        synchronized(this) {
+            mLockScreenShown = shown;
+            comeOutOfSleepIfNeededLocked();
         }
     }
 
@@ -6641,7 +6722,52 @@ public final class ActivityManagerService extends ActivityManagerNative
             return mController != null;
         }
     }
-    
+
+    public long inputDispatchingTimedOut(int pid, boolean aboveSystem) {
+        if (checkCallingPermission(android.Manifest.permission.FILTER_EVENTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            throw new SecurityException("Requires permission "
+                    + android.Manifest.permission.FILTER_EVENTS);
+        }
+
+        ProcessRecord proc;
+
+        // TODO: Unify this code with ActivityRecord.keyDispatchingTimedOut().
+        synchronized (this) {
+            synchronized (mPidsSelfLocked) {
+                proc = mPidsSelfLocked.get(pid);
+            }
+            if (proc != null) {
+                if (proc.debugging) {
+                    return -1;
+                }
+
+                if (mDidDexOpt) {
+                    // Give more time since we were dexopting.
+                    mDidDexOpt = false;
+                    return -1;
+                }
+
+                if (proc.instrumentationClass != null) {
+                    Bundle info = new Bundle();
+                    info.putString("shortMsg", "keyDispatchingTimedOut");
+                    info.putString("longMsg", "Timed out while dispatching key event");
+                    finishInstrumentationLocked(proc, Activity.RESULT_CANCELED, info);
+                    proc = null;
+                }
+            }
+        }
+
+        if (proc != null) {
+            appNotResponding(proc, null, null, aboveSystem, "keyDispatchingTimedOut");
+            if (proc.instrumentationClass != null || proc.usingWrapper) {
+                return INSTRUMENTATION_KEY_DISPATCHING_TIMEOUT;
+            }
+        }
+
+        return KEY_DISPATCHING_TIMEOUT;
+    }
+
     public void registerActivityWatcher(IActivityWatcher watcher) {
         synchronized (this) {
             mWatchers.register(watcher);
@@ -11791,42 +11917,6 @@ public final class ActivityManagerService extends ActivityManagerNative
             updateOomAdjLocked(r.app);
         }
     }
-
-    void serviceTimeout(ProcessRecord proc) {
-        String anrMessage = null;
-        
-        synchronized(this) {
-            if (proc.executingServices.size() == 0 || proc.thread == null) {
-                return;
-            }
-            long maxTime = SystemClock.uptimeMillis() - SERVICE_TIMEOUT;
-            Iterator<ServiceRecord> it = proc.executingServices.iterator();
-            ServiceRecord timeout = null;
-            long nextTime = 0;
-            while (it.hasNext()) {
-                ServiceRecord sr = it.next();
-                if (sr.executingStart < maxTime) {
-                    timeout = sr;
-                    break;
-                }
-                if (sr.executingStart > nextTime) {
-                    nextTime = sr.executingStart;
-                }
-            }
-            if (timeout != null && mLruProcesses.contains(proc)) {
-                Slog.w(TAG, "Timeout executing service: " + timeout);
-                anrMessage = "Executing service " + timeout.shortName;
-            } else {
-                Message msg = mHandler.obtainMessage(SERVICE_TIMEOUT_MSG);
-                msg.obj = proc;
-                mHandler.sendMessageAtTime(msg, nextTime+SERVICE_TIMEOUT);
-            }
-        }
-        
-        if (anrMessage != null) {
-            appNotResponding(proc, null, null, anrMessage);
-        }
-    }
     
     // =========================================================
     // BACKUP AND RESTORE
@@ -14857,6 +14947,7 @@ public final class ActivityManagerService extends ActivityManagerNative
 
     // Multi-user methods
 
+    private int mCurrentUserId;
     public boolean switchUser(int userid) {
         // TODO
         return true;
