@@ -37,11 +37,11 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.WindowManagerPolicy.WindowManagerFuncs;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
 import com.android.internal.R;
-import com.android.internal.app.ShutdownThread;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.google.android.collect.Lists;
@@ -72,6 +72,8 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
     private static final boolean SHOW_SILENT_TOGGLE = true;
 
     private final Context mContext;
+    private final WindowManagerFuncs mWindowManagerFuncs;
+
     private Context mUiContext;
     private final AudioManager mAudioManager;
 
@@ -91,8 +93,9 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
     /**
      * @param context everything needs a context :(
      */
-    public GlobalActions(Context context) {
+    public GlobalActions(Context context, WindowManagerFuncs windowManagerFuncs) {
         mContext = context;
+        mWindowManagerFuncs = windowManagerFuncs;
         mAudioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
 
         // receive broadcasts
@@ -194,7 +197,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
 
                 public void onPress() {
                     // shutdown by making sure radio and power are handled accordingly.
-                    ShutdownThread.shutdown(getUiContext(), true);
+                    mWindowManagerFuncs.shutdown(true);
                 }
 
                 public boolean showDuringKeyguard() {
@@ -210,7 +213,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         mItems.add(
             new SinglePressAction(com.android.internal.R.drawable.ic_lock_reboot, R.string.global_action_reboot) {
                 public void onPress() {
-                    ShutdownThread.reboot(getUiContext(), "null", true);
+                    mWindowManagerFuncs.reboot();
                 }
 
                 public boolean showDuringKeyguard() {
