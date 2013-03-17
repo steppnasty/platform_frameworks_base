@@ -18,14 +18,14 @@
 #include <utils/Log.h>
 
 #include <android/native_window_jni.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 #include <android_runtime/android_view_Surface.h>
 #include <android_runtime/android_graphics_SurfaceTexture.h>
 
 using namespace android;
 
 ANativeWindow* ANativeWindow_fromSurface(JNIEnv* env, jobject surface) {
-    sp<ANativeWindow> win = android_Surface_getNativeWindow(env, surface);
+    sp<ANativeWindow> win = android_view_Surface_getNativeWindow(env, surface);
     if (win != NULL) {
         win->incStrong((void*)ANativeWindow_acquire);
     }
