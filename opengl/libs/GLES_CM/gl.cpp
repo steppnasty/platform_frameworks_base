@@ -165,27 +165,17 @@ extern "C" {
 #undef CALL_GL_API
 #undef CALL_GL_API_RETURN
 
-
 /*
- * These GL calls are special because they need to EGL to retrieve some
- * informations before they can execute.
+ * glGetString() is special because we expose some extensions in the wrapper
  */
 
-extern "C" void __glEGLImageTargetTexture2DOES(GLenum target, GLeglImageOES image);
-extern "C" void __glEGLImageTargetRenderbufferStorageOES(GLenum target, GLeglImageOES image);
+extern "C" const GLubyte * __glGetString(GLenum name);
 
-
-void glEGLImageTargetTexture2DOES(GLenum target, GLeglImageOES image)
+const GLubyte * glGetString(GLenum name)
 {
-    GLeglImageOES implImage = 
-        (GLeglImageOES)egl_get_image_for_current_context((EGLImageKHR)image);
-    __glEGLImageTargetTexture2DOES(target, implImage);
+    const GLubyte * ret = egl_get_string_for_current_context(name);
+    if (ret == NULL) {
+        ret = __glGetString(name);
+    }
+    return ret;
 }
-
-void glEGLImageTargetRenderbufferStorageOES(GLenum target, GLeglImageOES image)
-{
-    GLeglImageOES implImage = 
-        (GLeglImageOES)egl_get_image_for_current_context((EGLImageKHR)image);
-    __glEGLImageTargetRenderbufferStorageOES(target, implImage);
-}
-

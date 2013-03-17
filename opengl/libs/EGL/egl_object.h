@@ -28,6 +28,7 @@
 #include <GLES/glext.h>
 
 #include <utils/threads.h>
+#include <utils/String8.h>
 
 #include <system/window.h>
 
@@ -124,30 +125,19 @@ void egl_object_t::LocalRef<N,T>::terminate() {
 
 // ----------------------------------------------------------------------------
 
-class egl_surface_t: public egl_object_t {
+class egl_surface_t : public egl_object_t {
 protected:
-    ~egl_surface_t() {
-        ANativeWindow* const window = win.get();
-        if (window != NULL) {
-            native_window_set_buffers_format(window, 0);
-            if (native_window_api_disconnect(window, NATIVE_WINDOW_API_EGL)) {
-                ALOGW("EGLNativeWindowType %p disconnect failed", window);
-            }
-        }
-    }
+    ~egl_surface_t();
 public:
     typedef egl_object_t::LocalRef<egl_surface_t, EGLSurface> Ref;
 
-    egl_surface_t(EGLDisplay dpy, EGLConfig config, EGLNativeWindowType win,
-            EGLSurface surface, int impl, egl_connection_t const* cnx) :
-        egl_object_t(get_display(dpy)), dpy(dpy), surface(surface),
-                config(config), win(win), impl(impl), cnx(cnx) {
-    }
-    EGLDisplay dpy;
+    egl_surface_t(egl_display_t* dpy, EGLConfig config,
+            EGLNativeWindowType win, EGLSurface surface,
+            egl_connection_t const* cnx);
+
     EGLSurface surface;
     EGLConfig config;
     sp<ANativeWindow> win;
-    int impl;
     egl_connection_t const* cnx;
 };
 
@@ -158,56 +148,25 @@ public:
     typedef egl_object_t::LocalRef<egl_context_t, EGLContext> Ref;
 
     egl_context_t(EGLDisplay dpy, EGLContext context, EGLConfig config,
-            int impl, egl_connection_t const* cnx, int version) :
-        egl_object_t(get_display(dpy)), dpy(dpy), context(context),
-                config(config), read(0), draw(0), impl(impl), cnx(cnx),
-                version(version) {
-    }
+            egl_connection_t const* cnx, int version);
+
+    void onLooseCurrent();
+    void onMakeCurrent(EGLSurface draw, EGLSurface read);
+
     EGLDisplay dpy;
     EGLContext context;
     EGLConfig config;
     EGLSurface read;
     EGLSurface draw;
-    int impl;
     egl_connection_t const* cnx;
     int version;
-};
-
-class egl_image_t: public egl_object_t {
-protected:
-    ~egl_image_t() {}
-public:
-    typedef egl_object_t::LocalRef<egl_image_t, EGLImageKHR> Ref;
-
-    egl_image_t(EGLDisplay dpy, EGLContext context) :
-        egl_object_t(get_display(dpy)), dpy(dpy), context(context) {
-        memset(images, 0, sizeof(images));
-    }
-    EGLDisplay dpy;
-    EGLContext context;
-    EGLImageKHR images[IMPL_NUM_IMPLEMENTATIONS];
-};
-
-class egl_sync_t: public egl_object_t {
-protected:
-    ~egl_sync_t() {}
-public:
-    typedef egl_object_t::LocalRef<egl_sync_t, EGLSyncKHR> Ref;
-
-    egl_sync_t(EGLDisplay dpy, EGLContext context, EGLSyncKHR sync) :
-        egl_object_t(get_display(dpy)), dpy(dpy), context(context), sync(sync) {
-    }
-    EGLDisplay dpy;
-    EGLContext context;
-    EGLSyncKHR sync;
+    String8 gl_extensions;
 };
 
 // ----------------------------------------------------------------------------
 
 typedef egl_surface_t::Ref  SurfaceRef;
 typedef egl_context_t::Ref  ContextRef;
-typedef egl_image_t::Ref    ImageRef;
-typedef egl_sync_t::Ref     SyncRef;
 
 // ----------------------------------------------------------------------------
 
@@ -224,16 +183,6 @@ egl_surface_t* get_surface(EGLSurface surface) {
 static inline
 egl_context_t* get_context(EGLContext context) {
     return egl_to_native_cast<egl_context_t>(context);
-}
-
-static inline
-egl_image_t* get_image(EGLImageKHR image) {
-    return egl_to_native_cast<egl_image_t>(image);
-}
-
-static inline
-egl_sync_t* get_sync(EGLSyncKHR sync) {
-    return egl_to_native_cast<egl_sync_t>(sync);
 }
 
 // ----------------------------------------------------------------------------

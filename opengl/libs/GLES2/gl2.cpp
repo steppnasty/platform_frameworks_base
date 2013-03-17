@@ -39,8 +39,6 @@ using namespace android;
 #undef CALL_GL_API
 #undef CALL_GL_API_RETURN
 
-#define DEBUG_CALL_GL_API 0
-
 #if USE_FAST_TLS_KEY
 
     #ifdef HAVE_ARM_TLS_REGISTER
@@ -76,23 +74,9 @@ using namespace android;
 
     #define API_ENTRY(_api) _api
 
-#if DEBUG_CALL_GL_API
-
-    #define CALL_GL_API(_api, ...)                                       \
-        gl_hooks_t::gl_t const * const _c = &getGlThreadSpecific()->gl;  \
-        _c->_api(__VA_ARGS__); \
-        GLenum status = GL_NO_ERROR; \
-        while ((status = glGetError()) != GL_NO_ERROR) { \
-            ALOGD("[" #_api "] 0x%x", status); \
-        }
-
-#else
-
     #define CALL_GL_API(_api, ...)                                       \
         gl_hooks_t::gl_t const * const _c = &getGlThreadSpecific()->gl;  \
         _c->_api(__VA_ARGS__);
-
-#endif
 
     #define CALL_GL_API_RETURN(_api, ...)                                \
         gl_hooks_t::gl_t const * const _c = &getGlThreadSpecific()->gl;  \
@@ -110,27 +94,17 @@ extern "C" {
 #undef CALL_GL_API
 #undef CALL_GL_API_RETURN
 
-
 /*
- * These GL calls are special because they need to EGL to retrieve some
- * informations before they can execute.
+ * glGetString() is special because we expose some extensions in the wrapper
  */
 
-extern "C" void __glEGLImageTargetTexture2DOES(GLenum target, GLeglImageOES image);
-extern "C" void __glEGLImageTargetRenderbufferStorageOES(GLenum target, GLeglImageOES image);
+extern "C" const GLubyte * __glGetString(GLenum name);
 
-
-void glEGLImageTargetTexture2DOES(GLenum target, GLeglImageOES image)
+const GLubyte * glGetString(GLenum name)
 {
-    GLeglImageOES implImage = 
-        (GLeglImageOES)egl_get_image_for_current_context((EGLImageKHR)image);
-    __glEGLImageTargetTexture2DOES(target, implImage);
+    const GLubyte * ret = egl_get_string_for_current_context(name);
+    if (ret == NULL) {
+        ret = __glGetString(name);
+    }
+    return ret;
 }
-
-void glEGLImageTargetRenderbufferStorageOES(GLenum target, GLeglImageOES image)
-{
-    GLeglImageOES implImage = 
-        (GLeglImageOES)egl_get_image_for_current_context((EGLImageKHR)image);
-    __glEGLImageTargetRenderbufferStorageOES(target, implImage);
-}
-

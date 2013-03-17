@@ -14,6 +14,8 @@
  ** limitations under the License.
  */
 
+#define __STDC_LIMIT_MACROS 1
+
 #include <string.h>
 
 #include "egl_cache.h"
@@ -22,6 +24,7 @@
 #include "egl_tls.h"
 #include "egl_impl.h"
 #include "Loader.h"
+#include <cutils/properties.h>
 
 // ----------------------------------------------------------------------------
 namespace android {
@@ -29,7 +32,7 @@ namespace android {
 
 static char const * const sVendorString     = "Android";
 static char const * const sVersionString    = "1.4 Android META-EGL";
-static char const * const sClientApiString  = "OpenGL ES";
+static char const * const sClientApiString  = "OpenGL_ES";
 
 // this is the list of EGL extensions that are exposed to applications
 // some of them are mandatory because used by the ANDROID system.
@@ -49,32 +52,28 @@ static char const * const sExtensionString  =
         "EGL_KHR_gl_texture_cubemap_image "
         "EGL_KHR_gl_renderbuffer_image "
         "EGL_KHR_fence_sync "
+        "EGL_EXT_create_context_robustness "
         "EGL_NV_system_time "
         "EGL_ANDROID_image_native_buffer "      // mandatory
-#ifdef QCOM_HARDWARE
-        "EGL_ANDROID_get_render_buffer "
-#endif
         ;
 
 // extensions not exposed to applications but used by the ANDROID system
 //      "EGL_ANDROID_recordable "               // mandatory
+//      "EGL_ANDROID_framebuffer_target "       // mandatory for HWC 1.1
 //      "EGL_ANDROID_blob_cache "               // strongly recommended
+//      "EGL_ANDROID_native_fence_sync "        // strongly recommended
+//      "EGL_IMG_hibernate_process "            // optional
 
 extern void initEglTraceLevel();
+extern void initEglDebugLevel();
 extern void setGLHooksThreadSpecific(gl_hooks_t const *value);
-
-static int cmp_configs(const void* a, const void *b) {
-    const egl_config_t& c0 = *(egl_config_t const *)a;
-    const egl_config_t& c1 = *(egl_config_t const *)b;
-    return c0<c1 ? -1 : (c1<c0 ? 1 : 0);
-}
 
 // ----------------------------------------------------------------------------
 
 egl_display_t egl_display_t::sDisplay[NUM_DISPLAYS];
 
 egl_display_t::egl_display_t() :
-    magic('_dpy'), numTotalConfigs(0), configs(0), refs(0) {
+    magic('_dpy'), finishOnSwap(false), traceGpuCompletion(false), refs(0) {
 }
 
 egl_display_t::~egl_display_t() {
@@ -122,15 +121,13 @@ EGLDisplay egl_display_t::getDisplay(EGLNativeDisplayType display) {
     // get our driver loader
     Loader& loader(Loader::getInstance());
 
-    for (int i = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-        egl_connection_t* const cnx = &gEGLImpl[i];
-        if (cnx->dso && disp[i].dpy == EGL_NO_DISPLAY) {
-            EGLDisplay dpy = cnx->egl.eglGetDisplay(display);
-            disp[i].dpy = dpy;
-            if (dpy == EGL_NO_DISPLAY) {
-                loader.close(cnx->dso);
-                cnx->dso = NULL;
-            }
+    egl_connection_t* const cnx = &gEGLImpl;
+    if (cnx->dso && disp.dpy == EGL_NO_DISPLAY) {
+        EGLDisplay dpy = cnx->egl.eglGetDisplay(display);
+        disp.dpy = dpy;
+        if (dpy == EGL_NO_DISPLAY) {
+            loader.close(cnx->dso);
+            cnx->dso = NULL;
         }
     }
 
@@ -155,6 +152,7 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
     // Called both at early_init time and at this time. (Early_init is pre-zygote, so
     // the information from that call may be stale.)
     initEglTraceLevel();
+    initEglDebugLevel();
 
 #endif
 
@@ -163,12 +161,11 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
     // initialize each EGL and
     // build our own extension string first, based on the extension we know
     // and the extension supported by our client implementation
-    for (int i = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-        egl_connection_t* const cnx = &gEGLImpl[i];
-        cnx->major = -1;
-        cnx->minor = -1;
-        if (!cnx->dso)
-            continue;
+
+    egl_connection_t* const cnx = &gEGLImpl;
+    cnx->major = -1;
+    cnx->minor = -1;
+    if (cnx->dso) {
 
 #if defined(ADRENO130)
 #warning "Adreno-130 eglInitialize() workaround"
@@ -180,31 +177,30 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
          * eglGetDisplay() before calling eglInitialize();
          */
         if (i == IMPL_HARDWARE) {
-            disp[i].dpy =
-            cnx->egl.eglGetDisplay(EGL_DEFAULT_DISPLAY);
+            disp[i].dpy = cnx->egl.eglGetDisplay(EGL_DEFAULT_DISPLAY);
         }
 #endif
 
-        EGLDisplay idpy = disp[i].dpy;
+        EGLDisplay idpy = disp.dpy;
         if (cnx->egl.eglInitialize(idpy, &cnx->major, &cnx->minor)) {
-            //ALOGD("initialized %d dpy=%p, ver=%d.%d, cnx=%p",
-            //        i, idpy, cnx->major, cnx->minor, cnx);
+            //ALOGD("initialized dpy=%p, ver=%d.%d, cnx=%p",
+            //        idpy, cnx->major, cnx->minor, cnx);
 
             // display is now initialized
-            disp[i].state = egl_display_t::INITIALIZED;
+            disp.state = egl_display_t::INITIALIZED;
 
             // get the query-strings for this display for each implementation
-            disp[i].queryString.vendor = cnx->egl.eglQueryString(idpy,
+            disp.queryString.vendor = cnx->egl.eglQueryString(idpy,
                     EGL_VENDOR);
-            disp[i].queryString.version = cnx->egl.eglQueryString(idpy,
+            disp.queryString.version = cnx->egl.eglQueryString(idpy,
                     EGL_VERSION);
-            disp[i].queryString.extensions = cnx->egl.eglQueryString(idpy,
+            disp.queryString.extensions = cnx->egl.eglQueryString(idpy,
                     EGL_EXTENSIONS);
-            disp[i].queryString.clientApi = cnx->egl.eglQueryString(idpy,
+            disp.queryString.clientApi = cnx->egl.eglQueryString(idpy,
                     EGL_CLIENT_APIS);
 
         } else {
-            ALOGW("%d: eglInitialize(%p) failed (%s)", i, idpy,
+            ALOGW("eglInitialize(%p) failed (%s)", idpy,
                     egl_tls_t::egl_strerror(cnx->egl.eglGetError()));
         }
     }
@@ -214,7 +210,7 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
     mVersionString.setTo(sVersionString);
     mClientApiString.setTo(sClientApiString);
 
-    // we only add extensions that exist in at least one implementation
+    // we only add extensions that exist in the implementation
     char const* start = sExtensionString;
     char const* end;
     do {
@@ -226,15 +222,13 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
             if (len) {
                 // NOTE: we could avoid the copy if we had strnstr.
                 const String8 ext(start, len);
-                // now go through all implementations and look for this extension
-                for (int i = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-                    if (disp[i].queryString.extensions) {
-                        // if we find it, add this extension string to our list
-                        // (and don't forget the space)
-                        const char* match = strstr(disp[i].queryString.extensions, ext.string());
-                        if (match && (match[len] == ' ' || match[len] == 0)) {
-                            mExtensionString.append(start, len+1);
-                        }
+                // now look for this extension
+                if (disp.queryString.extensions) {
+                    // if we find it, add this extension string to our list
+                    // (and don't forget the space)
+                    const char* match = strstr(disp.queryString.extensions, ext.string());
+                    if (match && (match[len] == ' ' || match[len] == 0)) {
+                        mExtensionString.append(start, len+1);
                     }
                 }
             }
@@ -245,52 +239,26 @@ EGLBoolean egl_display_t::initialize(EGLint *major, EGLint *minor) {
 
     egl_cache_t::get()->initialize(this);
 
-    EGLBoolean res = EGL_FALSE;
-    for (int i = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-        egl_connection_t* const cnx = &gEGLImpl[i];
-        if (cnx->dso && cnx->major >= 0 && cnx->minor >= 0) {
-            EGLint n;
-            if (cnx->egl.eglGetConfigs(disp[i].dpy, 0, 0, &n)) {
-                disp[i].config = (EGLConfig*) malloc(sizeof(EGLConfig) * n);
-                if (disp[i].config) {
-                    if (cnx->egl.eglGetConfigs(disp[i].dpy, disp[i].config, n,
-                            &disp[i].numConfigs)) {
-                        numTotalConfigs += n;
-                        res = EGL_TRUE;
-                    }
-                }
-            }
-        }
+    char value[PROPERTY_VALUE_MAX];
+    property_get("debug.egl.finish", value, "0");
+    if (atoi(value)) {
+        finishOnSwap = true;
     }
 
-    if (res == EGL_TRUE) {
-        configs = new egl_config_t[numTotalConfigs];
-        for (int i = 0, k = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-            egl_connection_t* const cnx = &gEGLImpl[i];
-            if (cnx->dso && cnx->major >= 0 && cnx->minor >= 0) {
-                for (int j = 0; j < disp[i].numConfigs; j++) {
-                    configs[k].impl = i;
-                    configs[k].config = disp[i].config[j];
-                    configs[k].configId = k + 1; // CONFIG_ID start at 1
-                    // store the implementation's CONFIG_ID
-                    cnx->egl.eglGetConfigAttrib(disp[i].dpy, disp[i].config[j],
-                            EGL_CONFIG_ID, &configs[k].implConfigId);
-                    k++;
-                }
-            }
-        }
-
-        // sort our configurations so we can do binary-searches
-        qsort(configs, numTotalConfigs, sizeof(egl_config_t), cmp_configs);
-
-        refs++;
-        if (major != NULL)
-            *major = VERSION_MAJOR;
-        if (minor != NULL)
-            *minor = VERSION_MINOR;
-        return EGL_TRUE;
+    property_get("debug.egl.traceGpuCompletion", value, "0");
+    if (atoi(value)) {
+        traceGpuCompletion = true;
     }
-    return setError(EGL_NOT_INITIALIZED, EGL_FALSE);
+
+    refs++;
+    if (major != NULL)
+        *major = VERSION_MAJOR;
+    if (minor != NULL)
+        *minor = VERSION_MINOR;
+
+    mHibernation.setDisplayValid(true);
+
+    return EGL_TRUE;
 }
 
 EGLBoolean egl_display_t::terminate() {
@@ -298,7 +266,13 @@ EGLBoolean egl_display_t::terminate() {
     Mutex::Autolock _l(lock);
 
     if (refs == 0) {
-        return setError(EGL_NOT_INITIALIZED, EGL_FALSE);
+        /*
+         * From the EGL spec (3.2):
+         * "Termination of a display that has already been terminated,
+         *  (...), is allowed, but the only effect of such a call is
+         *  to return EGL_TRUE (...)
+         */
+        return EGL_TRUE;
     }
 
     // this is specific to Android, display termination is ref-counted.
@@ -308,23 +282,22 @@ EGLBoolean egl_display_t::terminate() {
     }
 
     EGLBoolean res = EGL_FALSE;
-    for (int i = 0; i < IMPL_NUM_IMPLEMENTATIONS; i++) {
-        egl_connection_t* const cnx = &gEGLImpl[i];
-        if (cnx->dso && disp[i].state == egl_display_t::INITIALIZED) {
-            if (cnx->egl.eglTerminate(disp[i].dpy) == EGL_FALSE) {
-                ALOGW("%d: eglTerminate(%p) failed (%s)", i, disp[i].dpy,
-                        egl_tls_t::egl_strerror(cnx->egl.eglGetError()));
-            }
-            // REVISIT: it's unclear what to do if eglTerminate() fails
-            free(disp[i].config);
-
-            disp[i].numConfigs = 0;
-            disp[i].config = 0;
-            disp[i].state = egl_display_t::TERMINATED;
-
-            res = EGL_TRUE;
+    egl_connection_t* const cnx = &gEGLImpl;
+    if (cnx->dso && disp.state == egl_display_t::INITIALIZED) {
+        if (cnx->egl.eglTerminate(disp.dpy) == EGL_FALSE) {
+            ALOGW("eglTerminate(%p) failed (%s)", disp.dpy,
+                    egl_tls_t::egl_strerror(cnx->egl.eglGetError()));
         }
+        // REVISIT: it's unclear what to do if eglTerminate() fails
+        disp.state = egl_display_t::TERMINATED;
+        res = EGL_TRUE;
     }
+
+    mHibernation.setDisplayValid(false);
+
+    // Reset the extension string since it will be regenerated if we get
+    // reinitialized.
+    mExtensionString.setTo("");
 
     // Mark all objects remaining in the list as terminated, unless
     // there are no reference to them, it which case, we're free to
@@ -340,11 +313,143 @@ EGLBoolean egl_display_t::terminate() {
     objects.clear();
 
     refs--;
-    numTotalConfigs = 0;
-    delete[] configs;
     return res;
 }
 
+void egl_display_t::loseCurrent(egl_context_t * cur_c)
+{
+    if (cur_c) {
+        egl_display_t* display = cur_c->getDisplay();
+        if (display) {
+            display->loseCurrentImpl(cur_c);
+        }
+    }
+}
+
+void egl_display_t::loseCurrentImpl(egl_context_t * cur_c)
+{
+    // by construction, these are either 0 or valid (possibly terminated)
+    // it should be impossible for these to be invalid
+    ContextRef _cur_c(cur_c);
+    SurfaceRef _cur_r(cur_c ? get_surface(cur_c->read) : NULL);
+    SurfaceRef _cur_d(cur_c ? get_surface(cur_c->draw) : NULL);
+
+    { // scope for the lock
+        Mutex::Autolock _l(lock);
+        cur_c->onLooseCurrent();
+
+    }
+
+    // This cannot be called with the lock held because it might end-up
+    // calling back into EGL (in particular when a surface is destroyed
+    // it calls ANativeWindow::disconnect
+    _cur_c.release();
+    _cur_r.release();
+    _cur_d.release();
+}
+
+EGLBoolean egl_display_t::makeCurrent(egl_context_t* c, egl_context_t* cur_c,
+        EGLSurface draw, EGLSurface read, EGLContext ctx,
+        EGLSurface impl_draw, EGLSurface impl_read, EGLContext impl_ctx)
+{
+    EGLBoolean result;
+
+    // by construction, these are either 0 or valid (possibly terminated)
+    // it should be impossible for these to be invalid
+    ContextRef _cur_c(cur_c);
+    SurfaceRef _cur_r(cur_c ? get_surface(cur_c->read) : NULL);
+    SurfaceRef _cur_d(cur_c ? get_surface(cur_c->draw) : NULL);
+
+    { // scope for the lock
+        Mutex::Autolock _l(lock);
+        if (c) {
+            result = c->cnx->egl.eglMakeCurrent(
+                    disp.dpy, impl_draw, impl_read, impl_ctx);
+            if (result == EGL_TRUE) {
+                c->onMakeCurrent(draw, read);
+                if (!cur_c) {
+                    mHibernation.incWakeCount(HibernationMachine::STRONG);
+                }
+            }
+        } else {
+            result = cur_c->cnx->egl.eglMakeCurrent(
+                    disp.dpy, impl_draw, impl_read, impl_ctx);
+            if (result == EGL_TRUE) {
+                cur_c->onLooseCurrent();
+                mHibernation.decWakeCount(HibernationMachine::STRONG);
+            }
+        }
+    }
+
+    if (result == EGL_TRUE) {
+        // This cannot be called with the lock held because it might end-up
+        // calling back into EGL (in particular when a surface is destroyed
+        // it calls ANativeWindow::disconnect
+        _cur_c.release();
+        _cur_r.release();
+        _cur_d.release();
+    }
+
+    return result;
+}
+
+// ----------------------------------------------------------------------------
+
+bool egl_display_t::HibernationMachine::incWakeCount(WakeRefStrength strength) {
+    Mutex::Autolock _l(mLock);
+    ALOGE_IF(mWakeCount < 0 || mWakeCount == INT32_MAX,
+             "Invalid WakeCount (%d) on enter\n", mWakeCount);
+
+    mWakeCount++;
+    if (strength == STRONG)
+        mAttemptHibernation = false;
+
+    if (CC_UNLIKELY(mHibernating)) {
+        ALOGV("Awakening\n");
+        egl_connection_t* const cnx = &gEGLImpl;
+
+        // These conditions should be guaranteed before entering hibernation;
+        // we don't want to get into a state where we can't wake up.
+        ALOGD_IF(!mDpyValid || !cnx->egl.eglAwakenProcessIMG,
+                 "Invalid hibernation state, unable to awaken\n");
+
+        if (!cnx->egl.eglAwakenProcessIMG()) {
+            ALOGE("Failed to awaken EGL implementation\n");
+            return false;
+        }
+        mHibernating = false;
+    }
+    return true;
+}
+
+void egl_display_t::HibernationMachine::decWakeCount(WakeRefStrength strength) {
+    Mutex::Autolock _l(mLock);
+    ALOGE_IF(mWakeCount <= 0, "Invalid WakeCount (%d) on leave\n", mWakeCount);
+
+    mWakeCount--;
+    if (strength == STRONG)
+        mAttemptHibernation = true;
+
+    if (mWakeCount == 0 && CC_UNLIKELY(mAttemptHibernation)) {
+        egl_connection_t* const cnx = &gEGLImpl;
+        mAttemptHibernation = false;
+        if (mAllowHibernation && mDpyValid &&
+                cnx->egl.eglHibernateProcessIMG &&
+                cnx->egl.eglAwakenProcessIMG) {
+            ALOGV("Hibernating\n");
+            if (!cnx->egl.eglHibernateProcessIMG()) {
+                ALOGE("Failed to hibernate EGL implementation\n");
+                return;
+            }
+            mHibernating = true;
+        }
+    }
+}
+
+void egl_display_t::HibernationMachine::setDisplayValid(bool valid) {
+    Mutex::Autolock _l(mLock);
+    mDpyValid = valid;
+}
 
 // ----------------------------------------------------------------------------
 }; // namespace android

@@ -37,7 +37,7 @@
 #include "egldefs.h"
 #include "egl_impl.h"
 #include "egl_tls.h"
-#include "glesv2dbg.h"
+#include "glestrace.h"
 #include "hooks.h"
 #include "Loader.h"
 
@@ -48,8 +48,8 @@
 namespace android {
 // ----------------------------------------------------------------------------
 
-egl_connection_t gEGLImpl[IMPL_NUM_IMPLEMENTATIONS];
-gl_hooks_t gHooks[2][IMPL_NUM_IMPLEMENTATIONS];
+egl_connection_t gEGLImpl;
+gl_hooks_t gHooks[2];
 gl_hooks_t gHooksNoContext;
 pthread_key_t gGLWrapperKey = -1;
 
@@ -61,13 +61,35 @@ EGLAPI pthread_key_t gGLTraceKey = -1;
 
 // ----------------------------------------------------------------------------
 
-int gEGLDebugLevel;
-
+/**
+ * There are three different tracing methods:
+ * 1. libs/EGL/trace.cpp: Traces all functions to systrace.
+ *    To enable:
+ *      - set system property "debug.egl.trace" to "systrace" to trace all apps.
+ * 2. libs/EGL/trace.cpp: Logs a stack trace for GL errors after each function call.
+ *    To enable:
+ *      - set system property "debug.egl.trace" to "error" to trace all apps.
+ * 3. libs/EGL/trace.cpp: Traces all functions to logcat.
+ *    To enable:
+ *      - set system property "debug.egl.trace" to 1 to trace all apps.
+ *      - or call setGLTraceLevel(1) from an app to enable tracing for that app.
+ * 4. libs/GLES_trace: Traces all functions via protobuf to host.
+ *    To enable:
+ *        - set system property "debug.egl.debug_proc" to the application name.
+ *      - or call setGLDebugLevel(1) from the app.
+ */
 static int sEGLTraceLevel;
 static int sEGLApplicationTraceLevel;
 
+static bool sEGLSystraceEnabled;
+static bool sEGLGetErrorEnabled;
+
+int gEGLDebugLevel;
+static int sEGLApplicationDebugLevel;
+
 extern gl_hooks_t gHooksTrace;
-extern gl_hooks_t gHooksDebug;
+extern gl_hooks_t gHooksSystrace;
+extern gl_hooks_t gHooksErrorTrace;
 
 static inline void setGlTraceThreadSpecific(gl_hooks_t const *value) {
     pthread_setspecific(gGLTraceKey, value);
@@ -80,46 +102,72 @@ gl_hooks_t const* getGLTraceThreadSpecific() {
 void initEglTraceLevel() {
     char value[PROPERTY_VALUE_MAX];
     property_get("debug.egl.trace", value, "0");
+
+    sEGLGetErrorEnabled = !strcasecmp(value, "error");
+    if (sEGLGetErrorEnabled) {
+        sEGLSystraceEnabled = false;
+        sEGLTraceLevel = 0;
+        return;
+    }
+
+    sEGLSystraceEnabled = !strcasecmp(value, "systrace");
+    if (sEGLSystraceEnabled) {
+        sEGLTraceLevel = 0;
+        return;
+    }
+
     int propertyLevel = atoi(value);
     int applicationLevel = sEGLApplicationTraceLevel;
     sEGLTraceLevel = propertyLevel > applicationLevel ? propertyLevel : applicationLevel;
+}
+
+void initEglDebugLevel() {
+    int propertyLevel = 0;
+    char value[PROPERTY_VALUE_MAX];
+
+    // check system property only on userdebug or eng builds
+    property_get("ro.debuggable", value, "0");
+    if (value[0] == '0')
+        return;
 
     property_get("debug.egl.debug_proc", value, "");
-    long pid = getpid();
-    char procPath[128] = {};
-    sprintf(procPath, "/proc/%ld/cmdline", pid);
-    FILE * file = fopen(procPath, "r");
-    if (file)
-    {
-        char cmdline[256] = {};
-        if (fgets(cmdline, sizeof(cmdline) - 1, file))
-        {
-            if (!strcmp(value, cmdline))
-                gEGLDebugLevel = 1;
+    if (strlen(value) > 0) {
+        long pid = getpid();
+        char procPath[128] = {};
+        sprintf(procPath, "/proc/%ld/cmdline", pid);
+        FILE * file = fopen(procPath, "r");
+        if (file) {
+            char cmdline[256] = {};
+            if (fgets(cmdline, sizeof(cmdline) - 1, file)) {
+                if (!strncmp(value, cmdline, strlen(value))) {
+                    // set EGL debug if the "debug.egl.debug_proc" property
+                    // matches the prefix of this application's command line
+                    propertyLevel = 1;
+                }
+            }
+            fclose(file);
         }
-        fclose(file);
     }
 
-    if (gEGLDebugLevel > 0)
-    {
-        property_get("debug.egl.debug_port", value, "5039");
-        const unsigned short port = (unsigned short)atoi(value);
-        property_get("debug.egl.debug_forceUseFile", value, "0");
-        const bool forceUseFile = (bool)atoi(value);
-        property_get("debug.egl.debug_maxFileSize", value, "8");
-        const unsigned int maxFileSize = atoi(value) << 20;
-        property_get("debug.egl.debug_filePath", value, "/data/local/tmp/dump.gles2dbg");
-        StartDebugServer(port, forceUseFile, maxFileSize, value);
+    gEGLDebugLevel = propertyLevel || sEGLApplicationDebugLevel;
+    if (gEGLDebugLevel > 0) {
+        GLTrace_start();
     }
 }
 
 void setGLHooksThreadSpecific(gl_hooks_t const *value) {
-    if (sEGLTraceLevel > 0) {
+    if (sEGLGetErrorEnabled) {
+        setGlTraceThreadSpecific(value);
+        setGlThreadSpecific(&gHooksErrorTrace);
+    } else if (sEGLSystraceEnabled) {
+        setGlTraceThreadSpecific(value);
+        setGlThreadSpecific(&gHooksSystrace);
+    } else if (sEGLTraceLevel > 0) {
         setGlTraceThreadSpecific(value);
         setGlThreadSpecific(&gHooksTrace);
     } else if (gEGLDebugLevel > 0 && value != &gHooksNoContext) {
         setGlTraceThreadSpecific(value);
-        setGlThreadSpecific(&gHooksDebug);
+        setGlThreadSpecific(GLTrace_getGLHooks());
     } else {
         setGlThreadSpecific(value);
     }
@@ -134,6 +182,15 @@ void setGLTraceLevel(int level) {
     sEGLApplicationTraceLevel = level;
 }
 
+/*
+ * Global entry point to allow applications to modify their own debug level.
+ * Debugging is enabled if either the application requested it, or if the system property
+ * matches the application's name.
+ */
+void EGLAPI setGLDebugLevel(int level) {
+    sEGLApplicationDebugLevel = level;
+}
+
 #else
 
 void setGLHooksThreadSpecific(gl_hooks_t const *value) {
@@ -146,8 +203,13 @@ void setGLHooksThreadSpecific(gl_hooks_t const *value) {
 
 static int gl_no_context() {
     if (egl_tls_t::logNoContextCall()) {
-        ALOGE("call to OpenGL ES API with no current context "
-             "(logged once per thread)");
+        char const* const error = "call to OpenGL ES API with "
+                "no current context (logged once per thread)";
+        if (LOG_NDEBUG) {
+            ALOGE(error);
+        } else {
+            LOG_ALWAYS_FATAL(error);
+        }
         char value[PROPERTY_VALUE_MAX];
         property_get("debug.egl.callstack", value, "0");
         if (atoi(value)) {
@@ -167,6 +229,7 @@ static void early_egl_init(void)
 #if EGL_TRACE
     pthread_key_create(&gGLTraceKey, NULL);
     initEglTraceLevel();
+    initEglDebugLevel();
 #endif
     uint32_t addr = (uint32_t)((void*)gl_no_context);
     android_memset32(
@@ -182,58 +245,47 @@ static int sEarlyInitState = pthread_once(&once_control, &early_egl_init);
 
 // ----------------------------------------------------------------------------
 
-egl_display_t* validate_display(EGLDisplay dpy) {
-    egl_display_t * const dp = get_display(dpy);
+egl_display_ptr validate_display(EGLDisplay dpy) {
+    egl_display_ptr dp = get_display(dpy);
     if (!dp)
-        return setError(EGL_BAD_DISPLAY, (egl_display_t*)NULL);
+        return setError(EGL_BAD_DISPLAY, egl_display_ptr(NULL));
     if (!dp->isReady())
-        return setError(EGL_NOT_INITIALIZED, (egl_display_t*)NULL);
+        return setError(EGL_NOT_INITIALIZED, egl_display_ptr(NULL));
 
     return dp;
 }
 
-egl_connection_t* validate_display_config(EGLDisplay dpy, EGLConfig config,
-        egl_display_t const*& dp) {
-    dp = validate_display(dpy);
+egl_display_ptr validate_display_connection(EGLDisplay dpy,
+        egl_connection_t*& cnx) {
+    cnx = NULL;
+    egl_display_ptr dp = validate_display(dpy);
     if (!dp)
-        return (egl_connection_t*) NULL;
-
-    if (intptr_t(config) >= dp->numTotalConfigs) {
-        return setError(EGL_BAD_CONFIG, (egl_connection_t*)NULL);
-    }
-    egl_connection_t* const cnx = &gEGLImpl[dp->configs[intptr_t(config)].impl];
+        return dp;
+    cnx = &gEGLImpl;
     if (cnx->dso == 0) {
-        return setError(EGL_BAD_CONFIG, (egl_connection_t*)NULL);
+        return setError(EGL_BAD_CONFIG, egl_display_ptr(NULL));
     }
-    return cnx;
+    return dp;
 }
 
 // ----------------------------------------------------------------------------
 
-EGLImageKHR egl_get_image_for_current_context(EGLImageKHR image)
-{
+const GLubyte * egl_get_string_for_current_context(GLenum name) {
+    // NOTE: returning NULL here will fall-back to the default
+    // implementation.
+
     EGLContext context = egl_tls_t::getContext();
-    if (context == EGL_NO_CONTEXT || image == EGL_NO_IMAGE_KHR)
-        return EGL_NO_IMAGE_KHR;
+    if (context == EGL_NO_CONTEXT)
+        return NULL;
 
     egl_context_t const * const c = get_context(context);
     if (c == NULL) // this should never happen, by construction
-        return EGL_NO_IMAGE_KHR;
+        return NULL;
 
-    egl_display_t* display = egl_display_t::get(c->dpy);
-    if (display == NULL) // this should never happen, by construction
-        return EGL_NO_IMAGE_KHR;
+    if (name != GL_EXTENSIONS)
+        return NULL;
 
-    ImageRef _i(display, image);
-    if (!_i.get())
-        return EGL_NO_IMAGE_KHR;
-
-    // here we don't validate the context because if it's been marked for
-    // termination, this call should still succeed since it's internal to
-    // EGL.
-
-    egl_image_t const * const i = get_image(image);
-    return i->images[c->impl];
+    return (const GLubyte *)c->gl_extensions.string();
 }
 
 // ----------------------------------------------------------------------------
@@ -251,34 +303,17 @@ static EGLBoolean egl_init_drivers_locked() {
     // get our driver loader
     Loader& loader(Loader::getInstance());
 
-    // dynamically load all our EGL implementations
-    egl_connection_t* cnx;
-
-    cnx = &gEGLImpl[IMPL_SOFTWARE];
+    // dynamically load our EGL implementation
+    egl_connection_t* cnx = &gEGLImpl;
     if (cnx->dso == 0) {
-        cnx->hooks[GLESv1_INDEX] = &gHooks[GLESv1_INDEX][IMPL_SOFTWARE];
-        cnx->hooks[GLESv2_INDEX] = &gHooks[GLESv2_INDEX][IMPL_SOFTWARE];
-        cnx->dso = loader.open(EGL_DEFAULT_DISPLAY, 0, cnx);
+        cnx->hooks[egl_connection_t::GLESv1_INDEX] =
+                &gHooks[egl_connection_t::GLESv1_INDEX];
+        cnx->hooks[egl_connection_t::GLESv2_INDEX] =
+                &gHooks[egl_connection_t::GLESv2_INDEX];
+        cnx->dso = loader.open(cnx);
     }
 
-    cnx = &gEGLImpl[IMPL_HARDWARE];
-    if (cnx->dso == 0) {
-        char value[PROPERTY_VALUE_MAX];
-        property_get("debug.egl.hw", value, "1");
-        if (atoi(value) != 0) {
-            cnx->hooks[GLESv1_INDEX] = &gHooks[GLESv1_INDEX][IMPL_HARDWARE];
-            cnx->hooks[GLESv2_INDEX] = &gHooks[GLESv2_INDEX][IMPL_HARDWARE];
-            cnx->dso = loader.open(EGL_DEFAULT_DISPLAY, 1, cnx);
-        } else {
-            ALOGD("3D hardware acceleration is disabled");
-        }
-    }
-
-    if (!gEGLImpl[IMPL_SOFTWARE].dso && !gEGLImpl[IMPL_HARDWARE].dso) {
-        return EGL_FALSE;
-    }
-
-    return EGL_TRUE;
+    return cnx->dso ? EGL_TRUE : EGL_FALSE;
 }
 
 static pthread_mutex_t sInitDriverMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -293,6 +328,9 @@ EGLBoolean egl_init_drivers() {
 
 void gl_unimplemented() {
     ALOGE("called unimplemented OpenGL ES API");
+}
+
+void gl_noop() {
 }
 
 // ----------------------------------------------------------------------------

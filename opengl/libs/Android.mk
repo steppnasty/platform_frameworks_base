@@ -1,7 +1,5 @@
 LOCAL_PATH:= $(call my-dir)
 
-FLTO_FLAG=$(call cc-option,"-flto", )
-
 ###############################################################################
 # Build META EGL library
 #
@@ -20,9 +18,8 @@ LOCAL_SRC_FILES:= 	       \
 	EGL/Loader.cpp 	       \
 #
 
-LOCAL_CFLAGS += $(FLTO_FLAG) -ffast-math
-LOCAL_SHARED_LIBRARIES += libcutils libutils libGLESv2_dbg
-LOCAL_LDLIBS := $(FLTO_FLAG) -lpthread -ldl
+LOCAL_SHARED_LIBRARIES += libcutils libutils libGLES_trace
+LOCAL_LDLIBS := -lpthread -ldl
 LOCAL_MODULE:= libEGL
 LOCAL_LDFLAGS += -Wl,--exclude-libs=ALL
 LOCAL_SHARED_LIBRARIES += libdl
@@ -39,6 +36,19 @@ LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
 LOCAL_CFLAGS += -fvisibility=hidden
 LOCAL_CFLAGS += -DEGL_TRACE=1
 
+ifeq ($(BOARD_ALLOW_EGL_HIBERNATION),true)
+  LOCAL_CFLAGS += -DBOARD_ALLOW_EGL_HIBERNATION
+endif
+
+ifeq ($(TARGET_BOARD_PLATFORM),msm7k)
+  LOCAL_CFLAGS += -DADRENO130=1
+endif
+
+ifeq ($(TARGET_BOARD_PLATFORM), s5pc110)
+  # see Loader.cpp for details
+  LOCAL_CFLAGS += -DSYSTEMUI_PBSIZE_HACK=1
+endif
+
 ifeq ($(ARCH_ARM_HAVE_TLS_REGISTER),true)
   LOCAL_CFLAGS += -DHAVE_ARM_TLS_REGISTER
 endif
@@ -47,12 +57,12 @@ ifneq ($(MAX_EGL_CACHE_ENTRY_SIZE),)
   LOCAL_CFLAGS += -DMAX_EGL_CACHE_ENTRY_SIZE=$(MAX_EGL_CACHE_ENTRY_SIZE)
 endif
 
-ifneq ($(MAX_EGL_CACHE_SIZE),)
-  LOCAL_CFLAGS += -DMAX_EGL_CACHE_SIZE=$(MAX_EGL_CACHE_SIZE)
+ifneq ($(MAX_EGL_CACHE_KEY_SIZE),)
+  LOCAL_CFLAGS += -DMAX_EGL_CACHE_KEY_SIZE=$(MAX_EGL_CACHE_KEY_SIZE)
 endif
 
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-    LOCAL_CFLAGS += -DQCOM_HARDWARE
+ifneq ($(MAX_EGL_CACHE_SIZE),)
+  LOCAL_CFLAGS += -DMAX_EGL_CACHE_SIZE=$(MAX_EGL_CACHE_SIZE)
 endif
 
 include $(BUILD_SHARED_LIBRARY)
@@ -85,8 +95,7 @@ LOCAL_SRC_FILES:= 		\
 #
 
 LOCAL_SHARED_LIBRARIES += libcutils libEGL
-LOCAL_CFLAGS += $(FLTO_FLAG) -ffast-math
-LOCAL_LDLIBS := $(FLTO_FLAG) -lpthread -ldl
+LOCAL_LDLIBS := -lpthread -ldl
 LOCAL_MODULE:= libGLESv1_CM
 
 LOCAL_SHARED_LIBRARIES += libdl
@@ -117,9 +126,8 @@ LOCAL_SRC_FILES:= 		\
 	GLES2/gl2.cpp.arm 	\
 #
 
-LOCAL_CFLAGS += $(FLTO_FLAG) -ffast-math
-LOCAL_SHARED_LIBRARIES += libcutils libEGL
-LOCAL_LDLIBS := $(FLTO_FLAG) -lpthread -ldl
+LOCAL_SHARED_LIBRARIES += libcutils libutils libEGL
+LOCAL_LDLIBS := -lpthread -ldl
 LOCAL_MODULE:= libGLESv2
 
 LOCAL_SHARED_LIBRARIES += libdl
@@ -164,8 +172,7 @@ LOCAL_SRC_FILES:= 		\
 	ETC1/etc1.cpp 	\
 #
 
-LOCAL_CFLAGS += $(FLTO_FLAG) -ffast-math
-LOCAL_LDLIBS := $(FLTO_FLAG) -lpthread -ldl
+LOCAL_LDLIBS := -lpthread -ldl
 LOCAL_MODULE:= libETC1
 
 include $(BUILD_SHARED_LIBRARY)

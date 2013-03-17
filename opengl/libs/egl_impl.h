@@ -29,7 +29,7 @@
 namespace android {
 // ----------------------------------------------------------------------------
 
-EGLAPI EGLImageKHR egl_get_image_for_current_context(EGLImageKHR image);
+EGLAPI const GLubyte * egl_get_string_for_current_context(GLenum name);
 
 // ----------------------------------------------------------------------------
 }; // namespace android

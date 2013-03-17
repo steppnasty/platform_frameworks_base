@@ -10,6 +10,8 @@ LOCAL_SHARED_LIBRARIES := \
     libGLESv2 \
     libui
 
+LOCAL_C_INCLUDES += $(call include-path-for, opengl-tests-includes)
+
 LOCAL_MODULE:= test-opengl-gl2_copyTexImage
 
 LOCAL_MODULE_TAGS := optional

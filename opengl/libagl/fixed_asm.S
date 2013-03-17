@@ -20,10 +20,8 @@
     .align
     
     .global gglFloatToFixed
-    .hidden gglFloatToFixed
     .type gglFloatToFixed, %function
     .global gglFloatToFixedFast
-    .hidden gglFloatToFixedFast
     .type gglFloatToFixedFast, %function
 
 

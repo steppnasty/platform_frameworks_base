@@ -28,7 +28,7 @@
 #include <EGL/egl.h>
 
 #include "egldefs.h"
-#include "glesv2dbg.h"
+#include "glestrace.h"
 #include "hooks.h"
 #include "Loader.h"
 
@@ -81,6 +81,24 @@ checkGlesEmulationStatus(void)
 
 // ----------------------------------------------------------------------------
 
+static char const * getProcessCmdline() {
+    long pid = getpid();
+    char procPath[128];
+    snprintf(procPath, 128, "/proc/%ld/cmdline", pid);
+    FILE * file = fopen(procPath, "r");
+    if (file) {
+        static char cmdline[256];
+        char *str = fgets(cmdline, sizeof(cmdline) - 1, file);
+        fclose(file);
+        if (str) {
+            return cmdline;
+        }
+    }
+    return NULL;
+}
+
+// ----------------------------------------------------------------------------
+
 Loader::driver_t::driver_t(void* gles) 
 {
     dso[0] = gles;
@@ -118,12 +136,6 @@ status_t Loader::driver_t::set(void* hnd, int32_t api)
 
 // ----------------------------------------------------------------------------
 
-Loader::entry_t::entry_t(int dpy, int impl, const char* tag)
-    : dpy(dpy), impl(impl), tag(tag) {
-}
-
-// ----------------------------------------------------------------------------
-
 Loader::Loader()
 {
     char line[256];
@@ -131,8 +143,9 @@ Loader::Loader()
 
     /* Special case for GLES emulation */
     if (checkGlesEmulationStatus() == 0) {
-        ALOGD("Emulator without GPU support detected. Fallback to software renderer.");
-        gConfig.add( entry_t(0, 0, "android") );
+        ALOGD("Emulator without GPU support detected. "
+              "Fallback to software renderer.");
+        mDriverTag.setTo("android");
         return;
     }
 
@@ -141,14 +154,16 @@ Loader::Loader()
     if (cfg == NULL) {
         // default config
         ALOGD("egl.cfg not found, using default config");
-        gConfig.add( entry_t(0, 0, "android") );
+        mDriverTag.setTo("android");
     } else {
         while (fgets(line, 256, cfg)) {
-            int dpy;
-            int impl;
+            int dpy, impl;
             if (sscanf(line, "%u %u %s", &dpy, &impl, tag) == 3) {
                 //ALOGD(">>> %u %u %s", dpy, impl, tag);
-                gConfig.add( entry_t(dpy, impl, tag) );
+                // We only load the h/w accelerated implementation
+                if (tag != String8("android")) {
+                    mDriverTag = tag;
+                }
             }
         }
         fclose(cfg);
@@ -157,33 +172,15 @@ Loader::Loader()
 
 Loader::~Loader()
 {
-    StopDebugServer();
+    GLTrace_stop();
 }
 
-const char* Loader::getTag(int dpy, int impl)
+void* Loader::open(egl_connection_t* cnx)
 {
-    const Vector<entry_t>& cfgs(gConfig);    
-    const size_t c = cfgs.size();
-    for (size_t i=0 ; i<c ; i++) {
-        if (dpy == cfgs[i].dpy)
-            if (impl == cfgs[i].impl)
-                return cfgs[i].tag.string();
-    }
-    return 0;
-}
-
-void* Loader::open(EGLNativeDisplayType display, int impl, egl_connection_t* cnx)
-{
-    /*
-     * TODO: if we don't find display/0, then use 0/0
-     * (0/0 should always work)
-     */
-    
     void* dso;
-    int index = int(display);
     driver_t* hnd = 0;
     
-    char const* tag = getTag(index, impl);
+    char const* tag = mDriverTag.string();
     if (tag) {
         dso = load_driver("GLES", tag, cnx, EGL | GLESv1_CM | GLESv2);
         if (dso) {
@@ -193,16 +190,14 @@ void* Loader::open(EGLNativeDisplayType display, int impl, egl_connection_t* cnx
             dso = load_driver("EGL", tag, cnx, EGL);
             if (dso) {
                 hnd = new driver_t(dso);
-
                 // TODO: make this more automated
                 hnd->set( load_driver("GLESv1_CM", tag, cnx, GLESv1_CM), GLESv1_CM );
-
-                hnd->set( load_driver("GLESv2", tag, cnx, GLESv2), GLESv2 );
+                hnd->set( load_driver("GLESv2",    tag, cnx, GLESv2),    GLESv2 );
             }
         }
     }
 
-    LOG_FATAL_IF(!index && !impl && !hnd, 
+    LOG_FATAL_IF(!index && !hnd,
             "couldn't find the default OpenGL ES implementation "
             "for default display");
     
@@ -221,7 +216,7 @@ void Loader::init_api(void* dso,
         __eglMustCastToProperFunctionPointerType* curr, 
         getProcAddressType getProcAddress) 
 {
-    const size_t SIZE = 256;
+    const ssize_t SIZE = 256;
     char scrap[SIZE];
     while (*api) {
         char const * name = *api;
@@ -253,6 +248,19 @@ void Loader::init_api(void* dso,
         if (f == NULL) {
             //ALOGD("%s", name);
             f = (__eglMustCastToProperFunctionPointerType)gl_unimplemented;
+
+            /*
+             * GL_EXT_debug_label is special, we always report it as
+             * supported, it's handled by GLES_trace. If GLES_trace is not
+             * enabled, then these are no-ops.
+             */
+            if (!strcmp(name, "glInsertEventMarkerEXT")) {
+                f = (__eglMustCastToProperFunctionPointerType)gl_noop;
+            } else if (!strcmp(name, "glPushGroupMarkerEXT")) {
+                f = (__eglMustCastToProperFunctionPointerType)gl_noop;
+            } else if (!strcmp(name, "glPopGroupMarkerEXT")) {
+                f = (__eglMustCastToProperFunctionPointerType)gl_noop;
+            }
         }
         *curr++ = f;
         api++;
@@ -290,6 +298,35 @@ void *Loader::load_driver(const char* kind, const char *tag,
         ALOGE_IF(!getProcAddress, 
                 "can't find eglGetProcAddress() in %s", driver_absolute_path);
 
+#ifdef SYSTEMUI_PBSIZE_HACK
+#warning "SYSTEMUI_PBSIZE_HACK enabled"
+        /*
+         * TODO: replace SYSTEMUI_PBSIZE_HACK by something less hackish
+         *
+         * Here we adjust the PB size from its default value to 512KB which
+         * is the minimum acceptable for the systemui process.
+         * We do this on low-end devices only because it allows us to enable
+         * h/w acceleration in the systemui process while keeping the
+         * memory usage down.
+         *
+         * Obviously, this is the wrong place and wrong way to make this
+         * adjustment, but at the time of this writing this was the safest
+         * solution.
+         */
+        const char *cmdline = getProcessCmdline();
+        if (strstr(cmdline, "systemui")) {
+            void *imgegl = dlopen("/vendor/lib/libIMGegl.so", RTLD_LAZY);
+            if (imgegl) {
+                unsigned int *PVRDefaultPBS =
+                        (unsigned int *)dlsym(imgegl, "PVRDefaultPBS");
+                if (PVRDefaultPBS) {
+                    ALOGD("setting default PBS to 512KB, was %d KB", *PVRDefaultPBS / 1024);
+                    *PVRDefaultPBS = 512*1024;
+                }
+            }
+        }
+#endif
+
         egl_t* egl = &cnx->egl;
         __eglMustCastToProperFunctionPointerType* curr =
             (__eglMustCastToProperFunctionPointerType*)egl;
@@ -311,18 +348,16 @@ void *Loader::load_driver(const char* kind, const char *tag,
     }
     
     if (mask & GLESv1_CM) {
-        void *gl=&cnx->hooks[GLESv1_INDEX]->gl;
         init_api(dso, gl_names,
             (__eglMustCastToProperFunctionPointerType*)
-                gl,
+                &cnx->hooks[egl_connection_t::GLESv1_INDEX]->gl,
             getProcAddress);
     }
 
     if (mask & GLESv2) {
-      void *gl=&cnx->hooks[GLESv2_INDEX]->gl;
       init_api(dso, gl_names,
             (__eglMustCastToProperFunctionPointerType*)
-                gl,
+                &cnx->hooks[egl_connection_t::GLESv2_INDEX]->gl,
             getProcAddress);
     }
     

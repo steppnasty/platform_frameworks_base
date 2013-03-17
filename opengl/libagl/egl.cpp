@@ -30,6 +30,8 @@
 #include <cutils/atomic.h>
 
 #include <utils/threads.h>
+#include <ui/ANativeObjectBase.h>
+#include <ui/Fence.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -39,8 +41,6 @@
 #include <pixelflinger/format.h>
 #include <pixelflinger/pixelflinger.h>
 
-#include <private/ui/android_natives_priv.h>
-
 #include "context.h"
 #include "state.h"
 #include "texture.h"
@@ -49,13 +49,14 @@
 #undef NELEM
 #define NELEM(x) (sizeof(x)/sizeof(*(x)))
 
+// ----------------------------------------------------------------------------
 
 EGLBoolean EGLAPI eglSetSwapRectangleANDROID(EGLDisplay dpy, EGLSurface draw,
         EGLint left, EGLint top, EGLint width, EGLint height);
 
-
 // ----------------------------------------------------------------------------
 namespace android {
+
 // ----------------------------------------------------------------------------
 
 const unsigned int NUM_DISPLAYS = 1;
@@ -165,9 +166,6 @@ struct egl_surface_t
     virtual     EGLint      getSwapBehavior() const;
     virtual     EGLBoolean  swapBuffers();
     virtual     EGLBoolean  setSwapRectangle(EGLint l, EGLint t, EGLint w, EGLint h);
-#ifdef QCOM_HARDWARE
-    virtual     EGLClientBuffer getRenderBuffer() const;
-#endif
 protected:
     GGLSurface              depth;
 };
@@ -211,11 +209,6 @@ EGLBoolean egl_surface_t::setSwapRectangle(
 {
     return EGL_FALSE;
 }
-#ifdef QCOM_HARDWARE
-EGLClientBuffer egl_surface_t::getRenderBuffer() const {
-    return 0;
-}
-#endif
 
 // ----------------------------------------------------------------------------
 
@@ -241,9 +234,6 @@ struct egl_window_surface_v2_t : public egl_surface_t
     virtual     EGLint      getRefreshRate() const;
     virtual     EGLint      getSwapBehavior() const;
     virtual     EGLBoolean  setSwapRectangle(EGLint l, EGLint t, EGLint w, EGLint h);
-#ifdef QCOM_HARDWARE
-    virtual     EGLClientBuffer  getRenderBuffer() const;
-#endif
     
 private:
     status_t lock(ANativeWindowBuffer* buf, int usage, void** vaddr);
@@ -383,7 +373,16 @@ EGLBoolean egl_window_surface_v2_t::connect()
             GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN);
 
     // dequeue a buffer
-    if (nativeWindow->dequeueBuffer(nativeWindow, &buffer) != NO_ERROR) {
+    int fenceFd = -1;
+    if (nativeWindow->dequeueBuffer(nativeWindow, &buffer,
+            &fenceFd) != NO_ERROR) {
+        return setError(EGL_BAD_ALLOC, EGL_FALSE);
+    }
+
+    // wait for the buffer
+    sp<Fence> fence(new Fence(fenceFd));
+    if (fence->wait(Fence::TIMEOUT_NEVER) != NO_ERROR) {
+        nativeWindow->cancelBuffer(nativeWindow, buffer, fenceFd);
         return setError(EGL_BAD_ALLOC, EGL_FALSE);
     }
 
@@ -403,8 +402,6 @@ EGLBoolean egl_window_surface_v2_t::connect()
     // keep a reference on the buffer
     buffer->common.incRef(&buffer->common);
 
-    // Lock the buffer
-    nativeWindow->lockBuffer(nativeWindow, buffer);
     // pin the buffer down
     if (lock(buffer, GRALLOC_USAGE_SW_READ_OFTEN | 
             GRALLOC_USAGE_SW_WRITE_OFTEN, &bits) != NO_ERROR) {
@@ -423,7 +420,7 @@ void egl_window_surface_v2_t::disconnect()
         unlock(buffer);
     }
     // enqueue the last frame
-    nativeWindow->queueBuffer(nativeWindow, buffer);
+    nativeWindow->queueBuffer(nativeWindow, buffer, -1);
     if (buffer) {
         buffer->common.decRef(&buffer->common);
         buffer = 0;
@@ -528,15 +525,17 @@ EGLBoolean egl_window_surface_v2_t::swapBuffers()
     
     unlock(buffer);
     previousBuffer = buffer;
-    nativeWindow->queueBuffer(nativeWindow, buffer);
+    nativeWindow->queueBuffer(nativeWindow, buffer, -1);
     buffer = 0;
 
     // dequeue a new buffer
-    if (nativeWindow->dequeueBuffer(nativeWindow, &buffer) == NO_ERROR) {
-
-        // TODO: lockBuffer should rather be executed when the very first
-        // direct rendering occurs.
-        nativeWindow->lockBuffer(nativeWindow, buffer);
+    int fenceFd = -1;
+    if (nativeWindow->dequeueBuffer(nativeWindow, &buffer, &fenceFd) == NO_ERROR) {
+        sp<Fence> fence(new Fence(fenceFd));
+        if (fence->wait(Fence::TIMEOUT_NEVER)) {
+            nativeWindow->cancelBuffer(nativeWindow, buffer, fenceFd);
+            return setError(EGL_BAD_ALLOC, EGL_FALSE);
+        }
 
         // reallocate the depth-buffer if needed
         if ((width != buffer->width) || (height != buffer->height)) {
@@ -581,13 +580,6 @@ EGLBoolean egl_window_surface_v2_t::setSwapRectangle(
     dirtyRegion = Rect(l, t, l+w, t+h);
     return EGL_TRUE;
 }
-
-#ifdef QCOM_HARDWARE
-EGLClientBuffer egl_window_surface_v2_t::getRenderBuffer() const
-{
-    return buffer;
-}
-#endif
 
 EGLBoolean egl_window_surface_v2_t::bindDrawSurface(ogles_context_t* gl)
 {
@@ -812,15 +804,13 @@ struct config_management_t {
 #define VERSION_MINOR 2
 static char const * const gVendorString     = "Google Inc.";
 static char const * const gVersionString    = "1.2 Android Driver 1.2.0";
-static char const * const gClientApiString  = "OpenGL ES";
+static char const * const gClientApiString  = "OpenGL_ES";
 static char const * const gExtensionsString =
+        "EGL_KHR_fence_sync "
         "EGL_KHR_image_base "
         // "KHR_image_pixmap "
         "EGL_ANDROID_image_native_buffer "
         "EGL_ANDROID_swap_rectangle "
-#ifdef QCOM_HARDWARE
-        "EGL_ANDROID_get_render_buffer "
-#endif
         ;
 
 // ----------------------------------------------------------------------------
@@ -871,12 +861,16 @@ static const extention_map_t gExtentionMap[] = {
             (__eglMustCastToProperFunctionPointerType)&eglCreateImageKHR }, 
     { "eglDestroyImageKHR", 
             (__eglMustCastToProperFunctionPointerType)&eglDestroyImageKHR }, 
+    { "eglCreateSyncKHR",
+            (__eglMustCastToProperFunctionPointerType)&eglCreateSyncKHR },
+    { "eglDestroySyncKHR",
+            (__eglMustCastToProperFunctionPointerType)&eglDestroySyncKHR },
+    { "eglClientWaitSyncKHR",
+            (__eglMustCastToProperFunctionPointerType)&eglClientWaitSyncKHR },
+    { "eglGetSyncAttribKHR",
+            (__eglMustCastToProperFunctionPointerType)&eglGetSyncAttribKHR },
     { "eglSetSwapRectangleANDROID", 
             (__eglMustCastToProperFunctionPointerType)&eglSetSwapRectangleANDROID }, 
-#ifdef QCOM_HARDWARE
-    { "eglGetRenderBufferANDROID",
-            (__eglMustCastToProperFunctionPointerType)&eglGetRenderBufferANDROID },
-#endif
 };
 
 /*
@@ -887,7 +881,7 @@ static const extention_map_t gExtentionMap[] = {
 
 static config_pair_t const config_base_attribute_list[] = {
         { EGL_STENCIL_SIZE,               0                                 },
-        { EGL_CONFIG_CAVEAT,              EGL_NON_CONFORMANT_CONFIG         },
+        { EGL_CONFIG_CAVEAT,              EGL_SLOW_CONFIG                   },
         { EGL_LEVEL,                      0                                 },
         { EGL_MAX_PBUFFER_HEIGHT,         GGL_MAX_VIEWPORT_DIMS             },
         { EGL_MAX_PBUFFER_PIXELS,
@@ -2082,6 +2076,74 @@ EGLBoolean eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR img)
 }
 
 // ----------------------------------------------------------------------------
+// EGL_KHR_fence_sync
+// ----------------------------------------------------------------------------
+
+#define FENCE_SYNC_HANDLE ((EGLSyncKHR)0xFE4CE)
+
+EGLSyncKHR eglCreateSyncKHR(EGLDisplay dpy, EGLenum type,
+        const EGLint *attrib_list)
+{
+    if (egl_display_t::is_valid(dpy) == EGL_FALSE) {
+        return setError(EGL_BAD_DISPLAY, EGL_NO_SYNC_KHR);
+    }
+
+    if (type != EGL_SYNC_FENCE_KHR ||
+            (attrib_list != NULL && attrib_list[0] != EGL_NONE)) {
+        return setError(EGL_BAD_ATTRIBUTE, EGL_NO_SYNC_KHR);
+    }
+
+    if (eglGetCurrentContext() == EGL_NO_CONTEXT) {
+        return setError(EGL_BAD_MATCH, EGL_NO_SYNC_KHR);
+    }
+
+    // AGL is synchronous; nothing to do here.
+
+    return FENCE_SYNC_HANDLE;
+}
+
+EGLBoolean eglDestroySyncKHR(EGLDisplay dpy, EGLSyncKHR sync)
+{
+    if (sync != FENCE_SYNC_HANDLE) {
+        return setError(EGL_BAD_PARAMETER, EGL_FALSE);
+    }
+
+    return EGL_TRUE;
+}
+
+EGLint eglClientWaitSyncKHR(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags,
+        EGLTimeKHR timeout)
+{
+    if (sync != FENCE_SYNC_HANDLE) {
+        return setError(EGL_BAD_PARAMETER, EGL_FALSE);
+    }
+
+    return EGL_CONDITION_SATISFIED_KHR;
+}
+
+EGLBoolean eglGetSyncAttribKHR(EGLDisplay dpy, EGLSyncKHR sync,
+        EGLint attribute, EGLint *value)
+{
+    if (sync != FENCE_SYNC_HANDLE) {
+        return setError(EGL_BAD_PARAMETER, EGL_FALSE);
+    }
+
+    switch (attribute) {
+    case EGL_SYNC_TYPE_KHR:
+        *value = EGL_SYNC_FENCE_KHR;
+        return EGL_TRUE;
+    case EGL_SYNC_STATUS_KHR:
+        *value = EGL_SIGNALED_KHR;
+        return EGL_TRUE;
+    case EGL_SYNC_CONDITION_KHR:
+        *value = EGL_SYNC_PRIOR_COMMANDS_COMPLETE_KHR;
+        return EGL_TRUE;
+    default:
+        return setError(EGL_BAD_ATTRIBUTE, EGL_FALSE);
+    }
+}
+
+// ----------------------------------------------------------------------------
 // ANDROID extensions
 // ----------------------------------------------------------------------------
 
@@ -2102,20 +2164,3 @@ EGLBoolean eglSetSwapRectangleANDROID(EGLDisplay dpy, EGLSurface draw,
 
     return EGL_TRUE;
 }
-
-#ifdef QCOM_HARDWARE
-EGLClientBuffer eglGetRenderBufferANDROID(EGLDisplay dpy, EGLSurface draw)
-{
-    if (egl_display_t::is_valid(dpy) == EGL_FALSE)
-        return setError(EGL_BAD_DISPLAY, (EGLClientBuffer)0);
-
-    egl_surface_t* d = static_cast<egl_surface_t*>(draw);
-    if (!d->isValid())
-        return setError(EGL_BAD_SURFACE, (EGLClientBuffer)0);
-    if (d->dpy != dpy)
-        return setError(EGL_BAD_DISPLAY, (EGLClientBuffer)0);
-
-    // post the surface
-    return d->getRenderBuffer();
-}
-#endif
