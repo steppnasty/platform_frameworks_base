@@ -72,6 +72,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
+import android.view.animation.Transformation;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -965,6 +966,166 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      */
     static final int PARENT_SAVE_DISABLED_MASK = 0x20000000;
 
+    // for mPrivateFlags:
+    /** {@hide} */
+    static final int PFLAG_WANTS_FOCUS                 = 0x00000001;
+    /** {@hide} */
+    static final int PFLAG_FOCUSED                     = 0x00000002;
+    /** {@hide} */
+    static final int PFLAG_SELECTED                    = 0x00000004;
+    /** {@hide} */
+    static final int PFLAG_IS_ROOT_NAMESPACE           = 0x00000008;
+    /** {@hide} */
+    static final int PFLAG_HAS_BOUNDS                  = 0x00000010;
+    /** {@hide} */
+    static final int PFLAG_DRAWN                       = 0x00000020;
+    /**
+     * When this flag is set, this view is running an animation on behalf of its
+     * children and should therefore not cancel invalidate requests, even if they
+     * lie outside of this view's bounds.
+     *
+     * {@hide}
+     */
+    static final int PFLAG_DRAW_ANIMATION              = 0x00000040;
+    /** {@hide} */
+    static final int PFLAG_SKIP_DRAW                   = 0x00000080;
+    /** {@hide} */
+    static final int PFLAG_ONLY_DRAWS_BACKGROUND       = 0x00000100;
+    /** {@hide} */
+    static final int PFLAG_REQUEST_TRANSPARENT_REGIONS = 0x00000200;
+    /** {@hide} */
+    static final int PFLAG_DRAWABLE_STATE_DIRTY        = 0x00000400;
+    /** {@hide} */
+    static final int PFLAG_MEASURED_DIMENSION_SET      = 0x00000800;
+    /** {@hide} */
+    static final int PFLAG_FORCE_LAYOUT                = 0x00001000;
+    /** {@hide} */
+    static final int PFLAG_LAYOUT_REQUIRED             = 0x00002000;
+
+    private static final int PFLAG_PRESSED             = 0x00004000;
+
+    /** {@hide} */
+    static final int PFLAG_DRAWING_CACHE_VALID         = 0x00008000;
+    /**
+     * Flag used to indicate that this view should be drawn once more (and only once
+     * more) after its animation has completed.
+     * {@hide}
+     */
+    static final int PFLAG_ANIMATION_STARTED           = 0x00010000;
+
+    private static final int PFLAG_SAVE_STATE_CALLED   = 0x00020000;
+
+    /**
+     * Indicates that the View returned true when onSetAlpha() was called and that
+     * the alpha must be restored.
+     * {@hide}
+     */
+    static final int PFLAG_ALPHA_SET                   = 0x00040000;
+
+    /**
+     * Set by {@link #setScrollContainer(boolean)}.
+     */
+    static final int PFLAG_SCROLL_CONTAINER            = 0x00080000;
+
+    /**
+     * Set by {@link #setScrollContainer(boolean)}.
+     */
+    static final int PFLAG_SCROLL_CONTAINER_ADDED      = 0x00100000;
+
+    /**
+     * View flag indicating whether this view was invalidated (fully or partially.)
+     *
+     * @hide
+     */
+    static final int PFLAG_DIRTY                       = 0x00200000;
+
+    /**
+     * View flag indicating whether this view was invalidated by an opaque
+     * invalidate request.
+     *
+     * @hide
+     */
+    static final int PFLAG_DIRTY_OPAQUE                = 0x00400000;
+
+    /**
+     * Mask for {@link #PFLAG_DIRTY} and {@link #PFLAG_DIRTY_OPAQUE}.
+     *
+     * @hide
+     */
+    static final int PFLAG_DIRTY_MASK                  = 0x00600000;
+
+    /**
+     * Indicates whether the background is opaque.
+     *
+     * @hide
+     */
+    static final int PFLAG_OPAQUE_BACKGROUND           = 0x00800000;
+
+    /**
+     * Indicates whether the scrollbars are opaque.
+     *
+     * @hide
+     */
+    static final int PFLAG_OPAQUE_SCROLLBARS           = 0x01000000;
+
+    /**
+     * Indicates whether the view is opaque.
+     *
+     * @hide
+     */
+    static final int PFLAG_OPAQUE_MASK                 = 0x01800000;
+
+    /**
+     * Indicates a prepressed state;
+     * the short time between ACTION_DOWN and recognizing
+     * a 'real' press. Prepressed is used to recognize quick taps
+     * even when they are shorter than ViewConfiguration.getTapTimeout().
+     *
+     * @hide
+     */
+    private static final int PFLAG_PREPRESSED          = 0x02000000;
+
+    /**
+     * Indicates whether the view is temporarily detached.
+     *
+     * @hide
+     */
+    static final int PFLAG_CANCEL_NEXT_UP_EVENT        = 0x04000000;
+
+    /**
+     * Indicates that we should awaken scroll bars once attached
+     *
+     * @hide
+     */
+    private static final int PFLAG_AWAKEN_SCROLL_BARS_ON_ATTACH = 0x08000000;
+
+    /**
+     * Indicates that the view has received HOVER_ENTER.  Cleared on HOVER_EXIT.
+     * @hide
+     */
+    private static final int PFLAG_HOVERED             = 0x10000000;
+
+    /**
+     * Indicates that pivotX or pivotY were explicitly set and we should not assume the center
+     * for transform operations
+     *
+     * @hide
+     */
+    private static final int PFLAG_PIVOT_EXPLICITLY_SET = 0x20000000;
+
+    /** {@hide} */
+    static final int PFLAG_ACTIVATED                   = 0x40000000;
+
+    /**
+     * Indicates that this view was specifically invalidated, not just dirtied because some
+     * child view was invalidated. The flag is used to determine when we need to recreate
+     * a view's display list (as opposed to just returning a reference to its existing
+     * display list).
+     *
+     * @hide
+     */
+    static final int PFLAG_INVALIDATED                 = 0x80000000;
+
     /**
      * Horizontal direction of this view is from Left to Right.
      * Use with {@link #setLayoutDirection}.
@@ -1827,6 +1988,33 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
             << PFLAG2_IMPORTANT_FOR_ACCESSIBILITY_SHIFT;
 
     /**
+     * Flag indicating whether a view failed the quickReject() check in draw(). This condition
+     * is used to check whether later changes to the view's transform should invalidate the
+     * view to force the quickReject test to run again.
+     */
+    static final int PFLAG2_VIEW_QUICK_REJECTED = 0x10000000;
+
+    // There are a couple of flags left in mPrivateFlags2
+
+    /* End of masks for mPrivateFlags2 */
+
+    /* Masks for mPrivateFlags3 */
+
+    /**
+     * Flag indicating that view has a transform animation set on it. This is used to track whether
+     * an animation is cleared between successive frames, in order to tell the associated
+     * DisplayList to clear its animation matrix.
+     */
+    static final int PFLAG3_VIEW_IS_ANIMATING_TRANSFORM = 0x1;
+
+    /**
+     * Flag indicating that view has an alpha animation set on it. This is used to track whether an
+     * animation is cleared between successive frames, in order to tell the associated
+     * DisplayList to restore its alpha value.
+     */
+    static final int PFLAG3_VIEW_IS_ANIMATING_ALPHA = 0x2;
+
+    /**
      * Always allow a user to over-scroll this view, provided it is a
      * view that can scroll.
      *
@@ -2199,6 +2387,7 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     })
     int mPrivateFlags;
     int mPrivateFlags2;
+    int mPrivateFlags3;
 
     /**
      * This view's request for the visibility of the status bar.
@@ -5698,12 +5887,6 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
 
         handleFocusGainInternal(direction, previouslyFocusedRect);
         return true;
-    }
-
-    /** Gets the ViewAncestor, or null if not attached. */
-    /*package*/ ViewRootImpl getViewRootImpl() {
-        View root = getRootView();
-        return root != null ? (ViewRootImpl)root.getParent() : null;
     }
 
     /**
@@ -9442,6 +9625,18 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
     }
 
     /**
+     * Gets the view root associated with the View.
+     * @return The view root, or null if none.
+     * @hide
+     */
+    public ViewRootImpl getViewRootImpl() {
+        if (mAttachInfo != null) {
+            return mAttachInfo.mViewRootImpl;
+        }
+        return null;
+    }
+
+    /**
      * <p>Causes the Runnable to be added to the message queue.
      * The runnable will be run on the user interface thread.</p>
      * 
@@ -11672,6 +11867,411 @@ public class View implements Drawable.Callback, Drawable.Callback2, KeyEvent.Cal
      */
     public boolean isHardwareAccelerated() {
         return mAttachInfo != null && mAttachInfo.mHardwareAccelerated;
+    }
+
+    /**
+     * Utility function, called by draw(canvas, parent, drawingTime) to handle the less common
+     * case of an active Animation being run on the view.
+     */
+    private boolean drawAnimation(ViewGroup parent, long drawingTime,
+            Animation a, boolean scalingRequired) {
+        Transformation invalidationTransform;
+        final int flags = parent.mGroupFlags;
+        final boolean initialized = a.isInitialized();
+        if (!initialized) {
+            a.initialize(mRight - mLeft, mBottom - mTop, parent.getWidth(), parent.getHeight());
+            a.initializeInvalidateRegion(0, 0, mRight - mLeft, mBottom - mTop);
+            if (mAttachInfo != null) a.setListenerHandler(mAttachInfo.mHandler);
+            onAnimationStart();
+        }
+
+        boolean more = a.getTransformation(drawingTime, parent.mChildTransformation, 1f);
+        if (scalingRequired && mAttachInfo.mApplicationScale != 1f) {
+            if (parent.mInvalidationTransformation == null) {
+                parent.mInvalidationTransformation = new Transformation();
+            }
+            invalidationTransform = parent.mInvalidationTransformation;
+            a.getTransformation(drawingTime, invalidationTransform, 1f);
+        } else {
+            invalidationTransform = parent.mChildTransformation;
+        }
+
+        if (more) {
+            if (!a.willChangeBounds()) {
+                if ((flags & (ViewGroup.FLAG_OPTIMIZE_INVALIDATE | ViewGroup.FLAG_ANIMATION_DONE)) ==
+                        ViewGroup.FLAG_OPTIMIZE_INVALIDATE) {
+                    parent.mGroupFlags |= ViewGroup.FLAG_INVALIDATE_REQUIRED;
+                } else if ((flags & ViewGroup.FLAG_INVALIDATE_REQUIRED) == 0) {
+                    // The child need to draw an animation, potentially offscreen, so
+                    // make sure we do not cancel invalidate requests
+                    parent.mPrivateFlags |= PFLAG_DRAW_ANIMATION;
+                    parent.invalidate(mLeft, mTop, mRight, mBottom);
+                }
+            } else {
+                if (parent.mInvalidateRegion == null) {
+                    parent.mInvalidateRegion = new RectF();
+                }
+                final RectF region = parent.mInvalidateRegion;
+                a.getInvalidateRegion(0, 0, mRight - mLeft, mBottom - mTop, region,
+                        invalidationTransform);
+
+                // The child need to draw an animation, potentially offscreen, so
+                // make sure we do not cancel invalidate requests
+                parent.mPrivateFlags |= PFLAG_DRAW_ANIMATION;
+
+                final int left = mLeft + (int) region.left;
+                final int top = mTop + (int) region.top;
+                parent.invalidate(left, top, left + (int) (region.width() + .5f),
+                        top + (int) (region.height() + .5f));
+            }
+        }
+        return more;
+    }
+
+    /**
+     * This method is called by ViewGroup.drawChild() to have each child view draw itself.
+     * This draw() method is an implementation detail and is not intended to be overridden or
+     * to be called from anywhere else other than ViewGroup.drawChild().
+     */
+    boolean draw(Canvas canvas, ViewGroup parent, long drawingTime) {
+        boolean useDisplayListProperties = mAttachInfo != null && mAttachInfo.mHardwareAccelerated;
+        boolean more = false;
+        final boolean childHasIdentityMatrix = hasIdentityMatrix();
+        final int flags = parent.mGroupFlags;
+
+        if ((flags & ViewGroup.FLAG_CLEAR_TRANSFORMATION) == ViewGroup.FLAG_CLEAR_TRANSFORMATION) {
+            parent.mChildTransformation.clear();
+            parent.mGroupFlags &= ~ViewGroup.FLAG_CLEAR_TRANSFORMATION;
+        }
+
+        Transformation transformToApply = null;
+        boolean concatMatrix = false;
+
+        boolean scalingRequired = false;
+        boolean caching;
+        int layerType = getLayerType();
+
+        final boolean hardwareAccelerated = canvas.isHardwareAccelerated();
+        if ((flags & ViewGroup.FLAG_CHILDREN_DRAWN_WITH_CACHE) != 0 ||
+                (flags & ViewGroup.FLAG_ALWAYS_DRAWN_WITH_CACHE) != 0) {
+            caching = true;
+            // Auto-scaled apps are not hw-accelerated, no need to set scaling flag on DisplayList
+            if (mAttachInfo != null) scalingRequired = mAttachInfo.mScalingRequired;
+        } else {
+            caching = (layerType != LAYER_TYPE_NONE) || hardwareAccelerated;
+        }
+
+        final Animation a = getAnimation();
+        if (a != null) {
+            more = drawAnimation(parent, drawingTime, a, scalingRequired);
+            concatMatrix = a.willChangeTransformationMatrix();
+            if (concatMatrix) {
+                mPrivateFlags3 |= PFLAG3_VIEW_IS_ANIMATING_TRANSFORM;
+            }
+            transformToApply = parent.mChildTransformation;
+        } else {
+            if ((mPrivateFlags3 & PFLAG3_VIEW_IS_ANIMATING_TRANSFORM) == PFLAG3_VIEW_IS_ANIMATING_TRANSFORM &&
+                    mDisplayList != null) {
+                // No longer animating: clear out old animation matrix
+                mDisplayList.setAnimationMatrix(null);
+                mPrivateFlags3 &= ~PFLAG3_VIEW_IS_ANIMATING_TRANSFORM;
+            }
+            if (!useDisplayListProperties &&
+                    (flags & ViewGroup.FLAG_SUPPORT_STATIC_TRANSFORMATIONS) != 0) {
+                final boolean hasTransform =
+                        parent.getChildStaticTransformation(this, parent.mChildTransformation);
+                if (hasTransform) {
+                    final int transformType = parent.mChildTransformation.getTransformationType();
+                    transformToApply = transformType != Transformation.TYPE_IDENTITY ?
+                            parent.mChildTransformation : null;
+                    concatMatrix = (transformType & Transformation.TYPE_MATRIX) != 0;
+                }
+            }
+        }
+
+        concatMatrix |= !childHasIdentityMatrix;
+
+        // Sets the flag as early as possible to allow draw() implementations
+        // to call invalidate() successfully when doing animations
+        mPrivateFlags |= PFLAG_DRAWN;
+
+        if (!concatMatrix &&
+                (flags & (ViewGroup.FLAG_SUPPORT_STATIC_TRANSFORMATIONS |
+                        ViewGroup.FLAG_CLIP_CHILDREN)) == ViewGroup.FLAG_CLIP_CHILDREN &&
+                canvas.quickReject(mLeft, mTop, mRight, mBottom, Canvas.EdgeType.BW) &&
+                (mPrivateFlags & PFLAG_DRAW_ANIMATION) == 0) {
+            mPrivateFlags2 |= PFLAG2_VIEW_QUICK_REJECTED;
+            return more;
+        }
+        mPrivateFlags2 &= ~PFLAG2_VIEW_QUICK_REJECTED;
+
+        if (hardwareAccelerated) {
+            // Clear INVALIDATED flag to allow invalidation to occur during rendering, but
+            // retain the flag's value temporarily in the mRecreateDisplayList flag
+            mRecreateDisplayList = (mPrivateFlags & PFLAG_INVALIDATED) == PFLAG_INVALIDATED;
+            mPrivateFlags &= ~PFLAG_INVALIDATED;
+        }
+
+        DisplayList displayList = null;
+        Bitmap cache = null;
+        boolean hasDisplayList = false;
+        if (caching) {
+            if (!hardwareAccelerated) {
+                if (layerType != LAYER_TYPE_NONE) {
+                    layerType = LAYER_TYPE_SOFTWARE;
+                    buildDrawingCache(true);
+                }
+                cache = getDrawingCache(true);
+            } else {
+                switch (layerType) {
+                    case LAYER_TYPE_SOFTWARE:
+                        if (useDisplayListProperties) {
+                            hasDisplayList = canHaveDisplayList();
+                        } else {
+                            buildDrawingCache(true);
+                            cache = getDrawingCache(true);
+                        }
+                        break;
+                    case LAYER_TYPE_HARDWARE:
+                        if (useDisplayListProperties) {
+                            hasDisplayList = canHaveDisplayList();
+                        }
+                        break;
+                    case LAYER_TYPE_NONE:
+                        // Delay getting the display list until animation-driven alpha values are
+                        // set up and possibly passed on to the view
+                        hasDisplayList = canHaveDisplayList();
+                        break;
+                }
+            }
+        }
+        useDisplayListProperties &= hasDisplayList;
+        if (useDisplayListProperties) {
+            displayList = getDisplayList();
+            if (!displayList.isValid()) {
+                // Uncommon, but possible. If a view is removed from the hierarchy during the call
+                // to getDisplayList(), the display list will be marked invalid and we should not
+                // try to use it again.
+                displayList = null;
+                hasDisplayList = false;
+                useDisplayListProperties = false;
+            }
+        }
+
+        int sx = 0;
+        int sy = 0;
+        if (!hasDisplayList) {
+            computeScroll();
+            sx = mScrollX;
+            sy = mScrollY;
+        }
+
+        final boolean hasNoCache = cache == null || hasDisplayList;
+        final boolean offsetForScroll = cache == null && !hasDisplayList &&
+                layerType != LAYER_TYPE_HARDWARE;
+
+        int restoreTo = -1;
+        if (!useDisplayListProperties || transformToApply != null) {
+            restoreTo = canvas.save();
+        }
+        if (offsetForScroll) {
+            canvas.translate(mLeft - sx, mTop - sy);
+        } else {
+            if (!useDisplayListProperties) {
+                canvas.translate(mLeft, mTop);
+            }
+            if (scalingRequired) {
+                if (useDisplayListProperties) {
+                    // TODO: Might not need this if we put everything inside the DL
+                    restoreTo = canvas.save();
+                }
+                // mAttachInfo cannot be null, otherwise scalingRequired == false
+                final float scale = 1.0f / mAttachInfo.mApplicationScale;
+                canvas.scale(scale, scale);
+            }
+        }
+
+        float alpha = useDisplayListProperties ? 1 : getAlpha();
+        if (transformToApply != null || alpha < 1 || !hasIdentityMatrix() ||
+                (mPrivateFlags3 & PFLAG3_VIEW_IS_ANIMATING_ALPHA) == PFLAG3_VIEW_IS_ANIMATING_ALPHA) {
+            if (transformToApply != null || !childHasIdentityMatrix) {
+                int transX = 0;
+                int transY = 0;
+
+                if (offsetForScroll) {
+                    transX = -sx;
+                    transY = -sy;
+                }
+
+                if (transformToApply != null) {
+                    if (concatMatrix) {
+                        if (useDisplayListProperties) {
+                            displayList.setAnimationMatrix(transformToApply.getMatrix());
+                        } else {
+                            // Undo the scroll translation, apply the transformation matrix,
+                            // then redo the scroll translate to get the correct result.
+                            canvas.translate(-transX, -transY);
+                            canvas.concat(transformToApply.getMatrix());
+                            canvas.translate(transX, transY);
+                        }
+                        parent.mGroupFlags |= ViewGroup.FLAG_CLEAR_TRANSFORMATION;
+                    }
+
+                    float transformAlpha = transformToApply.getAlpha();
+                    if (transformAlpha < 1) {
+                        alpha *= transformAlpha;
+                        parent.mGroupFlags |= ViewGroup.FLAG_CLEAR_TRANSFORMATION;
+                    }
+                }
+
+                if (!childHasIdentityMatrix && !useDisplayListProperties) {
+                    canvas.translate(-transX, -transY);
+                    canvas.concat(getMatrix());
+                    canvas.translate(transX, transY);
+                }
+            }
+
+            // Deal with alpha if it is or used to be <1
+            if (alpha < 1 ||
+                    (mPrivateFlags3 & PFLAG3_VIEW_IS_ANIMATING_ALPHA) == PFLAG3_VIEW_IS_ANIMATING_ALPHA) {
+                if (alpha < 1) {
+                    mPrivateFlags3 |= PFLAG3_VIEW_IS_ANIMATING_ALPHA;
+                } else {
+                    mPrivateFlags3 &= ~PFLAG3_VIEW_IS_ANIMATING_ALPHA;
+                }
+                parent.mGroupFlags |= ViewGroup.FLAG_CLEAR_TRANSFORMATION;
+                if (hasNoCache) {
+                    final int multipliedAlpha = (int) (255 * alpha);
+                    if (!onSetAlpha(multipliedAlpha)) {
+                        int layerFlags = Canvas.HAS_ALPHA_LAYER_SAVE_FLAG;
+                        if ((flags & ViewGroup.FLAG_CLIP_CHILDREN) != 0 ||
+                                layerType != LAYER_TYPE_NONE) {
+                            layerFlags |= Canvas.CLIP_TO_LAYER_SAVE_FLAG;
+                        }
+                        if (useDisplayListProperties) {
+                            displayList.setAlpha(alpha * getAlpha());
+                        } else  if (layerType == LAYER_TYPE_NONE) {
+                            final int scrollX = hasDisplayList ? 0 : sx;
+                            final int scrollY = hasDisplayList ? 0 : sy;
+                            canvas.saveLayerAlpha(scrollX, scrollY, scrollX + mRight - mLeft,
+                                    scrollY + mBottom - mTop, multipliedAlpha, layerFlags);
+                        }
+                    } else {
+                        // Alpha is handled by the child directly, clobber the layer's alpha
+                        mPrivateFlags |= PFLAG_ALPHA_SET;
+                    }
+                }
+            }
+        } else if ((mPrivateFlags & PFLAG_ALPHA_SET) == PFLAG_ALPHA_SET) {
+            onSetAlpha(255);
+            mPrivateFlags &= ~PFLAG_ALPHA_SET;
+        }
+
+        if ((flags & ViewGroup.FLAG_CLIP_CHILDREN) == ViewGroup.FLAG_CLIP_CHILDREN &&
+                !useDisplayListProperties) {
+            if (offsetForScroll) {
+                canvas.clipRect(sx, sy, sx + (mRight - mLeft), sy + (mBottom - mTop));
+            } else {
+                if (!scalingRequired || cache == null) {
+                    canvas.clipRect(0, 0, mRight - mLeft, mBottom - mTop);
+                } else {
+                    canvas.clipRect(0, 0, cache.getWidth(), cache.getHeight());
+                }
+            }
+        }
+
+        if (!useDisplayListProperties && hasDisplayList) {
+            displayList = getDisplayList();
+            if (!displayList.isValid()) {
+                // Uncommon, but possible. If a view is removed from the hierarchy during the call
+                // to getDisplayList(), the display list will be marked invalid and we should not
+                // try to use it again.
+                displayList = null;
+                hasDisplayList = false;
+            }
+        }
+
+        if (hasNoCache) {
+            boolean layerRendered = false;
+            if (layerType == LAYER_TYPE_HARDWARE && !useDisplayListProperties) {
+                final HardwareLayer layer = getHardwareLayer();
+                if (layer != null && layer.isValid()) {
+                    mLayerPaint.setAlpha((int) (alpha * 255));
+                    ((HardwareCanvas) canvas).drawHardwareLayer(layer, 0, 0, mLayerPaint);
+                    layerRendered = true;
+                } else {
+                    final int scrollX = hasDisplayList ? 0 : sx;
+                    final int scrollY = hasDisplayList ? 0 : sy;
+                    canvas.saveLayer(scrollX, scrollY,
+                            scrollX + mRight - mLeft, scrollY + mBottom - mTop, mLayerPaint,
+                            Canvas.HAS_ALPHA_LAYER_SAVE_FLAG | Canvas.CLIP_TO_LAYER_SAVE_FLAG);
+                }
+            }
+
+            if (!layerRendered) {
+                if (!hasDisplayList) {
+                    // Fast path for layouts with no backgrounds
+                    if ((mPrivateFlags & PFLAG_SKIP_DRAW) == PFLAG_SKIP_DRAW) {
+                        mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+                        dispatchDraw(canvas);
+                    } else {
+                        draw(canvas);
+                    }
+                } else {
+                    mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+                    ((HardwareCanvas) canvas).drawDisplayList(displayList, null, flags);
+                }
+            }
+        } else if (cache != null) {
+            mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+            Paint cachePaint;
+
+            if (layerType == LAYER_TYPE_NONE) {
+                cachePaint = parent.mCachePaint;
+                if (cachePaint == null) {
+                    cachePaint = new Paint();
+                    cachePaint.setDither(false);
+                    parent.mCachePaint = cachePaint;
+                }
+                if (alpha < 1) {
+                    cachePaint.setAlpha((int) (alpha * 255));
+                    parent.mGroupFlags |= ViewGroup.FLAG_ALPHA_LOWER_THAN_ONE;
+                } else if  ((flags & ViewGroup.FLAG_ALPHA_LOWER_THAN_ONE) != 0) {
+                    cachePaint.setAlpha(255);
+                    parent.mGroupFlags &= ~ViewGroup.FLAG_ALPHA_LOWER_THAN_ONE;
+                }
+            } else {
+                cachePaint = mLayerPaint;
+                cachePaint.setAlpha((int) (alpha * 255));
+            }
+            canvas.drawBitmap(cache, 0.0f, 0.0f, cachePaint);
+        }
+
+        if (restoreTo >= 0) {
+            canvas.restoreToCount(restoreTo);
+        }
+
+        if (a != null && !more) {
+            if (!hardwareAccelerated && !a.getFillAfter()) {
+                onSetAlpha(255);
+            }
+            parent.finishAnimatingView(this, a);
+        }
+
+        if (more && hardwareAccelerated) {
+            // invalidation is the trigger to recreate display lists, so if we're using
+            // display lists to render, force an invalidate to allow the animation to
+            // continue drawing another frame
+            parent.invalidate(true);
+            if (a.hasAlpha() && (mPrivateFlags & PFLAG_ALPHA_SET) == PFLAG_ALPHA_SET) {
+                // alpha animations should cause the child to recreate its display list
+                invalidate(true);
+            }
+        }
+
+        mRecreateDisplayList = false;
+
+        return more;
     }
 
     /**

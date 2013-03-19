@@ -46,6 +46,8 @@ public abstract class InputEventReceiver {
             InputChannel inputChannel, MessageQueue messageQueue);
     private static native void nativeDispose(int receiverPtr);
     private static native void nativeFinishInputEvent(int receiverPtr, int seq, boolean handled);
+    private static native void nativeConsumeBatchedInputEvents(int receiverPtr,
+            long frameTimeNanos);
 
     /**
      * Creates an input event receiver bound to the specified input channel.
@@ -104,6 +106,18 @@ public abstract class InputEventReceiver {
     }
 
     /**
+     * Called when a batched input event is pending.
+     *
+     * The batched input event will continue to accumulate additional movement
+     * samples until the recipient calls {@link #consumeBatchedInputEvents} or
+     * an event is received that ends the batch and causes it to be consumed
+     * immediately (such as a pointer up event).
+     */
+    public void onBatchedInputEventPending() {
+        consumeBatchedInputEvents(-1);
+    }
+
+    /**
      * Finishes an input event and indicates whether it was handled.
      * Must be called on the same Looper thread to which the receiver is attached.
      *
@@ -128,6 +142,25 @@ public abstract class InputEventReceiver {
             }
         }
         event.recycleIfNeededAfterDispatch();
+    }
+
+    /**
+     * Consumes all pending batched input events.
+     * Must be called on the same Looper thread to which the receiver is attached.
+     *
+     * This method forces all batched input events to be delivered immediately.
+     * Should be called just before animating or drawing a new frame in the UI.
+     *
+     * @param frameTimeNanos The time in the {@link System#nanoTime()} time base
+     * when the current display frame started rendering, or -1 if unknown.
+     */
+    public final void consumeBatchedInputEvents(long frameTimeNanos) {
+        if (mReceiverPtr == 0) {
+            Log.w(TAG, "Attempted to consume batched input events but the input event "
+                    + "receiver has already been disposed.");
+        } else {
+            nativeConsumeBatchedInputEvents(mReceiverPtr, frameTimeNanos);
+        }
     }
 
     public static interface Factory {

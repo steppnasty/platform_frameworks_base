@@ -27,6 +27,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.os.Trace;
 import android.util.Log;
 import com.google.android.gles_jni.EGLImpl;
 
@@ -132,6 +133,28 @@ public abstract class HardwareRenderer {
      * "all", print all possible configurations
      */
     static final String PRINT_CONFIG_PROPERTY = "hwui.print_config";    
+
+    /**
+     * Turn on to draw dirty regions every other frame.
+     *
+     * Possible values:
+     * "true", to enable dirty regions debugging
+     * "false", to disable dirty regions debugging
+     * 
+     * @hide
+     */
+    public static final String DEBUG_DIRTY_REGIONS_PROPERTY = "debug.hwui.show_dirty_regions";
+
+    /**
+     * Turn on to show overdraw level.
+     *
+     * Possible values:
+     * "true", to enable overdraw debugging
+     * "false", to disable overdraw debugging
+     *
+     * @hide
+     */
+    public static final String DEBUG_SHOW_OVERDRAW_PROPERTY = "debug.hwui.show_overdraw";
 
     /**
      * Turn on to draw dirty regions every other frame.
@@ -300,6 +323,16 @@ public abstract class HardwareRenderer {
     }
 
     private static native void nSetupShadersDiskCache(String cacheFile);
+
+    /**
+     * Notifies EGL that the frame is about to be rendered.
+     * @param size
+     */
+    private static void beginFrame(int[] size) {
+        nBeginFrame(size);
+    }
+
+    private static native void nBeginFrame(int[] size);
 
     /**
      * Interface used to receive callbacks whenever a view is drawn by
@@ -519,7 +552,8 @@ public abstract class HardwareRenderer {
         static final int SURFACE_STATE_SUCCESS = 1;
         static final int SURFACE_STATE_UPDATED = 2;
         static final int SURFACE_STATE_UNDEFINED = 3;
-        
+        static final int FUNCTOR_PROCESS_DELAY = 4;
+
         static EGL10 sEgl;
         static EGLDisplay sEglDisplay;
         static EGLConfig sEglConfig;
@@ -564,12 +598,18 @@ public abstract class HardwareRenderer {
         final ReentrantLock mProfileLock;
         int mProfileCurrentFrame = -PROFILE_FRAME_DATA_COUNT;
 
+        final boolean mDebugDirtyRegions;
+        final boolean mShowOverdraw;
+
         final int mGlVersion;
         final boolean mTranslucent;
 
         private boolean mDestroyed;
 
         private final Rect mRedrawClip = new Rect();
+
+        private final int [] mSurfaceSize = new int [2];
+        private final FunctorsRunnable mFunctorsRunnable = new FunctorsRunnable();
 
         GlRenderer(int glVersion, boolean translucent) {
             mGlVersion = glVersion;
@@ -603,6 +643,15 @@ public abstract class HardwareRenderer {
                 mProfileData = null;
                 mProfileLock = null;
             }
+
+            property = SystemProperties.get(DEBUG_DIRTY_REGIONS_PROPERTY, "false");
+            mDebugDirtyRegions = "true".equalsIgnoreCase(property);
+            if (mDebugDirtyRegions) {
+                Log.d(LOG_TAG, "Debugging dirty regions");
+            }
+
+            mShowOverdraw = SystemProperties.getBoolean(
+                    HardwareRenderer.DEBUG_SHOW_OVERDRAW_PROPERTY, false);
         }
 
         @Override
@@ -977,16 +1026,29 @@ public abstract class HardwareRenderer {
             return mGl != null && mCanvas != null;
         }        
         
-        void startTileRendering(Rect dirty) {
-        }
-
-        void endTileRendering() {
-        }
-
-        void onPreDraw(Rect dirty) {
+        int onPreDraw(Rect dirty) {
+            return DisplayList.STATUS_DONE;
         }
 
         void onPostDraw() {
+        }
+
+        class FunctorsRunnable implements Runnable {
+            View.AttachInfo attachInfo;
+
+            @Override
+            public void run() {
+                final HardwareRenderer renderer = attachInfo.mHardwareRenderer;
+                if (renderer == null || !renderer.isEnabled() || renderer != GlRenderer.this) {
+                    return;
+                }
+
+                final int surfaceState = checkCurrent();
+                if (surfaceState != SURFACE_STATE_ERROR) {
+                    int status = mCanvas.invokeFunctors(mRedrawClip);
+                    handleFunctorStatus(attachInfo, status);
+                }
+            }
         }
 
         @Override
@@ -995,82 +1057,177 @@ public abstract class HardwareRenderer {
             if (canDraw()) {
                 if (!hasDirtyRegions()) {
                     dirty = null;
-                } else if (dirty != null) {
-                    dirty.intersect(0, 0, mWidth, mHeight);
                 }
                 attachInfo.mIgnoreDirtyState = true;
                 attachInfo.mDrawingTime = SystemClock.uptimeMillis();
 
-                view.mPrivateFlags |= View.DRAWN;
+                view.mPrivateFlags |= View.PFLAG_DRAWN;
 
                 final int surfaceState = checkCurrent();
-                if ((surfaceState != SURFACE_STATE_ERROR) && (surfaceState != SURFACE_STATE_UNDEFINED)) {
-                    // We had to change the current surface and/or context, redraw everything
-                    if (surfaceState == SURFACE_STATE_UPDATED) {
-                        dirty = null;
-                    }
-
-                    if (sTileRendering)
-                        startTileRendering(dirty);
-
-                    onPreDraw(dirty);
-
+                if (surfaceState != SURFACE_STATE_ERROR) {
                     HardwareCanvas canvas = mCanvas;
                     attachInfo.mHardwareCanvas = canvas;
 
-                    int saveCount = canvas.save();
-                    callbacks.onHardwarePreDraw(canvas);
+                    if (mProfileEnabled) {
+                        mProfileLock.lock();
+                    }
+
+                    // We had to change the current surface and/or context, redraw everything
+                    if (surfaceState == SURFACE_STATE_UPDATED) {
+                        dirty = null;
+                        beginFrame(null);
+                    } else {
+                        int[] size = mSurfaceSize;
+                        beginFrame(size);
+
+                        if (size[1] != mHeight || size[0] != mWidth) {
+                            mWidth = size[0];
+                            mHeight = size[1];
+
+                            canvas.setViewport(mWidth, mHeight);
+
+                            dirty = null;
+                        }
+                    }
+
+                    int saveCount = 0;
+                    int status = DisplayList.STATUS_DONE;
 
                     try {
-                        view.mRecreateDisplayList =
-                                (view.mPrivateFlags & View.INVALIDATED) == View.INVALIDATED;
-                        view.mPrivateFlags &= ~View.INVALIDATED;
+                        view.mRecreateDisplayList = (view.mPrivateFlags & View.PFLAG_INVALIDATED)
+                                == View.PFLAG_INVALIDATED;
+                        view.mPrivateFlags &= ~View.PFLAG_INVALIDATED;
 
-                        DisplayList displayList = view.getDisplayList();
-                        if (displayList != null) {
-                            if (canvas.drawDisplayList(displayList, view.getWidth(),
-                                    view.getHeight(), mRedrawClip)) {
-                                if (mRedrawClip.isEmpty() || view.getParent() == null) {
-                                    view.invalidate();
-                                } else {
-                                    view.getParent().invalidateChild(view, mRedrawClip);
-                                }
-                                mRedrawClip.setEmpty();
+                        long getDisplayListStartTime = 0;
+                        if (mProfileEnabled) {
+                            mProfileCurrentFrame += PROFILE_FRAME_DATA_COUNT;
+                            if (mProfileCurrentFrame >= mProfileData.length) {
+                                mProfileCurrentFrame = 0;
                             }
+
+                            getDisplayListStartTime = System.nanoTime();
+                        }
+
+                        canvas.clearLayerUpdates();
+
+                        DisplayList displayList;
+                        Trace.traceBegin(Trace.TRACE_TAG_VIEW, "getDisplayList");
+                        try {
+                            displayList = view.getDisplayList();
+                        } finally {
+                            Trace.traceEnd(Trace.TRACE_TAG_VIEW);
+                        }
+
+                        Trace.traceBegin(Trace.TRACE_TAG_VIEW, "prepareFrame");
+                        try {
+                            status = onPreDraw(dirty);
+                        } finally {
+                            Trace.traceEnd(Trace.TRACE_TAG_VIEW);
+                        }
+                        saveCount = canvas.save();
+                        callbacks.onHardwarePreDraw(canvas);
+
+                        if (mProfileEnabled) {
+                            long now = System.nanoTime();
+                            float total = (now - getDisplayListStartTime) * 0.000001f;
+                            //noinspection PointlessArithmeticExpression
+                            mProfileData[mProfileCurrentFrame] = total;
+                        }
+
+                        if (displayList != null) {
+                            long drawDisplayListStartTime = 0;
+                            if (mProfileEnabled) {
+                                drawDisplayListStartTime = System.nanoTime();
+                            }
+
+                            Trace.traceBegin(Trace.TRACE_TAG_VIEW, "drawDisplayList");
+                            try {
+                                status |= canvas.drawDisplayList(displayList, mRedrawClip,
+                                        DisplayList.FLAG_CLIP_CHILDREN);
+                            } finally {
+                                Trace.traceEnd(Trace.TRACE_TAG_VIEW);
+                            }
+
+                            if (mProfileEnabled) {
+                                long now = System.nanoTime();
+                                float total = (now - drawDisplayListStartTime) * 0.000001f;
+                                mProfileData[mProfileCurrentFrame + 1] = total;
+                            }
+
+                            handleFunctorStatus(attachInfo, status);
                         } else {
                             // Shouldn't reach here
                             view.draw(canvas);
-                        }
-
-                        if (DEBUG_DIRTY_REGION) {
-                            if (mDebugPaint == null) {
-                                mDebugPaint = new Paint();
-                                mDebugPaint.setColor(0x7fff0000);
-                            }
-                            if (dirty != null && (mFrameCount++ & 1) == 0) {
-                                canvas.drawRect(dirty, mDebugPaint);
-                            }
                         }
                     } finally {
                         callbacks.onHardwarePostDraw(canvas);
                         canvas.restoreToCount(saveCount);
                         view.mRecreateDisplayList = false;
+
+                        mFrameCount++;
+
+                        if (mDebugDirtyRegions) {
+                            if (mDebugPaint == null) {
+                                mDebugPaint = new Paint();
+                                mDebugPaint.setColor(0x7fff0000);
+                            }
+
+                            if (dirty != null && (mFrameCount & 1) == 0) {
+                                canvas.drawRect(dirty, mDebugPaint);
+                            }
+                        }
                     }
 
                     onPostDraw();
-                    if (sTileRendering)
-                        endTileRendering();
 
                     attachInfo.mIgnoreDirtyState = false;
 
-                    sEgl.eglSwapBuffers(sEglDisplay, mEglSurface);
-                    checkEglErrors();
+                    if ((status & DisplayList.STATUS_DREW) == DisplayList.STATUS_DREW) {
+                        long eglSwapBuffersStartTime = 0;
+                        if (mProfileEnabled) {
+                            eglSwapBuffersStartTime = System.nanoTime();
+                        }
+
+                        sEgl.eglSwapBuffers(sEglDisplay, mEglSurface);
+
+                        if (mProfileEnabled) {
+                            long now = System.nanoTime();
+                            float total = (now - eglSwapBuffersStartTime) * 0.000001f;
+                            mProfileData[mProfileCurrentFrame + 2] = total;
+                        }
+
+                        checkEglErrors();
+                    }
+
+                    if (mProfileEnabled) {
+                        mProfileLock.unlock();
+                    }
 
                     return dirty == null;
                 }
             }
 
             return false;
+        }
+
+        private void handleFunctorStatus(View.AttachInfo attachInfo, int status) {
+            // If the draw flag is set, functors will be invoked while executing
+            // the tree of display lists
+            if ((status & DisplayList.STATUS_DRAW) != 0) {
+                if (mRedrawClip.isEmpty()) {
+                    attachInfo.mViewRootImpl.invalidate();
+                } else {
+                    attachInfo.mViewRootImpl.invalidateChildInParent(null, mRedrawClip);
+                    mRedrawClip.setEmpty();
+                }
+            }
+
+            if ((status & DisplayList.STATUS_INVOKE) != 0 ||
+                    attachInfo.mHandler.hasCallbacks(mFunctorsRunnable)) {
+                attachInfo.mHandler.removeCallbacks(mFunctorsRunnable);
+                mFunctorsRunnable.attachInfo = attachInfo;
+                attachInfo.mHandler.postDelayed(mFunctorsRunnable, FUNCTOR_PROCESS_DELAY);
+            }
         }
 
         /**
@@ -1206,23 +1363,13 @@ public abstract class HardwareRenderer {
         }                
 
         @Override
-        void onPreDraw(Rect dirty) {
-            mGlCanvas.onPreDraw(dirty);
+        int onPreDraw(Rect dirty) {
+            return mGlCanvas.onPreDraw(dirty);
         }
 
         @Override
         void onPostDraw() {
             mGlCanvas.onPostDraw();
-        }
-
-        @Override
-        void startTileRendering(Rect dirty) {
-            mGlCanvas.startTileRendering(dirty);
-        }
-
-        @Override
-        void endTileRendering() {
-            mGlCanvas.endTileRendering();
         }
 
         @Override

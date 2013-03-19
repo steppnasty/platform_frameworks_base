@@ -152,7 +152,6 @@ public class KeyCharacterMap implements Parcelable {
 
     private static native int nativeReadFromParcel(Parcel in);
     private static native void nativeWriteToParcel(int ptr, Parcel out);
-    private static native int nativeLoad(String file);
     private static native void nativeDispose(int ptr);
 
     private static native char nativeGetCharacter(int ptr, int keyCode, int metaState);

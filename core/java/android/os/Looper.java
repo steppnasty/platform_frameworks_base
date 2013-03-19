@@ -55,6 +55,7 @@ public class Looper {
 
     // sThreadLocal.get() will return null unless you've called prepare().
     static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
+    private static Looper sMainLooper;  // guarded by Looper.class
 
     final MessageQueue mQueue;
     final Thread mThread;
@@ -63,17 +64,21 @@ public class Looper {
     private Printer mLogging = null;
     private static Looper mMainLooper = null;  // guarded by Looper.class
 
-     /** Initialize the current thread as a looper.
+    /** Initialize the current thread as a looper.
       * This gives you a chance to create handlers that then reference
       * this looper, before actually starting the loop. Be sure to call
       * {@link #loop()} after calling this method, and end it by calling
       * {@link #quit()}.
       */
     public static void prepare() {
+        prepare(true);
+    }
+
+    private static void prepare(boolean quitAllowed) {
         if (sThreadLocal.get() != null) {
             throw new RuntimeException("Only one Looper may be created per thread");
         }
-        sThreadLocal.set(new Looper());
+        sThreadLocal.set(new Looper(quitAllowed));
     }
 
     /**
@@ -83,9 +88,13 @@ public class Looper {
      * to call this function yourself.  See also: {@link #prepare()}
      */
     public static void prepareMainLooper() {
-        prepare();
-        setMainLooper(myLooper());
-        myLooper().mQueue.mQuitAllowed = false;
+        prepare(false);
+        synchronized (Looper.class) {
+            if (sMainLooper != null) {
+                throw new IllegalStateException("The main Looper has already been prepared.");
+            }
+            sMainLooper = myLooper();
+        }
     }
 
     private synchronized static void setMainLooper(Looper looper) {
@@ -193,8 +202,8 @@ public class Looper {
         return myLooper().mQueue;
     }
 
-    private Looper() {
-        mQueue = new MessageQueue();
+    private Looper(boolean quitAllowed) {
+        mQueue = new MessageQueue(quitAllowed);
         mRun = true;
         mThread = Thread.currentThread();
     }

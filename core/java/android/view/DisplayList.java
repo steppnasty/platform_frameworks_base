@@ -16,6 +16,8 @@
 
 package android.view;
 
+import android.graphics.Matrix;
+
 /**
  * A display lists records a series of graphics related operation and can replay
  * them later. Display lists are usually built by recording operations on a
@@ -26,6 +28,45 @@ package android.view;
  * @hide 
  */
 public abstract class DisplayList {
+    /**
+     * Flag used when calling
+     * {@link HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)} 
+     * When this flag is set, draw operations lying outside of the bounds of the
+     * display list will be culled early. It is recommeneded to always set this
+     * flag.
+     */
+    public static final int FLAG_CLIP_CHILDREN = 0x1;
+
+    // NOTE: The STATUS_* values *must* match the enum in DrawGlInfo.h
+
+    /**
+     * Indicates that the display list is done drawing.
+     * 
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)  
+     */
+    public static final int STATUS_DONE = 0x0;
+
+    /**
+     * Indicates that the display list needs another drawing pass.
+     * 
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
+     */
+    public static final int STATUS_DRAW = 0x1;
+
+    /**
+     * Indicates that the display list needs to re-execute its GL functors.
+     * 
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
+     * @see HardwareCanvas#callDrawGLFunction(int)
+     */
+    public static final int STATUS_INVOKE = 0x2;
+
+    /**
+     * Indicates that the display list performed GL drawing operations.
+     *
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
+     */
+    public static final int STATUS_DREW = 0x4;
     /**
      * Starts recording the display list. All operations performed on the
      * returned canvas are recorded and stored in this display list.
@@ -61,4 +102,26 @@ public abstract class DisplayList {
      * @return The size of this display list in bytes
      */
     abstract int getSize();
+
+    ///////////////////////////////////////////////////////////////////////////
+    // DisplayList Property Setters
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Set the Animation matrix on the DisplayList. This matrix exists if an Animation is
+     * currently playing on a View, and is set on the DisplayList during at draw() time. When
+     * the Animation finishes, the matrix should be cleared by sending <code>null</code>
+     * for the matrix parameter.
+     *
+     * @param matrix The matrix, null indicates that the matrix should be cleared.
+     */
+    public abstract void setAnimationMatrix(Matrix matrix);
+
+    /**
+     * Sets the alpha value for the DisplayList
+     *
+     * @param alpha The translucency of the DisplayList
+     * @see View#setAlpha(float)
+     */
+    public abstract void setAlpha(float alpha);
 }

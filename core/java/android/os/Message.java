@@ -367,6 +367,25 @@ public final class Message implements Parcelable {
     }
 
     /**
+     * Returns true if the message is asynchronous.
+     *
+     * Asynchronous messages represent interrupts or events that do not require global ordering
+     * with represent to synchronous messages.  Asynchronous messages are not subject to
+     * the synchronization barriers introduced by {@link MessageQueue#enqueueSyncBarrier(long)}.
+     *
+     * @return True if the message is asynchronous.
+     *
+     * @see #setAsynchronous(boolean)
+     * @see MessageQueue#enqueueSyncBarrier(long)
+     * @see MessageQueue#removeSyncBarrier(int)
+     *
+     * @hide
+     */
+    public boolean isAsynchronous() {
+        return (flags & FLAG_ASYNCHRONOUS) != 0;
+    }
+
+    /**
      * Sets whether the message is asynchronous.
      *
      * Asynchronous messages represent interrupts or events that do not require global ordering

@@ -17,6 +17,7 @@
 package android.view;
 
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 
 import java.util.ArrayList;
 
@@ -34,6 +35,10 @@ class GLES20DisplayList extends DisplayList {
     // The native display list will be destroyed when this object dies.
     // DO NOT overwrite this reference once it is set.
     private DisplayListFinalizer mFinalizer;
+
+    boolean hasNativeDisplayList() {
+        return mValid && mFinalizer != null;
+    }
 
     int getNativeDisplayList() {
         if (!mValid || mFinalizer == null) {
@@ -87,6 +92,32 @@ class GLES20DisplayList extends DisplayList {
         if (mFinalizer == null) return 0;
         return GLES20Canvas.getDisplayListSize(mFinalizer.mNativeDisplayList);
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Native View Properties
+    ///////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public void setAnimationMatrix(Matrix matrix) {
+        if (hasNativeDisplayList()) {
+            nSetAnimationMatrix(mFinalizer.mNativeDisplayList,
+                    (matrix != null) ? matrix.native_instance : 0);
+        }
+    }
+
+    @Override
+    public void setAlpha(float alpha) {
+        if (hasNativeDisplayList()) {
+            nSetAlpha(mFinalizer.mNativeDisplayList, alpha);
+        }
+    }
+
+    private static native void nSetAlpha(int displayList, float alpha);
+    private static native void nSetAnimationMatrix(int displayList, int animationMatrix);
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Finalization
+    ///////////////////////////////////////////////////////////////////////////
 
     private static class DisplayListFinalizer {
         final int mNativeDisplayList;

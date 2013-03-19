@@ -41,10 +41,10 @@ public abstract class HardwareCanvas extends Canvas {
      * Invoked before any drawing operation is performed in this canvas.
      * 
      * @param dirty The dirty rectangle to update, can be null.
+     * @return {@link DisplayList#STATUS_DREW} if anything was drawn (such as a call to
+     * clear the canvas).
      */
-    abstract void onPreDraw(Rect dirty);
-    abstract void startTileRendering(Rect dirty);
-    abstract void endTileRendering();
+    public abstract int onPreDraw(Rect dirty);
 
     /**
      * Invoked after all drawing operation have been performed.
@@ -53,17 +53,18 @@ public abstract class HardwareCanvas extends Canvas {
     
     /**
      * Draws the specified display list onto this canvas.
-     * 
+     *
      * @param displayList The display list to replay.
-     * @param width The width of the display list.
-     * @param height The height of the display list.
      * @param dirty The dirty region to redraw in the next pass, matters only
      *        if this method returns true, can be null.
-     * 
-     * @return True if the content of the display list requires another
-     *         drawing pass (invalidate()), false otherwise
+     * @param flags Optional flags about drawing, see {@link DisplayList} for
+     *              the possible flags.
+     *
+     * @return One of {@link DisplayList#STATUS_DONE}, {@link DisplayList#STATUS_DRAW}, or
+     *         {@link DisplayList#STATUS_INVOKE}, or'd with {@link DisplayList#STATUS_DREW}
+     *         if anything was drawn.
      */
-    abstract boolean drawDisplayList(DisplayList displayList, int width, int height, Rect dirty);
+    public abstract int drawDisplayList(DisplayList displayList, Rect dirty, int flags);
 
     /**
      * Outputs the specified display list to the log. This method exists for use by
@@ -95,4 +96,23 @@ public abstract class HardwareCanvas extends Canvas {
         // Noop - this is done in the display list recorder subclass
         return false;
     }
+
+    /**
+     * Invoke all the functors who requested to be invoked during the previous frame.
+     * 
+     * @param dirty The region to redraw when the functors return {@link DisplayList#STATUS_DRAW}
+     *              
+     * @return One of {@link DisplayList#STATUS_DONE}, {@link DisplayList#STATUS_DRAW} or
+     *         {@link DisplayList#STATUS_INVOKE}
+     */
+    public int invokeFunctors(Rect dirty) {
+        return DisplayList.STATUS_DONE;
+    }
+
+    /**
+     * Removes all enqueued layer updates.
+     * 
+     * @see #pushLayerUpdate(HardwareLayer)
+     */
+    abstract void clearLayerUpdates();
 }

@@ -149,6 +149,17 @@ public abstract class AbstractInputMethodService extends Service
                 callback.finishedEvent(seq, handled);
             }
         }
+
+        /**
+         * Take care of dispatching incoming generic motion events to the appropriate
+         * callbacks on the service, and tell the client when this is done.
+         */
+        public void dispatchGenericMotionEvent(int seq, MotionEvent event, EventCallback callback) {
+            boolean handled = onGenericMotionEvent(event);
+            if (callback != null) {
+                callback.finishedEvent(seq, handled);
+            }
+        }
     }
     
     /**
@@ -190,6 +201,17 @@ public abstract class AbstractInputMethodService extends Service
     }
     
     public boolean onTrackballEvent(MotionEvent event) {
+        return false;
+    }
+
+    /**
+     * Implement this to handle generic motion events on your input method.
+     *
+     * @param event The motion event being received.
+     * @return True if the event was handled in this function, false otherwise.
+     * @see View#onGenericMotionEvent
+     */
+    public boolean onGenericMotionEvent(MotionEvent event) {
         return false;
     }
 }
