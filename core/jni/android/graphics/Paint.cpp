@@ -484,10 +484,10 @@ public:
 
         jchar* glyphsArray = env->GetCharArrayElements(glyphs, NULL);
 
-        TextLayoutCacheValue value;
-        value.computeValues(paint, text, start, count, contextCount, flags);
-        const jchar* shapedGlyphs = value.getGlyphs();
-        size_t glyphsCount = value.getGlyphsCount();
+        sp<TextLayoutValue> value = TextLayoutEngine::getInstance().getValue(paint,
+                text, start, count, contextCount, flags);
+        const jchar* shapedGlyphs = value->getGlyphs();
+        size_t glyphsCount = value->getGlyphsCount();
         memcpy(glyphsArray, shapedGlyphs, sizeof(jchar) * glyphsCount);
 
         env->ReleaseCharArrayElements(glyphs, glyphsArray, JNI_ABORT);

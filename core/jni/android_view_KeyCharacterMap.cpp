@@ -14,18 +14,27 @@
  * limitations under the License.
 */
 
-#include <ui/KeyCharacterMap.h>
-#include <ui/Input.h>
-#include <binder/Parcel.h>
+#define LOG_TAG "NativeLibraryHelper"
 
 #include <android_runtime/AndroidRuntime.h>
+
+#include <androidfw/KeyCharacterMap.h>
+#include <androidfw/Input.h>
+#include <binder/Parcel.h>
+
 #include <nativehelper/jni.h>
 #include <nativehelper/JNIHelp.h>
 
-#include "android_util_Binder.h"
+#include <utils/Log.h>
+#include "android_os_Parcel.h"
 #include "android_view_KeyEvent.h"
 
 namespace android {
+
+static struct {
+    jclass clazz;
+    jmethodID ctor;
+} gKeyCharacterMapClassInfo;
 
 static struct {
     jclass clazz;
@@ -35,6 +44,7 @@ static struct {
     jfieldID keyCode;
     jfieldID metaState;
 } gFallbackActionClassInfo;
+
 
 class NativeKeyCharacterMap {
 public:
@@ -58,25 +68,17 @@ private:
     sp<KeyCharacterMap> mMap;
 };
 
-static jint nativeLoad(JNIEnv *env, jobject clazz, jstring fileStr) {
-    const char* file = env->GetStringUTFChars(fileStr, NULL);
 
-    KeyCharacterMap* map;
-    status_t status = KeyCharacterMap::load(String8(file), &map);
-    jint result;
-    if (status) {
-        String8 msg;
-        msg.appendFormat("Could not load key character map '%s' due to error %d.  "
-                "Refer to the log for details.", file, status);
-        jniThrowException(env, "android/view/KeyCharacterMap$KeyCharacterMapUnavailableException",
-                msg.string());
-        result = 0;
-    } else {
-        result = reinterpret_cast<jint>(map);
+jobject android_view_KeyCharacterMap_create(JNIEnv* env, int32_t deviceId,
+        const sp<KeyCharacterMap>& kcm) {
+    NativeKeyCharacterMap* map = new NativeKeyCharacterMap(deviceId,
+            kcm.get() ? kcm : KeyCharacterMap::empty());
+    if (!map) {
+        return NULL;
     }
 
-    env->ReleaseStringUTFChars(fileStr, file);
-    return result;
+    return env->NewObject(gKeyCharacterMapClassInfo.clazz, gKeyCharacterMapClassInfo.ctor,
+            reinterpret_cast<jint>(map));
 }
 
 static jint nativeReadFromParcel(JNIEnv *env, jobject clazz, jobject parcelObj) {
@@ -115,16 +117,16 @@ static void nativeDispose(JNIEnv *env, jobject clazz, jint ptr) {
 
 static jchar nativeGetCharacter(JNIEnv *env, jobject clazz, jint ptr,
         jint keyCode, jint metaState) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
-    return map->getCharacter(keyCode, metaState);
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
+    return map->getMap()->getCharacter(keyCode, metaState);
 }
 
 static jboolean nativeGetFallbackAction(JNIEnv *env, jobject clazz, jint ptr, jint keyCode,
         jint metaState, jobject fallbackActionObj) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
     KeyCharacterMap::FallbackAction fallbackAction;
 
-    bool result = map->getFallbackAction(keyCode, metaState, &fallbackAction);
+    bool result = map->getMap()->getFallbackAction(keyCode, metaState, &fallbackAction);
     if (result) {
         env->SetIntField(fallbackActionObj, gFallbackActionClassInfo.keyCode,
                 fallbackAction.keyCode);
@@ -135,13 +137,13 @@ static jboolean nativeGetFallbackAction(JNIEnv *env, jobject clazz, jint ptr, ji
 }
 
 static jchar nativeGetNumber(JNIEnv *env, jobject clazz, jint ptr, jint keyCode) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
-    return map->getNumber(keyCode);
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
+    return map->getMap()->getNumber(keyCode);
 }
 
 static jchar nativeGetMatch(JNIEnv *env, jobject clazz, jint ptr, jint keyCode,
         jcharArray charsArray, jint metaState) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
 
     jsize numChars = env->GetArrayLength(charsArray);
     jchar* chars = static_cast<jchar*>(env->GetPrimitiveArrayCritical(charsArray, NULL));
@@ -149,20 +151,20 @@ static jchar nativeGetMatch(JNIEnv *env, jobject clazz, jint ptr, jint keyCode,
         return 0;
     }
 
-    char16_t result = map->getMatch(keyCode, chars, size_t(numChars), metaState);
+    char16_t result = map->getMap()->getMatch(keyCode, chars, size_t(numChars), metaState);
 
     env->ReleasePrimitiveArrayCritical(charsArray, chars, JNI_ABORT);
     return result;
 }
 
 static jchar nativeGetDisplayLabel(JNIEnv *env, jobject clazz, jint ptr, jint keyCode) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
-    return map->getDisplayLabel(keyCode);
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
+    return map->getMap()->getDisplayLabel(keyCode);
 }
 
 static jint nativeGetKeyboardType(JNIEnv *env, jobject clazz, jint ptr) {
-    KeyCharacterMap* map = reinterpret_cast<KeyCharacterMap*>(ptr);
-    return map->getKeyboardType();
+    NativeKeyCharacterMap* map = reinterpret_cast<NativeKeyCharacterMap*>(ptr);
+    return map->getMap()->getKeyboardType();
 }
 
 static jobjectArray nativeGetEvents(JNIEnv *env, jobject clazz, jint ptr,
@@ -200,8 +202,10 @@ static jobjectArray nativeGetEvents(JNIEnv *env, jobject clazz, jint ptr,
 
 static JNINativeMethod g_methods[] = {
     /* name, signature, funcPtr */
-    { "nativeLoad", "(Ljava/lang/String;)I",
-            (void*)nativeLoad },
+    { "nativeReadFromParcel", "(Landroid/os/Parcel;)I",
+            (void*)nativeReadFromParcel },
+    { "nativeWriteToParcel", "(ILandroid/os/Parcel;)V",
+            (void*)nativeWriteToParcel },
     { "nativeDispose", "(I)V",
             (void*)nativeDispose },
     { "nativeGetCharacter", "(III)C",
@@ -216,7 +220,7 @@ static JNINativeMethod g_methods[] = {
             (void*)nativeGetDisplayLabel },
     { "nativeGetKeyboardType", "(I)I",
             (void*)nativeGetKeyboardType },
-    { "nativeGetEvents", "(II[C)[Landroid/view/KeyEvent;",
+    { "nativeGetEvents", "(I[C)[Landroid/view/KeyEvent;",
             (void*)nativeGetEvents },
 };
 
@@ -224,12 +228,25 @@ static JNINativeMethod g_methods[] = {
         var = env->FindClass(className); \
         LOG_FATAL_IF(! var, "Unable to find class " className);
 
+#define GET_METHOD_ID(var, clazz, methodName, methodDescriptor) \
+        var = env->GetMethodID(clazz, methodName, methodDescriptor); \
+        LOG_FATAL_IF(! var, "Unable to find method " methodName);
+
 #define GET_FIELD_ID(var, clazz, fieldName, fieldDescriptor) \
         var = env->GetFieldID(clazz, fieldName, fieldDescriptor); \
         LOG_FATAL_IF(! var, "Unable to find field " fieldName);
 
-int register_android_text_KeyCharacterMap(JNIEnv* env)
+int register_android_view_KeyCharacterMap(JNIEnv* env)
 {
+    LOGI("FindClass:");
+    FIND_CLASS(gKeyCharacterMapClassInfo.clazz, "android/view/KeyCharacterMap");
+    gKeyCharacterMapClassInfo.clazz = jclass(env->NewGlobalRef(gKeyCharacterMapClassInfo.clazz));
+
+    LOGI("GET_METHOD_ID:");
+    GET_METHOD_ID(gKeyCharacterMapClassInfo.ctor, gKeyCharacterMapClassInfo.clazz,
+            "<init>", "(I)V");
+
+    LOGI("FIND_CLASS");
     FIND_CLASS(gKeyEventClassInfo.clazz, "android/view/KeyEvent");
     gKeyEventClassInfo.clazz = jclass(env->NewGlobalRef(gKeyEventClassInfo.clazz));
 

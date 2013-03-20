@@ -20,6 +20,7 @@
 
 #include "SkCanvas.h"
 #include "SkDevice.h"
+#include "SkDrawFilter.h"
 #include "SkGraphics.h"
 #include "SkImageRef_GlobalPool.h"
 #include "SkPorterDuff.h"
@@ -732,11 +733,7 @@ public:
                                       jcharArray text, int index, int count,
                                       jfloat x, jfloat y, int flags, SkPaint* paint) {
         jchar* textArray = env->GetCharArrayElements(text, NULL);
-#if RTL_USE_HARFBUZZ
         drawTextWithGlyphs(canvas, textArray + index, 0, count, x, y, flags, paint);
-#else
-        TextLayout::drawText(paint, textArray + index, count, flags, x, y, canvas);
-#endif
         env->ReleaseCharArrayElements(text, textArray, JNI_ABORT);
     }
 
@@ -745,11 +742,7 @@ public:
                                           int start, int end,
                                           jfloat x, jfloat y, int flags, SkPaint* paint) {
         const jchar* textArray = env->GetStringChars(text, NULL);
-#if RTL_USE_HARFBUZZ
         drawTextWithGlyphs(canvas, textArray, start, end, x, y, flags, paint);
-#else
-        TextLayout::drawText(paint, textArray + start, end - start, flags, x, y, canvas);
-#endif
         env->ReleaseStringChars(text, textArray);
     }
 
@@ -765,35 +758,75 @@ public:
             int start, int count, int contextCount,
             jfloat x, jfloat y, int flags, SkPaint* paint) {
 
-        sp<TextLayoutCacheValue> value;
-#if USE_TEXT_LAYOUT_CACHE
-        value = TextLayoutCache::getInstance().getValue(paint, textArray, start, count,
-                contextCount, flags);
+        sp<TextLayoutValue> value = TextLayoutEngine::getInstance().getValue(paint,
+                textArray, start, count, contextCount, flags);
         if (value == NULL) {
-            ALOGE("Cannot get TextLayoutCache value");
-            return ;
+            return;
         }
-#else
-        value = new TextLayoutCacheValue();
-        value->computeValues(paint, textArray, start, count, contextCount, flags);
-#endif
-        doDrawGlyphs(canvas, value->getGlyphs(), 0, value->getGlyphsCount(), x, y, flags, paint);
+        SkPaint::Align align = paint->getTextAlign();
+        if (align == SkPaint::kCenter_Align) {
+            x -= 0.5 * value->getTotalAdvance();
+        } else if (align == SkPaint::kRight_Align) {
+            x -= value->getTotalAdvance();
+        }
+        paint->setTextAlign(SkPaint::kLeft_Align);
+        doDrawGlyphsPos(canvas, value->getGlyphs(), value->getPos(), 0, value->getGlyphsCount(), x, y, flags, paint);
+        doDrawTextDecorations(canvas, x, y, value->getTotalAdvance(), paint);
+        paint->setTextAlign(align);
+    }
+
+    // Same values used by Skia
+#define kStdStrikeThru_Offset   (-6.0f / 21.0f)
+#define kStdUnderline_Offset    (1.0f / 9.0f)
+#define kStdUnderline_Thickness (1.0f / 18.0f)
+
+    static void doDrawTextDecorations(SkCanvas* canvas, jfloat x, jfloat y, jfloat length, SkPaint* paint) {
+        uint32_t flags;
+        SkDrawFilter* drawFilter = canvas->getDrawFilter();
+        if (drawFilter) {
+            SkPaint paintCopy(*paint);
+            drawFilter->filter(&paintCopy, SkDrawFilter::kText_Type);
+            flags = paintCopy.getFlags();
+        } else {
+            flags = paint->getFlags();
+        }
+        if (flags & (SkPaint::kUnderlineText_Flag | SkPaint::kStrikeThruText_Flag)) {
+            SkScalar left = SkFloatToScalar(x);
+            SkScalar right = SkFloatToScalar(x + length);
+            float textSize = paint->getTextSize();
+            float strokeWidth = fmax(textSize * kStdUnderline_Thickness, 1.0f);
+            if (flags & SkPaint::kUnderlineText_Flag) {
+                SkScalar top = SkFloatToScalar(y + textSize * kStdUnderline_Offset
+                        - 0.5f * strokeWidth);
+                SkScalar bottom = SkFloatToScalar(y + textSize * kStdUnderline_Offset
+                        + 0.5f * strokeWidth);
+                canvas->drawRectCoords(left, top, right, bottom, *paint);
+            }
+            if (flags & SkPaint::kStrikeThruText_Flag) {
+                SkScalar top = SkFloatToScalar(y + textSize * kStdStrikeThru_Offset
+                        - 0.5f * strokeWidth);
+                SkScalar bottom = SkFloatToScalar(y + textSize * kStdStrikeThru_Offset
+                        + 0.5f * strokeWidth);
+                canvas->drawRectCoords(left, top, right, bottom, *paint);
+            }
+        }
     }
 
     static void doDrawGlyphs(SkCanvas* canvas, const jchar* glyphArray, int index, int count,
             jfloat x, jfloat y, int flags, SkPaint* paint) {
-        // TODO: need to suppress this code after the GL renderer is modified for not
-        // copying the paint
-
-        // Save old text encoding
-        SkPaint::TextEncoding oldEncoding = paint->getTextEncoding();
-        // Define Glyph encoding
-        paint->setTextEncoding(SkPaint::kGlyphID_TextEncoding);
-
+        // Beware: this needs Glyph encoding (already done on the Paint constructor)
         canvas->drawText(glyphArray + index * 2, count * 2, x, y, *paint);
+    }
 
-        // Get back old encoding
-        paint->setTextEncoding(oldEncoding);
+    static void doDrawGlyphsPos(SkCanvas* canvas, const jchar* glyphArray, const jfloat* posArray,
+            int index, int count, jfloat x, jfloat y, int flags, SkPaint* paint) {
+        SkPoint* posPtr = new SkPoint[count];
+        for (int indx = 0; indx < count; indx++) {
+            posPtr[indx].fX = SkFloatToScalar(x + posArray[indx * 2]);
+            posPtr[indx].fY = SkFloatToScalar(y + posArray[indx * 2 + 1]);
+        }
+        canvas->drawPosText(glyphArray, count << 1, posPtr, *paint);
+        delete[] posPtr;
     }
 
     static void drawTextRun___CIIIIFFIPaint(
@@ -802,13 +835,8 @@ public:
         jfloat x, jfloat y, int dirFlags, SkPaint* paint) {
 
         jchar* chars = env->GetCharArrayElements(text, NULL);
-#if RTL_USE_HARFBUZZ
         drawTextWithGlyphs(canvas, chars + contextIndex, index - contextIndex,
                 count, contextCount, x, y, dirFlags, paint);
-#else
-        TextLayout::drawTextRun(paint, chars + contextIndex, index - contextIndex,
-                count, contextCount, dirFlags, x, y, canvas);
-#endif
         env->ReleaseCharArrayElements(text, chars, JNI_ABORT);
     }
 
@@ -820,13 +848,8 @@ public:
         jint count = end - start;
         jint contextCount = contextEnd - contextStart;
         const jchar* chars = env->GetStringChars(text, NULL);
-#if RTL_USE_HARFBUZZ
         drawTextWithGlyphs(canvas, chars + contextStart, start - contextStart,
                 count, contextCount, x, y, dirFlags, paint);
-#else
-        TextLayout::drawTextRun(paint, chars + contextStart, start - contextStart,
-                count, contextCount, dirFlags, x, y, canvas);
-#endif
         env->ReleaseStringChars(text, chars);
     }
 

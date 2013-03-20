@@ -47,14 +47,17 @@ LOCAL_SRC_FILES:= \
 	android_database_SQLiteQuery.cpp \
 	android_database_SQLiteStatement.cpp \
 	android_emoji_EmojiFactory.cpp \
+        android_view_DisplayEventReceiver.cpp \
 	android_view_Surface.cpp \
         android_view_SurfaceSession.cpp \
 	android_view_TextureView.cpp \
+        android_view_InputDevice.cpp \
 	android_view_InputChannel.cpp \
-	android_view_InputQueue.cpp \
+        android_view_InputEventReceiver.cpp \
 	android_view_KeyEvent.cpp \
-	android_view_KeyCharacterMap.cpp \
-	android_view_HardwareRenderer.cpp \
+	android_view_KeyCharacterMap.cpp   \
+	android_view_HardwareRenderer.cpp  \
+        android_view_GLES20DisplayList.cpp \
 	android_view_GLES20Canvas.cpp \
 	android_view_MotionEvent.cpp \
 	android_view_PointerIcon.cpp \
@@ -67,6 +70,7 @@ LOCAL_SRC_FILES:= \
 	android_os_MemoryFile.cpp \
 	android_os_MessageQueue.cpp \
 	android_os_ParcelFileDescriptor.cpp \
+        android_os_Parcel.cpp               \
 	android_os_Power.cpp \
 	android_os_StatFs.cpp \
 	android_os_SystemClock.cpp \
@@ -179,6 +183,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/effects \
 	external/skia/include/images \
+        external/skia/include/ports \
 	external/skia/src/ports \
 	external/skia/include/utils \
 	external/sqlite/dist \
@@ -196,6 +201,7 @@ LOCAL_C_INCLUDES += \
 	libcore/include
 
 LOCAL_SHARED_LIBRARIES := \
+        libandroidfw \
 	libexpat \
 	libnativehelper \
 	libcutils \
@@ -229,14 +235,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 ifeq ($(USE_OPENGL_RENDERER),true)
 	LOCAL_SHARED_LIBRARIES += libhwui
-endif
-
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-ifeq ($(USE_OPENGL_RENDERER),true)
-LOCAL_SHARED_LIBRARIES += libtilerenderer
-endif
-LOCAL_C_INCLUDES += hardware/qcom/display/libtilerenderer
-LOCAL_CFLAGS += -DQCOM_HARDWARE
 endif
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)

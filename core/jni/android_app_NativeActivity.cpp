@@ -27,7 +27,7 @@
 #include <android_runtime/android_util_AssetManager.h>
 #include <gui/Surface.h>
 #include <ui/egl/android_natives.h>
-#include <ui/InputTransport.h>
+#include <androidfw/InputTransport.h>
 #include <utils/Looper.h>
 
 #include "JNIHelp.h"
@@ -130,21 +130,21 @@ AInputQueue::~AInputQueue() {
 void AInputQueue::attachLooper(ALooper* looper, int ident,
         ALooper_callbackFunc callback, void* data) {
     mLooper = static_cast<android::Looper*>(looper);
-    mLooper->addFd(mConsumer.getChannel()->getReceivePipeFd(),
+    mLooper->addFd(mConsumer.getChannel()->getFd(),
             ident, ALOOPER_EVENT_INPUT, callback, data);
     mLooper->addFd(mDispatchKeyRead,
             ident, ALOOPER_EVENT_INPUT, callback, data);
 }
 
 void AInputQueue::detachLooper() {
-    mLooper->removeFd(mConsumer.getChannel()->getReceivePipeFd());
+    mLooper->removeFd(mConsumer.getChannel()->getFd());
     mLooper->removeFd(mDispatchKeyRead);
 }
 
 int32_t AInputQueue::hasEvents() {
     struct pollfd pfd[2];
 
-    pfd[0].fd = mConsumer.getChannel()->getReceivePipeFd();
+    pfd[0].fd = mConsumer.getChannel()->getFd();
     pfd[0].events = POLLIN;
     pfd[0].revents = 0;
     pfd[1].fd = mDispatchKeyRead;
@@ -172,7 +172,7 @@ int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
             in_flight_event inflight;
             inflight.event = kevent;
             inflight.seq = -1;
-            inflight.doFinish = false;
+            inflight.finishSeq = 0;
             mInFlightEvents.push(inflight);
         }
         if (mFinishPreDispatches.size() > 0) {
@@ -201,26 +201,26 @@ int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
         }
     }
     
-    int32_t res = mConsumer.receiveDispatchSignal();
+    uint32_t consumerSeq;
+    InputEvent* myEvent = NULL;
+    status_t res = mConsumer.consume(&mPooledInputEventFactory, true /*consumeBatches*/, -1,
+            &consumerSeq, &myEvent);
     if (res != android::OK) {
-        ALOGE("channel '%s' ~ Failed to receive dispatch signal.  status=%d",
-                mConsumer.getChannel()->getName().string(), res);
+        if (res != android::WOULD_BLOCK) {
+            ALOGW("channel '%s' ~ Failed to consume input event.  status=%d",
+                    mConsumer.getChannel()->getName().string(), res);
+        }
         return -1;
     }
 
-    InputEvent* myEvent = NULL;
-    res = mConsumer.consume(this, &myEvent);
-    if (res != android::OK) {
-        ALOGW("channel '%s' ~ Failed to consume input event.  status=%d",
-                mConsumer.getChannel()->getName().string(), res);
-        mConsumer.sendFinishedSignal(false);
-        return -1;
+    if (mConsumer.hasDeferredEvent()) {
+        wakeupDispatchLocked();
     }
 
     in_flight_event inflight;
     inflight.event = myEvent;
     inflight.seq = -1;
-    inflight.doFinish = true;
+    inflight.finishSeq = consumerSeq;
     mInFlightEvents.push(inflight);
 
     *outEvent = myEvent;
@@ -262,8 +262,8 @@ void AInputQueue::finishEvent(AInputEvent* event, bool handled, bool didDefaultH
     for (size_t i=0; i<N; i++) {
         const in_flight_event& inflight(mInFlightEvents[i]);
         if (inflight.event == event) {
-            if (inflight.doFinish) {
-                int32_t res = mConsumer.sendFinishedSignal(handled);
+            if (inflight.finishSeq) {
+                status_t res = mConsumer.sendFinishedSignal(inflight.finishSeq, handled);
                 if (res != android::OK) {
                     ALOGW("Failed to send finished signal on channel '%s'.  status=%d",
                             mConsumer.getChannel()->getName().string(), res);
@@ -289,8 +289,7 @@ void AInputQueue::dispatchEvent(android::KeyEvent* event) {
     LOG_TRACE("dispatchEvent: dispatching=%d write=%d\n", mDispatchingKeys.size(),
             mDispatchKeyWrite);
     mDispatchingKeys.add(event);
-    wakeupDispatch();
-    mLock.unlock();
+    wakeupDispatchLocked();
 }
 
 void AInputQueue::finishPreDispatch(int seq, bool handled) {
@@ -300,8 +299,7 @@ void AInputQueue::finishPreDispatch(int seq, bool handled) {
     finish.seq = seq;
     finish.handled = handled;
     mFinishPreDispatches.add(finish);
-    wakeupDispatch();
-    mLock.unlock();
+    wakeupDispatchLocked();
 }
 
 KeyEvent* AInputQueue::consumeUnhandledEvent() {
@@ -402,7 +400,7 @@ bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
     return false;
 }
 
-void AInputQueue::wakeupDispatch() {
+void AInputQueue::wakeupDispatchLocked() {
 restart:
     char dummy = 0;
     int res = write(mDispatchKeyWrite, &dummy, sizeof(dummy));
@@ -442,8 +440,8 @@ struct NativeCode : public ANativeActivity {
         if (env != NULL && clazz != NULL) {
             env->DeleteGlobalRef(clazz);
         }
-        if (looper != NULL && mainWorkRead >= 0) {
-            looper->removeFd(mainWorkRead);
+        if (messageQueue != NULL && mainWorkRead >= 0) {
+            messageQueue->getLooper()->removeFd(mainWorkRead);
         }
         if (nativeInputQueue != NULL) {
             nativeInputQueue->mWorkWrite = -1;
@@ -481,12 +479,7 @@ struct NativeCode : public ANativeActivity {
                     android_view_InputChannel_getInputChannel(env, _channel);
             if (ic != NULL) {
                 nativeInputQueue = new AInputQueue(ic, mainWorkWrite);
-                if (nativeInputQueue->getConsumer().initialize() != android::OK) {
-                    delete nativeInputQueue;
-                    nativeInputQueue = NULL;
-                    return UNKNOWN_ERROR;
-                }
-            } else {
+            } else {        
                 return UNKNOWN_ERROR;
             }
         }
@@ -512,7 +505,7 @@ struct NativeCode : public ANativeActivity {
     // These are used to wake up the main thread to process work.
     int mainWorkRead;
     int mainWorkWrite;
-    sp<Looper> looper;
+    sp<MessageQueue> messageQueue;
 };
 
 void android_NativeActivity_finish(ANativeActivity* activity) {
@@ -664,14 +657,14 @@ loadNativeCode_native(JNIEnv* env, jobject clazz, jstring path, jstring funcName
             delete code;
             return 0;
         }
-        
-        code->looper = android_os_MessageQueue_getLooper(env, messageQueue);
-        if (code->looper == NULL) {
-            ALOGW("Unable to retrieve MessageQueue's Looper");
+
+        code->messageQueue = android_os_MessageQueue_getMessageQueue(env, messageQueue);
+        if (code->messageQueue == NULL) {
+            ALOGW("Unable to retrieve native MessageQueue");
             delete code;
             return 0;
         }
-        
+
         int msgpipe[2];
         if (pipe(msgpipe)) {
             ALOGW("could not create pipe: %s", strerror(errno));
@@ -686,7 +679,8 @@ loadNativeCode_native(JNIEnv* env, jobject clazz, jstring path, jstring funcName
         result = fcntl(code->mainWorkWrite, F_SETFL, O_NONBLOCK);
         SLOGW_IF(result != 0, "Could not make main work write pipe "
                 "non-blocking: %s", strerror(errno));
-        code->looper->addFd(code->mainWorkRead, 0, ALOOPER_EVENT_INPUT, mainWorkCallback, code);
+        code->messageQueue->getLooper()->addFd(
+                code->mainWorkRead, 0, ALOOPER_EVENT_INPUT, mainWorkCallback, code);
         
         code->ANativeActivity::callbacks = &code->callbacks;
         if (env->GetJavaVM(&code->vm) < 0) {
