@@ -60,6 +60,7 @@ LOCAL_SRC_FILES := $(filter-out \
 ## READ ME: ########################################################
 LOCAL_SRC_FILES += \
 	core/java/android/accessibilityservice/IAccessibilityServiceConnection.aidl \
+        core/java/android/accessibilityservice/IAccessibilityServiceClient.aidl \
 	core/java/android/accessibilityservice/IEventListener.aidl \
 	core/java/android/accounts/IAccountManager.aidl \
 	core/java/android/accounts/IAccountManagerResponse.aidl \
@@ -92,6 +93,8 @@ LOCAL_SRC_FILES += \
 	core/java/android/bluetooth/IBluetoothCallback.aidl \
 	core/java/android/bluetooth/IBluetoothHeadset.aidl \
 	core/java/android/bluetooth/IBluetoothHealthCallback.aidl \
+        core/java/android/bluetooth/IBluetoothManager.aidl \
+        core/java/android/bluetooth/IBluetoothManagerCallback.aidl \
 	core/java/android/bluetooth/IBluetoothPbap.aidl \
 	core/java/android/bluetooth/IBluetoothStateChangeCallback.aidl \
 	core/java/android/content/IClipboard.aidl \
@@ -109,6 +112,10 @@ LOCAL_SRC_FILES += \
 	core/java/android/content/pm/IPackageMoveObserver.aidl \
 	core/java/android/content/pm/IPackageStatsObserver.aidl \
 	core/java/android/database/IContentObserver.aidl \
+        core/java/android/hardware/display/IDisplayManager.aidl \
+        core/java/android/hardware/display/IDisplayManagerCallback.aidl \
+        core/java/android/hardware/input/IInputManager.aidl \
+        core/java/android/hardware/input/IInputDevicesChangedListener.aidl \
 	core/java/android/hardware/usb/IUsbManager.aidl \
 	core/java/android/net/IConnectivityManager.aidl \
 	core/java/android/net/INetworkManagementEventObserver.aidl \
@@ -136,6 +143,9 @@ LOCAL_SRC_FILES += \
 	core/java/android/view/accessibility/IAccessibilityManager.aidl \
 	core/java/android/view/accessibility/IAccessibilityManagerClient.aidl \
 	core/java/android/view/IApplicationToken.aidl \
+        core/java/android/view/IDisplayContentChangeListener.aidl \
+        core/java/android/view/IInputFilter.aidl \
+        core/java/android/view/IInputFilterHost.aidl \
 	core/java/android/view/IOnKeyguardExitResult.aidl \
 	core/java/android/view/IRotationWatcher.aidl \
 	core/java/android/view/IWindow.aidl \
@@ -170,6 +180,7 @@ LOCAL_SRC_FILES += \
 	core/java/com/android/internal/view/IInputMethodClient.aidl \
 	core/java/com/android/internal/view/IInputMethodManager.aidl \
 	core/java/com/android/internal/view/IInputMethodSession.aidl \
+        core/java/com/android/internal/widget/ILockSettings.aidl \
 	core/java/com/android/internal/widget/IRemoteViewsFactory.aidl \
 	core/java/com/android/internal/widget/IRemoteViewsAdapterConnection.aidl \
 	keystore/java/android/security/IKeyChainAliasCallback.aidl \
