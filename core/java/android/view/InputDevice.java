@@ -16,10 +16,12 @@
 
 package android.view;
 
+import android.content.Context;
 import android.hardware.input.InputManager;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.os.RemoteException;
+import android.os.Vibrator;
+import android.os.NullVibrator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +29,7 @@ import java.util.List;
 /**
  * Describes the capabilities of a particular input device.
  * <p>
- * Each input device may support multiple classes of input.  For example, a multifunction
+ * Each input device may support multiple classes of input.  For example, a multi-function
  * keyboard may compose the capabilities of a standard keyboard together with a track pad mouse
  * or other pointing device.
  * </p><p>
@@ -40,17 +42,18 @@ import java.util.List;
  * </p>
  */
 public final class InputDevice implements Parcelable {
-    private int mId;
+    private final int mId;
     private final int mGeneration;
-    private String mName;
+    private final String mName;
     private final String mDescriptor;
     private final boolean mIsExternal;
-    private int mSources;
-    private int mKeyboardType;
+    private final int mSources;
+    private final int mKeyboardType;
     private final KeyCharacterMap mKeyCharacterMap;
-    private String mKeyCharacterMapFile;
-
+    private final boolean mHasVibrator;
     private final ArrayList<MotionRange> mMotionRanges = new ArrayList<MotionRange>();
+
+    private Vibrator mVibrator; // guarded by mMotionRanges during initialization
 
     /**
      * A mask for input source classes.
@@ -123,7 +126,11 @@ public final class InputDevice implements Parcelable {
     
     /**
      * The input source is a keyboard.
-     * 
+     *
+     * This source indicates pretty much anything that has buttons.  Use
+     * {@link #getKeyboardType()} to determine whether the keyboard has alphabetic keys
+     * and can be used to enter text.
+     *
      * @see #SOURCE_CLASS_BUTTON
      */
     public static final int SOURCE_KEYBOARD = 0x00000100 | SOURCE_CLASS_BUTTON;
@@ -161,6 +168,19 @@ public final class InputDevice implements Parcelable {
 
     /**
      * The input source is a stylus pointing device.
+     * <p>
+     * Note that this bit merely indicates that an input device is capable of obtaining
+     * input from a stylus.  To determine whether a given touch event was produced
+     * by a stylus, examine the tool type returned by {@link MotionEvent#getToolType(int)}
+     * for each individual pointer.
+     * </p><p>
+     * A single touch event may multiple pointers with different tool types,
+     * such as an event that has one pointer with tool type
+     * {@link MotionEvent#TOOL_TYPE_FINGER} and another pointer with tool type
+     * {@link MotionEvent#TOOL_TYPE_STYLUS}.  So it is important to examine
+     * the tool type of each pointer, regardless of the source reported
+     * by {@link MotionEvent#getSource()}.
+     * </p>
      *
      * @see #SOURCE_CLASS_POINTER
      */
@@ -305,7 +325,7 @@ public final class InputDevice implements Parcelable {
     // Called by native code.
     private InputDevice(int id, int generation, String name, String descriptor,
             boolean isExternal, int sources,
-            int keyboardType, KeyCharacterMap keyCharacterMap) {
+            int keyboardType, KeyCharacterMap keyCharacterMap, boolean hasVibrator) {
         mId = id;
         mGeneration = generation;
         mName = name;
@@ -314,6 +334,7 @@ public final class InputDevice implements Parcelable {
         mSources = sources;
         mKeyboardType = keyboardType;
         mKeyCharacterMap = keyCharacterMap;
+        mHasVibrator = hasVibrator;
     }
 
     private InputDevice(Parcel in) {
@@ -325,6 +346,7 @@ public final class InputDevice implements Parcelable {
         mSources = in.readInt();
         mKeyboardType = in.readInt();
         mKeyCharacterMap = KeyCharacterMap.CREATOR.createFromParcel(in);
+        mHasVibrator = in.readInt() != 0;
 
         for (;;) {
             int axis = in.readInt();
@@ -352,9 +374,17 @@ public final class InputDevice implements Parcelable {
     public static int[] getDeviceIds() {
         return InputManager.getInstance().getInputDeviceIds();
     }
-    
+
     /**
      * Gets the input device id.
+     * <p>
+     * Each input device receives a unique id when it is first configured
+     * by the system.  The input device id may change when the system is restarted or if the
+     * input device is disconnected, reconnected or reconfigured at any time.
+     * If you require a stable identifier for a device that persists across
+     * boots and reconfigurations, use {@link #getDescriptor()}.
+     * </p>
+     *
      * @return The input device id.
      */
     public int getId() {
@@ -469,11 +499,7 @@ public final class InputDevice implements Parcelable {
      * @return The key character map.
      */
     public KeyCharacterMap getKeyCharacterMap() {
-        return KeyCharacterMap.load(mId);
-    }
-
-    String getKeyCharacterMapFile() {
-        return mKeyCharacterMapFile;
+        return mKeyCharacterMap;
     }
 
     /**
@@ -538,9 +564,35 @@ public final class InputDevice implements Parcelable {
         return mMotionRanges;
     }
 
+    // Called from native code.
     private void addMotionRange(int axis, int source,
             float min, float max, float flat, float fuzz) {
         mMotionRanges.add(new MotionRange(axis, source, min, max, flat, fuzz));
+    }
+
+    /**
+     * Gets the vibrator service associated with the device, if there is one.
+     * Even if the device does not have a vibrator, the result is never null.
+     * Use {@link Vibrator#hasVibrator} to determine whether a vibrator is
+     * present.
+     *
+     * Note that the vibrator associated with the device may be different from
+     * the system vibrator.  To obtain an instance of the system vibrator instead, call
+     * {@link Context#getSystemService} with {@link Context#VIBRATOR_SERVICE} as argument.
+     *
+     * @return The vibrator service associated with the device, never null.
+     */
+    public Vibrator getVibrator() {
+        synchronized (mMotionRanges) {
+            if (mVibrator == null) {
+                if (mHasVibrator) {
+                    mVibrator = InputManager.getInstance().getInputDeviceVibrator(mId);
+                } else {
+                    mVibrator = NullVibrator.getInstance();
+                }
+            }
+            return mVibrator;
+        }
     }
 
     /**
@@ -629,23 +681,6 @@ public final class InputDevice implements Parcelable {
             return mFuzz;
         }
     }
-    
-    private void readFromParcel(Parcel in) {
-        mId = in.readInt();
-        mName = in.readString();
-        mSources = in.readInt();
-        mKeyboardType = in.readInt();
-        mKeyCharacterMapFile = in.readString();
-
-        for (;;) {
-            int axis = in.readInt();
-            if (axis < 0) {
-                break;
-            }
-            addMotionRange(axis, in.readInt(),
-                    in.readFloat(), in.readFloat(), in.readFloat(), in.readFloat());
-        }
-    }
 
     @Override
     public void writeToParcel(Parcel out, int flags) {
@@ -656,7 +691,8 @@ public final class InputDevice implements Parcelable {
         out.writeInt(mIsExternal ? 1 : 0);
         out.writeInt(mSources);
         out.writeInt(mKeyboardType);
-        out.writeString(mKeyCharacterMapFile);
+        mKeyCharacterMap.writeToParcel(out, flags);
+        out.writeInt(mHasVibrator ? 1 : 0);
 
         final int numRanges = mMotionRanges.size();
         for (int i = 0; i < numRanges; i++) {
@@ -698,7 +734,7 @@ public final class InputDevice implements Parcelable {
         }
         description.append("\n");
 
-        description.append("  Key Character Map: ").append(mKeyCharacterMapFile).append("\n");
+        description.append("  Has Vibrator: ").append(mHasVibrator).append("\n");
 
         description.append("  Sources: 0x").append(Integer.toHexString(mSources)).append(" (");
         appendSourceDescriptionIfApplicable(description, SOURCE_KEYBOARD, "keyboard");
