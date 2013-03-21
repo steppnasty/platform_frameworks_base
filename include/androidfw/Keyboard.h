@@ -17,7 +17,8 @@
 #ifndef _UI_KEYBOARD_H
 #define _UI_KEYBOARD_H
 
-#include <ui/Input.h>
+#include <androidfw/Input.h>
+#include <androidfw/InputDevice.h>
 #include <utils/Errors.h>
 #include <utils/String8.h>
 #include <utils/PropertyMap.h>
@@ -45,7 +46,7 @@ public:
     KeyLayoutMap* keyLayoutMap;
 
     String8 keyCharacterMapFile;
-    KeyCharacterMap* keyCharacterMap;
+    sp<KeyCharacterMap> keyCharacterMap;
 
     KeyMap();
     ~KeyMap();

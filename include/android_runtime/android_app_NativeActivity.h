@@ -17,7 +17,7 @@
 #ifndef _ANDROID_APP_NATIVEACTIVITY_H
 #define _ANDROID_APP_NATIVEACTIVITY_H
 
-#include <ui/InputTransport.h>
+#include <androidfw/InputTransport.h>
 #include <utils/Looper.h>
 
 #include <android/native_activity.h>
@@ -104,8 +104,9 @@ public:
 private:
     void doUnhandledKey(android::KeyEvent* keyEvent);
     bool preDispatchKey(android::KeyEvent* keyEvent);
-    void wakeupDispatch();
+    void wakeupDispatchLocked();
 
+    android::PooledInputEventFactory mPooledInputEventFactory;
     android::InputConsumer mConsumer;
     android::sp<android::Looper> mLooper;
 
@@ -115,7 +116,7 @@ private:
     struct in_flight_event {
         android::InputEvent* event;
         int seq;
-        bool doFinish;
+        uint32_t finishSeq; // sequence number for sendFinishedSignal, or 0 if finish not required
     };
 
     struct finish_pre_dispatch {

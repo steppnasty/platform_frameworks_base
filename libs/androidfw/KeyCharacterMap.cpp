@@ -19,8 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <android/keycodes.h>
-#include <ui/Keyboard.h>
-#include <ui/KeyCharacterMap.h>
+#include <androidfw/Keyboard.h>
+#include <androidfw/KeyCharacterMap.h>
 
 #if HAVE_ANDROID_OS
 #include <binder/Parcel.h>
@@ -104,39 +104,98 @@ KeyCharacterMap::~KeyCharacterMap() {
     }
 }
 
-status_t KeyCharacterMap::load(const String8& filename, KeyCharacterMap** outMap) {
-    *outMap = NULL;
+status_t KeyCharacterMap::load(const String8& filename,
+        Format format, sp<KeyCharacterMap>* outMap) {
+    outMap->clear();
 
     Tokenizer* tokenizer;
     status_t status = Tokenizer::open(filename, &tokenizer);
     if (status) {
         ALOGE("Error %d opening key character map file %s.", status, filename.string());
     } else {
-        KeyCharacterMap* map = new KeyCharacterMap();
-        if (!map) {
-            ALOGE("Error allocating key character map.");
-            status = NO_MEMORY;
-        } else {
-#if DEBUG_PARSER_PERFORMANCE
-            nsecs_t startTime = systemTime(SYSTEM_TIME_MONOTONIC);
-#endif
-            Parser parser(map, tokenizer);
-            status = parser.parse();
-#if DEBUG_PARSER_PERFORMANCE
-            nsecs_t elapsedTime = systemTime(SYSTEM_TIME_MONOTONIC) - startTime;
-            ALOGD("Parsed key character map file '%s' %d lines in %0.3fms.",
-                    tokenizer->getFilename().string(), tokenizer->getLineNumber(),
-                    elapsedTime / 1000000.0);
-#endif
-            if (status) {
-                delete map;
-            } else {
-                *outMap = map;
-            }
-        }
+        status = load(tokenizer, format, outMap);
         delete tokenizer;
     }
     return status;
+}
+
+status_t KeyCharacterMap::loadContents(const String8& filename, const char* contents,
+        Format format, sp<KeyCharacterMap>* outMap) {
+    outMap->clear();
+
+    Tokenizer* tokenizer;
+    status_t status = Tokenizer::fromContents(filename, contents, &tokenizer);
+    if (status) {
+        ALOGE("Error %d opening key character map.", status);
+    } else {
+        status = load(tokenizer, format, outMap);
+        delete tokenizer;
+    }
+    return status;
+}
+
+status_t KeyCharacterMap::load(Tokenizer* tokenizer,
+        Format format, sp<KeyCharacterMap>* outMap) {
+    status_t status = OK;
+    sp<KeyCharacterMap> map = new KeyCharacterMap();
+    if (!map.get()) {
+        ALOGE("Error allocating key character map.");
+        status = NO_MEMORY;
+    } else {
+#if DEBUG_PARSER_PERFORMANCE
+        nsecs_t startTime = systemTime(SYSTEM_TIME_MONOTONIC);
+#endif
+        Parser parser(map.get(), tokenizer, format);
+        status = parser.parse();
+#if DEBUG_PARSER_PERFORMANCE
+        nsecs_t elapsedTime = systemTime(SYSTEM_TIME_MONOTONIC) - startTime;
+        ALOGD("Parsed key character map file '%s' %d lines in %0.3fms.",
+                tokenizer->getFilename().string(), tokenizer->getLineNumber(),
+                elapsedTime / 1000000.0);
+#endif
+        if (!status) {
+            *outMap = map;
+        }
+    }
+    return status;
+}
+
+sp<KeyCharacterMap> KeyCharacterMap::combine(const sp<KeyCharacterMap>& base,
+        const sp<KeyCharacterMap>& overlay) {
+    if (overlay == NULL) {
+        return base;
+    }
+    if (base == NULL) {
+        return overlay;
+    }
+
+    sp<KeyCharacterMap> map = new KeyCharacterMap(*base.get());
+    for (size_t i = 0; i < overlay->mKeys.size(); i++) {
+        int32_t keyCode = overlay->mKeys.keyAt(i);
+        Key* key = overlay->mKeys.valueAt(i);
+        ssize_t oldIndex = map->mKeys.indexOfKey(keyCode);
+        if (oldIndex >= 0) {
+            delete map->mKeys.valueAt(oldIndex);
+            map->mKeys.editValueAt(oldIndex) = new Key(*key);
+        } else {
+            map->mKeys.add(keyCode, new Key(*key));
+        }
+    }
+
+    for (size_t i = 0; i < overlay->mKeysByScanCode.size(); i++) {
+        map->mKeysByScanCode.replaceValueFor(overlay->mKeysByScanCode.keyAt(i),
+                overlay->mKeysByScanCode.valueAt(i));
+    }
+
+    for (size_t i = 0; i < overlay->mKeysByUsageCode.size(); i++) {
+        map->mKeysByUsageCode.replaceValueFor(overlay->mKeysByUsageCode.keyAt(i),
+                overlay->mKeysByUsageCode.valueAt(i));
+    }
+    return map;
+}
+
+sp<KeyCharacterMap> KeyCharacterMap::empty() {
+    return sEmpty;
 }
 
 int32_t KeyCharacterMap::getKeyboardType() const {
@@ -265,6 +324,37 @@ bool KeyCharacterMap::getEvents(int32_t deviceId, const char16_t* chars, size_t 
     }
 #endif
     return true;
+}
+
+status_t KeyCharacterMap::mapKey(int32_t scanCode, int32_t usageCode, int32_t* outKeyCode) const {
+    if (usageCode) {
+        ssize_t index = mKeysByUsageCode.indexOfKey(usageCode);
+        if (index >= 0) {
+#if DEBUG_MAPPING
+    ALOGD("mapKey: scanCode=%d, usageCode=0x%08x ~ Result keyCode=%d.",
+            scanCode, usageCode, *outKeyCode);
+#endif
+            *outKeyCode = mKeysByUsageCode.valueAt(index);
+            return OK;
+        }
+    }
+    if (scanCode) {
+        ssize_t index = mKeysByScanCode.indexOfKey(scanCode);
+        if (index >= 0) {
+#if DEBUG_MAPPING
+    ALOGD("mapKey: scanCode=%d, usageCode=0x%08x ~ Result keyCode=%d.",
+            scanCode, usageCode, *outKeyCode);
+#endif
+            *outKeyCode = mKeysByScanCode.valueAt(index);
+            return OK;
+        }
+    }
+
+#if DEBUG_MAPPING
+        ALOGD("mapKey: scanCode=%d, usageCode=0x%08x ~ Failed.", scanCode, usageCode);
+#endif
+    *outKeyCode = AKEYCODE_UNKNOWN;
+    return NAME_NOT_FOUND;
 }
 
 bool KeyCharacterMap::getKey(int32_t keyCode, const Key** outKey) const {
@@ -532,8 +622,8 @@ KeyCharacterMap::Behavior::Behavior() :
 
 // --- KeyCharacterMap::Parser ---
 
-KeyCharacterMap::Parser::Parser(KeyCharacterMap* map, Tokenizer* tokenizer) :
-        mMap(map), mTokenizer(tokenizer), mState(STATE_TOP) {
+KeyCharacterMap::Parser::Parser(KeyCharacterMap* map, Tokenizer* tokenizer, Format format) :
+        mMap(map), mTokenizer(tokenizer), mFormat(format), mState(STATE_TOP) {
 }
 
 KeyCharacterMap::Parser::~Parser() {

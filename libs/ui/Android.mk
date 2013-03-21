@@ -16,24 +16,6 @@ LOCAL_PATH:= $(call my-dir)
 
 # libui is partially built for the host (used by build time keymap validation tool)
 # These files are common to host and target builds.
-commonSources:=             \
-	Input.cpp           \
-	Keyboard.cpp        \
-	KeyLayoutMap.cpp    \
-	KeyCharacterMap.cpp \
-	VirtualKeyMap.cpp   \
-
-# For the host
-# =====================================================
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES:= $(commonSources)
-
-LOCAL_MODULE:= libui
-
-include $(BUILD_HOST_STATIC_LIBRARY)
-
 
 # For the device
 # =====================================================
@@ -41,7 +23,6 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=                    \
-	$(commonSources)             \
         Fence.cpp                    \
 	EGLUtils.cpp                 \
 	FramebufferNativeWindow.cpp  \
@@ -49,7 +30,6 @@ LOCAL_SRC_FILES:=                    \
 	GraphicBufferAllocator.cpp   \
 	GraphicBufferMapper.cpp      \
 	GraphicLog.cpp               \
-	InputTransport.cpp           \
 	PixelFormat.cpp              \
 	Rect.cpp                     \
 	Region.cpp                   \

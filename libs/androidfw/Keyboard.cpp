@@ -20,10 +20,11 @@
 #include <unistd.h>
 #include <limits.h>
 
-#include <ui/Keyboard.h>
+#include <androidfw/Keyboard.h>
 #include <ui/KeycodeLabels.h>
-#include <ui/KeyLayoutMap.h>
-#include <ui/KeyCharacterMap.h>
+#include <androidfw/KeyLayoutMap.h>
+#include <androidfw/KeyCharacterMap.h>
+#include <androidfw/InputDevice.h>
 #include <utils/Errors.h>
 #include <utils/Log.h>
 #include <cutils/properties.h>
@@ -130,14 +131,13 @@ status_t KeyMap::loadKeyCharacterMap(const InputDeviceIdentifier& deviceIdentifi
         return NAME_NOT_FOUND;
     }
 
-    KeyCharacterMap* map;
-    status_t status = KeyCharacterMap::load(path, &map);
+    status_t status = KeyCharacterMap::load(path,
+            KeyCharacterMap::FORMAT_BASE, &keyCharacterMap);
     if (status) {
         return status;
     }
 
     keyCharacterMapFile.setTo(path);
-    keyCharacterMap = map;
     return OK;
 }
 

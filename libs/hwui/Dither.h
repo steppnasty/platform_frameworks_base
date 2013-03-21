@@ -14,5 +14,34 @@
  * limitations under the License.
  */
 
-void Dummy() {
-}
+#ifndef ANDROID_HWUI_DITHER_H
+#define ANDROID_HWUI_DITHER_H
+
+#include <GLES2/gl2.h>
+
+#include "Program.h"
+
+namespace android {
+namespace uirenderer {
+
+/**
+ * Handles dithering for programs.
+ */
+class Dither {
+public:
+    Dither(): mInitialized(false), mDitherTexture(0) { }
+
+    void clear();
+    void setupProgram(Program* program, GLuint* textureUnit);
+
+private:
+    void bindDitherTexture();
+
+    bool mInitialized;
+    GLuint mDitherTexture;
+};
+
+}; // namespace uirenderer
+}; // namespace android
+
+#endif // ANDROID_HWUI_DITHER_H

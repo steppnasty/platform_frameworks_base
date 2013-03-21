@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 
-#include <ui/Input.h>
+#include <androidfw/Input.h>
 #include <utils/Errors.h>
 #include <utils/KeyedVector.h>
 #include <utils/Tokenizer.h>

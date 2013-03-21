@@ -69,7 +69,7 @@ public:
     K getKeyAt(uint32_t index) const;
     bool put(K key, V value);
     V remove(K key);
-    V removeOldest();
+    bool removeOldest();
     V getValueAt(uint32_t index) const;
 
     uint32_t size() const;
@@ -206,15 +206,19 @@ V GenerationCache<K, V>::removeAt(ssize_t index) {
 }
 
 template<typename K, typename V>
-V GenerationCache<K, V>::removeOldest() {
+bool GenerationCache<K, V>::removeOldest() {
     if (mOldest.get()) {
         ssize_t index = mCache.indexOfKey(mOldest->key);
         if (index >= 0) {
-            return removeAt(index);
+            removeAt(index);
+            return true;
         }
+        ALOGE("GenerationCache: removeOldest failed to find the item in the cache "
+                "with the given key, but we know it must be in there.  "
+                "Is the key comparator kaput?");
     }
 
-    return NULL;
+    return false;
 }
 
 template<typename K, typename V>
