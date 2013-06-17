@@ -164,7 +164,8 @@ LOCAL_C_INCLUDES += \
 	$(call include-path-for, bluedroid) \
 	$(call include-path-for, libhardware)/hardware \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
- $(TOP)/frameworks/av/include \
+	$(TOP)/frameworks/av/include \
+ 	external/e2fsprogs/lib \
 	external/skia/include/core \
 	external/skia/include/effects \
 	external/skia/include/images \
@@ -200,6 +201,7 @@ LOCAL_CFLAGS += -include bionic/libc/kernel/common/linux/socket.h
 LOCAL_SHARED_LIBRARIES := \
 	libandroidfw \
 	libexpat \
+	libext2_blkid \
 	libnativehelper \
 	libcutils \
 	libutils \
