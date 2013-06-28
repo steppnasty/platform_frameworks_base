@@ -37,7 +37,6 @@ class JniUtil {
     // Used by the Chromium HTTP stack.
     private static String sDatabaseDirectory;
     private static String sCacheDirectory;
-    private static Boolean sUseChromiumHttpStack;
     private static Context sContext;
 
     private static void checkInitialized() {
@@ -91,7 +90,17 @@ class JniUtil {
         return sCacheDirectory;
     }
 
-    private static final String ANDROID_CONTENT = "content:";
+    /**
+     * Called by JNI. Gets the application's package name.
+     * @return String The application's package name
+     */
+    private static synchronized String getPackageName() {
+        checkInitialized();
+
+        return sContext.getPackageName();
+    }
+
+    private static final String ANDROID_CONTENT = URLUtil.CONTENT_BASE;
 
     /**
      * Called by JNI. Calculates the size of an input stream by reading it.
@@ -101,10 +110,9 @@ class JniUtil {
         // content://
         if (url.startsWith(ANDROID_CONTENT)) {
             try {
-                // Strip off mimetype, for compatibility with ContentLoader.java
-                // If we don't do this, we can fail to load Gmail attachments,
-                // because the URL being loaded doesn't exactly match the URL we
-                // have permission to read.
+                // Strip off MIME type. If we don't do this, we can fail to
+                // load Gmail attachments, because the URL being loaded doesn't
+                // exactly match the URL we have permission to read.
                 int mimeIndex = url.lastIndexOf('?');
                 if (mimeIndex != -1) {
                     url = url.substring(0, mimeIndex);
@@ -142,6 +150,7 @@ class JniUtil {
         if (url.startsWith(ANDROID_CONTENT)) {
             try {
                 // Strip off mimetype, for compatibility with ContentLoader.java
+                // (used with Android HTTP stack, now removed).
                 // If we don't do this, we can fail to load Gmail attachments,
                 // because the URL being loaded doesn't exactly match the URL we
                 // have permission to read.
@@ -160,25 +169,12 @@ class JniUtil {
         }
     }
 
-    /**
-     * Returns true if we're using the Chromium HTTP stack.
-     *
-     * TODO: Remove this if/when we permanently switch to the Chromium HTTP stack
-     * http:/b/3118772
-     */
-    static boolean useChromiumHttpStack() {
-        if (sUseChromiumHttpStack == null) {
-            sUseChromiumHttpStack = nativeUseChromiumHttpStack();
-        }
-        return sUseChromiumHttpStack;
-    }
-
     private static synchronized String getAutofillQueryUrl() {
         checkInitialized();
         // If the device has not checked in it won't have pulled down the system setting for the
         // Autofill Url. In that case we will not make autofill server requests.
-        return Settings.Secure.getString(sContext.getContentResolver(),
-                Settings.Secure.WEB_AUTOFILL_QUERY_URL);
+        return Settings.Global.getString(sContext.getContentResolver(),
+                Settings.Global.WEB_AUTOFILL_QUERY_URL);
     }
 
     private static boolean canSatisfyMemoryAllocation(long bytesRequested) {
@@ -190,7 +186,4 @@ class JniUtil {
         long leftToAllocate = memInfo.availMem - memInfo.threshold;
         return !memInfo.lowMemory && bytesRequested < leftToAllocate;
     }
-
-
-    private static native boolean nativeUseChromiumHttpStack();
 }

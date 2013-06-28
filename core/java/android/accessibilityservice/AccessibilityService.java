@@ -17,8 +17,10 @@
 package android.accessibilityservice;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteException;
 import android.util.Log;
@@ -216,7 +218,40 @@ public abstract class AccessibilityService extends Service {
      */
     public static final String SERVICE_META_DATA = "android.accessibilityservice";
 
+    /**
+     * Action to go back.
+     */
+    public static final int GLOBAL_ACTION_BACK = 1;
+
+    /**
+     * Action to go home.
+     */
+    public static final int GLOBAL_ACTION_HOME = 2;
+
+    /**
+     * Action to open the recent apps.
+     */
+    public static final int GLOBAL_ACTION_RECENTS = 3;
+
+    /**
+     * Action to open the notifications.
+     */
+    public static final int GLOBAL_ACTION_NOTIFICATIONS = 4;
+
+    /**
+     * Action to open the quick settings.
+     */
+    public static final int GLOBAL_ACTION_QUICK_SETTINGS = 5;
+
     private static final String LOG_TAG = "AccessibilityService";
+
+    interface Callbacks {
+        public void onAccessibilityEvent(AccessibilityEvent event);
+        public void onInterrupt();
+        public void onServiceConnected();
+        public void onSetConnectionId(int connectionId);
+        public boolean onGesture(int gestureId);
+    }
 
     private AccessibilityServiceInfo mInfo;
 
@@ -283,6 +318,88 @@ public abstract class AccessibilityService extends Service {
     @Override
     public final IBinder onBind(Intent intent) {
         return new IEventListenerWrapper(this);
+    }
+
+    /**
+     * Implements the internal {@link IAccessibilityServiceClient} interface to convert
+     * incoming calls to it back to calls on an {@link AccessibilityService}.
+     */
+    static class IAccessibilityServiceClientWrapper extends IAccessibilityServiceClient.Stub
+            implements HandlerCaller.Callback {
+
+        static final int NO_ID = -1;
+
+        private static final int DO_SET_SET_CONNECTION = 10;
+        private static final int DO_ON_INTERRUPT = 20;
+        private static final int DO_ON_ACCESSIBILITY_EVENT = 30;
+        private static final int DO_ON_GESTURE = 40;
+
+        private final HandlerCaller mCaller;
+
+        private final Callbacks mCallback;
+
+        public IAccessibilityServiceClientWrapper(Context context, Looper looper,
+                Callbacks callback) {
+            mCallback = callback;
+            mCaller = new HandlerCaller(context, looper, this);
+        }
+
+        public void setConnection(IAccessibilityServiceConnection connection, int connectionId) {
+            Message message = mCaller.obtainMessageIO(DO_SET_SET_CONNECTION, connectionId,
+                    connection);
+            mCaller.sendMessage(message);
+        }
+
+        public void onInterrupt() {
+            Message message = mCaller.obtainMessage(DO_ON_INTERRUPT);
+            mCaller.sendMessage(message);
+        }
+
+        public void onAccessibilityEvent(AccessibilityEvent event) {
+            Message message = mCaller.obtainMessageO(DO_ON_ACCESSIBILITY_EVENT, event);
+            mCaller.sendMessage(message);
+        }
+
+        public void onGesture(int gestureId) {
+            Message message = mCaller.obtainMessageI(DO_ON_GESTURE, gestureId);
+            mCaller.sendMessage(message);
+        }
+
+        public void executeMessage(Message message) {
+            switch (message.what) {
+                case DO_ON_ACCESSIBILITY_EVENT :
+                    AccessibilityEvent event = (AccessibilityEvent) message.obj;
+                    if (event != null) {
+                        AccessibilityInteractionClient.getInstance().onAccessibilityEvent(event);
+                        mCallback.onAccessibilityEvent(event);
+                        event.recycle();
+                    }
+                    return;
+                case DO_ON_INTERRUPT :
+                    mCallback.onInterrupt();
+                    return;
+                case DO_SET_SET_CONNECTION :
+                    final int connectionId = message.arg1;
+                    IAccessibilityServiceConnection connection =
+                        (IAccessibilityServiceConnection) message.obj;
+                    if (connection != null) {
+                        AccessibilityInteractionClient.getInstance().addConnection(connectionId,
+                                connection);
+                        mCallback.onSetConnectionId(connectionId);
+                        mCallback.onServiceConnected();
+                    } else {
+                        AccessibilityInteractionClient.getInstance().removeConnection(connectionId);
+                        mCallback.onSetConnectionId(AccessibilityInteractionClient.NO_ID);
+                    }
+                    return;
+                case DO_ON_GESTURE :
+                    final int gestureId = message.arg1;
+                    mCallback.onGesture(gestureId);
+                    return;
+                default :
+                    Log.w(LOG_TAG, "Unknown message type " + message.what);
+            }
+        }
     }
 
     /**

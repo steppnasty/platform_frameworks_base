@@ -27,6 +27,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.util.TypedValue;
@@ -103,7 +104,6 @@ public class Dialog implements DialogInterface, Window.Callback,
     private boolean mShowing = false;
     private boolean mCanceled = false;
 
-    private final Thread mUiThread;
     private final Handler mHandler = new Handler();
 
     private static final int DISMISS = 0x43;
@@ -147,22 +147,25 @@ public class Dialog implements DialogInterface, Window.Callback,
         this(context, theme, true);
     }
 
-    Dialog(Context context, int theme, boolean createContextWrapper) {
-        if (theme == 0) {
-            TypedValue outValue = new TypedValue();
-            context.getTheme().resolveAttribute(com.android.internal.R.attr.dialogTheme,
-                    outValue, true);
-            theme = outValue.resourceId;
+    Dialog(Context context, int theme, boolean createContextThemeWrapper) {
+        if (createContextThemeWrapper) {
+            if (theme == 0) {
+                TypedValue outValue = new TypedValue();
+                context.getTheme().resolveAttribute(com.android.internal.R.attr.dialogTheme,
+                        outValue, true);
+                theme = outValue.resourceId;
+            }
+            mContext = new ContextThemeWrapper(context, theme);
+        } else {
+            mContext = context;
         }
 
-        mContext = createContextWrapper ? new ContextThemeWrapper(context, theme) : context;
         mWindowManager = (WindowManager)context.getSystemService(Context.WINDOW_SERVICE);
         Window w = PolicyManager.makeNewWindow(mContext);
         mWindow = w;
         w.setCallback(this);
         w.setWindowManager(mWindowManager, null, null);
         w.setGravity(Gravity.CENTER);
-        mUiThread = Thread.currentThread();
         mListenersHandler = new ListenersHandler(this);
     }
     
@@ -299,11 +302,10 @@ public class Dialog implements DialogInterface, Window.Callback,
      * that in {@link #onStop}.
      */
     public void dismiss() {
-        if (Thread.currentThread() != mUiThread) {
-            mHandler.post(mDismissAction);
+        if (Looper.myLooper() == mHandler.getLooper()) {
+            dismissDialog();
         } else {
-            mHandler.removeCallbacks(mDismissAction);
-            mDismissAction.run();
+            mHandler.post(mDismissAction);
         }
     }
 
@@ -591,7 +593,7 @@ public class Dialog implements DialogInterface, Window.Callback,
     }
 
     /**
-     * Called when an key shortcut event is not handled by any of the views in the Dialog.
+     * Called when a key shortcut event is not handled by any of the views in the Dialog.
      * Override this method to implement global key shortcuts for the Dialog.
      * Key shortcuts can also be implemented by setting the
      * {@link MenuItem#setShortcut(char, char) shortcut} property of menu items.
@@ -1108,10 +1110,12 @@ public class Dialog implements DialogInterface, Window.Callback,
 
     /**
      * Set a listener to be invoked when the dialog is canceled.
-     * <p>
-     * This will only be invoked when the dialog is canceled, if the creator
-     * needs to know when it is dismissed in general, use
-     * {@link #setOnDismissListener}.
+     *
+     * <p>This will only be invoked when the dialog is canceled.
+     * Cancel events alone will not capture all ways that
+     * the dialog might be dismissed. If the creator needs
+     * to know when it is dismissed in general, use
+     * {@link #setOnDismissListener}.</p>
      * 
      * @param listener The {@link DialogInterface.OnCancelListener} to use.
      */

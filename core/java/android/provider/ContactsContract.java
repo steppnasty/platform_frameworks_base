@@ -24,6 +24,7 @@ import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.CursorEntityIterator;
 import android.content.Entity;
 import android.content.EntityIterator;
@@ -36,6 +37,7 @@ import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Pair;
@@ -344,10 +346,10 @@ public final class ContactsContract {
      * directory provider URIs by themselves. This level of indirection allows
      * Contacts Provider to implement additional system-level features and
      * optimizations. Access to Contacts Provider is protected by the
-     * READ_CONTACTS permission, but access to the directory provider is not.
-     * Therefore directory providers must reject requests coming from clients
-     * other than the Contacts Provider itself. An easy way to prevent such
-     * unauthorized access is to check the name of the calling package:
+     * READ_CONTACTS permission, but access to the directory provider is protected by
+     * BIND_DIRECTORY_SEARCH. This permission was introduced at the API level 17, for previous
+     * platform versions the provider should perform the following check to make sure the call
+     * is coming from the ContactsProvider:
      * <pre>
      * private boolean isCallerAllowed() {
      *   PackageManager pm = getContext().getPackageManager();
@@ -750,8 +752,6 @@ public final class ContactsContract {
         public static final String SYNC3 = "sync3";
         /** Generic column for use by sync adapters. */
         public static final String SYNC4 = "sync4";
-        /** Facebook sync @hide */
-        public static final String IS_RESTRICTED = "is_restricted";
     }
 
     /**
@@ -1538,7 +1538,11 @@ public final class ContactsContract {
          *
          * @param resolver the ContentResolver to use
          * @param contactId the person who was contacted
+         *
+         * @deprecated The class DataUsageStatUpdater of the Android support library should
+         *     be used instead.
          */
+        @Deprecated
         public static void markAsContacted(ContentResolver resolver, long contactId) {
             Uri uri = ContentUris.withAppendedId(CONTENT_URI, contactId);
             ContentValues values = new ContentValues();
@@ -3047,6 +3051,13 @@ public final class ContactsContract {
      * requires android.permission.READ_SOCIAL_STREAM permission, and inserting or updating social
      * stream items requires android.permission.WRITE_SOCIAL_STREAM permission.
      * </p>
+     * <h3>Account check</h3>
+     * <p>
+     * The content URIs to the insert, update and delete operations are required to have the account
+     * information matching that of the owning raw contact as query parameters, namely
+     * {@link RawContacts#ACCOUNT_TYPE} and {@link RawContacts#ACCOUNT_NAME}.
+     * {@link RawContacts#DATA_SET} isn't required.
+     * </p>
      * <h3>Operations</h3>
      * <dl>
      * <dt><b>Insert</b></dt>
@@ -3061,9 +3072,12 @@ public final class ContactsContract {
      * values.put(StreamItems.TEXT, "Breakfasted at Tiffanys");
      * values.put(StreamItems.TIMESTAMP, timestamp);
      * values.put(StreamItems.COMMENTS, "3 people reshared this");
-     * Uri streamItemUri = getContentResolver().insert(
-     *     Uri.withAppendedPath(ContentUris.withAppendedId(RawContacts.CONTENT_URI, rawContactId),
-     *         RawContacts.StreamItems.CONTENT_DIRECTORY), values);
+     * Uri.Builder builder = RawContacts.CONTENT_URI.buildUpon();
+     * ContentUris.appendId(builder, rawContactId);
+     * builder.appendEncodedPath(RawContacts.StreamItems.CONTENT_DIRECTORY);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * Uri streamItemUri = getContentResolver().insert(builder.build(), values);
      * long streamItemId = ContentUris.parseId(streamItemUri);
      * </pre>
      * </dd>
@@ -3075,7 +3089,10 @@ public final class ContactsContract {
      * values.put(StreamItems.TEXT, "Breakfasted at Tiffanys");
      * values.put(StreamItems.TIMESTAMP, timestamp);
      * values.put(StreamItems.COMMENTS, "3 people reshared this");
-     * Uri streamItemUri = getContentResolver().insert(StreamItems.CONTENT_URI, values);
+     * Uri.Builder builder = StreamItems.CONTENT_URI.buildUpon();
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * Uri streamItemUri = getContentResolver().insert(builder.build(), values);
      * long streamItemId = ContentUris.parseId(streamItemUri);
      *</pre>
      * </dd>
@@ -3408,6 +3425,13 @@ public final class ContactsContract {
      * requires android.permission.READ_SOCIAL_STREAM permission, and inserting or updating
      * social stream photos requires android.permission.WRITE_SOCIAL_STREAM permission.
      * </p>
+     * <h3>Account check</h3>
+     * <p>
+     * The content URIs to the insert, update and delete operations are required to have the account
+     * information matching that of the owning raw contact as query parameters, namely
+     * {@link RawContacts#ACCOUNT_TYPE} and {@link RawContacts#ACCOUNT_NAME}.
+     * {@link RawContacts#DATA_SET} isn't required.
+     * </p>
      * <h3>Operations</h3>
      * <dl>
      * <dt><b>Insert</b></dt>
@@ -3424,9 +3448,12 @@ public final class ContactsContract {
      * ContentValues values = new ContentValues();
      * values.put(StreamItemPhotos.SORT_INDEX, 1);
      * values.put(StreamItemPhotos.PHOTO, photoData);
-     * Uri photoUri = getContentResolver().insert(Uri.withAppendedPath(
-     *     ContentUris.withAppendedId(StreamItems.CONTENT_URI, streamItemId)
-     *     StreamItems.StreamItemPhotos#CONTENT_DIRECTORY), values);
+     * Uri.Builder builder = StreamItems.CONTENT_URI.buildUpon();
+     * ContentUris.appendId(builder, streamItemId);
+     * builder.appendEncodedPath(StreamItems.StreamItemPhotos.CONTENT_DIRECTORY);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * Uri photoUri = getContentResolver().insert(builder.build(), values);
      * long photoId = ContentUris.parseId(photoUri);
      * </pre>
      * </dd>
@@ -3437,7 +3464,10 @@ public final class ContactsContract {
      * values.put(StreamItemPhotos.STREAM_ITEM_ID, streamItemId);
      * values.put(StreamItemPhotos.SORT_INDEX, 1);
      * values.put(StreamItemPhotos.PHOTO, photoData);
-     * Uri photoUri = getContentResolver().insert(StreamItems.CONTENT_PHOTO_URI, values);
+     * Uri.Builder builder = StreamItems.CONTENT_PHOTO_URI.buildUpon();
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * Uri photoUri = getContentResolver().insert(builder.build(), values);
      * long photoId = ContentUris.parseId(photoUri);
      * </pre>
      * </dd>
@@ -3457,12 +3487,13 @@ public final class ContactsContract {
      * <pre>
      * ContentValues values = new ContentValues();
      * values.put(StreamItemPhotos.PHOTO, newPhotoData);
-     * getContentResolver().update(
-     *     ContentUris.withAppendedId(
-     *         Uri.withAppendedPath(
-     *             ContentUris.withAppendedId(StreamItems.CONTENT_URI, streamItemId)
-     *             StreamItems.StreamItemPhotos#CONTENT_DIRECTORY),
-     *         streamItemPhotoId), values, null, null);
+     * Uri.Builder builder = StreamItems.CONTENT_URI.buildUpon();
+     * ContentUris.appendId(builder, streamItemId);
+     * builder.appendEncodedPath(StreamItems.StreamItemPhotos.CONTENT_DIRECTORY);
+     * ContentUris.appendId(builder, streamItemPhotoId);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * getContentResolver().update(builder.build(), values, null, null);
      * </pre>
      * </dd>
      * <dt>Via the {@link ContactsContract.StreamItems#CONTENT_PHOTO_URI} URI:</dt>
@@ -3471,7 +3502,10 @@ public final class ContactsContract {
      * ContentValues values = new ContentValues();
      * values.put(StreamItemPhotos.STREAM_ITEM_ID, streamItemId);
      * values.put(StreamItemPhotos.PHOTO, newPhotoData);
-     * getContentResolver().update(StreamItems.CONTENT_PHOTO_URI, values);
+     * Uri.Builder builder = StreamItems.CONTENT_PHOTO_URI.buildUpon();
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * getContentResolver().update(builder.build(), values);
      * </pre>
      * </dd>
      * </dl>
@@ -3487,21 +3521,24 @@ public final class ContactsContract {
      * </dt>
      * <dd>
      * <pre>
-     * getContentResolver().delete(
-     *     ContentUris.withAppendedId(
-     *         Uri.withAppendedPath(
-     *             ContentUris.withAppendedId(StreamItems.CONTENT_URI, streamItemId)
-     *             StreamItems.StreamItemPhotos#CONTENT_DIRECTORY),
-     *         streamItemPhotoId), null, null);
+     * Uri.Builder builder = StreamItems.CONTENT_URI.buildUpon();
+     * ContentUris.appendId(builder, streamItemId);
+     * builder.appendEncodedPath(StreamItems.StreamItemPhotos.CONTENT_DIRECTORY);
+     * ContentUris.appendId(builder, streamItemPhotoId);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * getContentResolver().delete(builder.build(), null, null);
      * </pre>
      * </dd>
      * <dt>Deleting all photos under a stream item</dt>
      * <dd>
      * <pre>
-     * getContentResolver().delete(
-     *     Uri.withAppendedPath(
-     *         ContentUris.withAppendedId(StreamItems.CONTENT_URI, streamItemId)
-     *         StreamItems.StreamItemPhotos#CONTENT_DIRECTORY), null, null);
+     * Uri.Builder builder = StreamItems.CONTENT_URI.buildUpon();
+     * ContentUris.appendId(builder, streamItemId);
+     * builder.appendEncodedPath(StreamItems.StreamItemPhotos.CONTENT_DIRECTORY);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_NAME, accountName);
+     * builder.appendQueryParameter(RawContacts.ACCOUNT_TYPE, accountType);
+     * getContentResolver().delete(builder.build(), null, null);
      * </pre>
      * </dd>
      * </dl>
@@ -4533,8 +4570,6 @@ public final class ContactsContract {
         /**
          * The phone number's E164 representation.
          * <P>Type: TEXT</P>
-         *
-         * @hide
          */
         public static final String NORMALIZED_NUMBER = "normalized_number";
     }
@@ -4660,7 +4695,8 @@ public final class ContactsContract {
          * The content:// style URI for this table. Append the phone number you want to lookup
          * to this URI and query it to perform a lookup. For example:
          * <pre>
-         * Uri lookupUri = Uri.withAppendedPath(PhoneLookup.CONTENT_URI, Uri.encode(phoneNumber));
+         * Uri lookupUri = Uri.withAppendedPath(PhoneLookup.CONTENT_FILTER_URI,
+         *         Uri.encode(phoneNumber));
          * </pre>
          */
         public static final Uri CONTENT_FILTER_URI = Uri.withAppendedPath(AUTHORITY_URI,
@@ -5382,6 +5418,20 @@ public final class ContactsContract {
             public static final Uri CONTENT_FILTER_URI = Uri.withAppendedPath(CONTENT_URI,
                     "filter");
 
+            /**
+             * A boolean query parameter that can be used with {@link #CONTENT_FILTER_URI}.
+             * If "1" or "true", display names are searched.  If "0" or "false", display names
+             * are not searched.  Default is "1".
+             */
+            public static final String SEARCH_DISPLAY_NAME_KEY = "search_display_name";
+
+            /**
+             * A boolean query parameter that can be used with {@link #CONTENT_FILTER_URI}.
+             * If "1" or "true", phone numbers are searched.  If "0" or "false", phone numbers
+             * are not searched.  Default is "1".
+             */
+            public static final String SEARCH_PHONE_NUMBER_KEY = "search_phone_number";
+
             public static final int TYPE_HOME = 1;
             public static final int TYPE_MOBILE = 2;
             public static final int TYPE_WORK = 3;
@@ -5410,10 +5460,11 @@ public final class ContactsContract {
             public static final String NUMBER = DATA;
 
             /**
-             * The phone number's E164 representation.
+             * The phone number's E164 representation. This value can be omitted in which
+             * case the provider will try to automatically infer it.  (It'll be left null if the
+             * provider fails to infer.)
+             * If present, {@link #NUMBER} has to be set as well (it will be ignored otherwise).
              * <P>Type: TEXT</P>
-             *
-             * @hide
              */
             public static final String NORMALIZED_NUMBER = DATA4;
 
@@ -6749,6 +6800,39 @@ public final class ContactsContract {
              */
             public static final String NAMESPACE = DataColumns.DATA2;
         }
+
+        /**
+         * <p>
+         * Convenient functionalities for "callable" data. Note that, this is NOT a separate data
+         * kind.
+         * </p>
+         * <p>
+         * This URI allows the ContactsProvider to return a unified result for "callable" data
+         * that users can use for calling purposes. {@link Phone} and {@link SipAddress} are the
+         * current examples for "callable", but may be expanded to the other types.
+         * </p>
+         * <p>
+         * Each returned row may have a different MIMETYPE and thus different interpretation for
+         * each column. For example the meaning for {@link Phone}'s type is different than
+         * {@link SipAddress}'s.
+         * </p>
+         *
+         * @hide
+         */
+        public static final class Callable implements DataColumnsWithJoins, CommonColumns {
+            /**
+             * Similar to {@link Phone#CONTENT_URI}, but returns callable data instead of only
+             * phone numbers.
+             */
+            public static final Uri CONTENT_URI = Uri.withAppendedPath(Data.CONTENT_URI,
+                    "callables");
+            /**
+             * Similar to {@link Phone#CONTENT_FILTER_URI}, but allows users to filter callable
+             * data.
+             */
+            public static final Uri CONTENT_FILTER_URI = Uri.withAppendedPath(CONTENT_URI,
+                    "filter");
+        }
     }
 
     /**
@@ -7423,7 +7507,7 @@ public final class ContactsContract {
     /**
      * <p>
      * API allowing applications to send usage information for each {@link Data} row to the
-     * Contacts Provider.
+     * Contacts Provider.  Applications can also clear all usage information.
      * </p>
      * <p>
      * With the feedback, Contacts Provider may return more contextually appropriate results for
@@ -7468,6 +7552,12 @@ public final class ContactsContract {
      * boolean successful = resolver.update(uri, new ContentValues(), null, null) > 0;
      * </pre>
      * </p>
+     * <p>
+     * Applications can also clear all usage information with:
+     * <pre>
+     * boolean successful = resolver.delete(DataUsageFeedback.DELETE_USAGE_URI, null, null) > 0;
+     * </pre>
+     * </p>
      */
     public static final class DataUsageFeedback {
 
@@ -7477,6 +7567,14 @@ public final class ContactsContract {
          */
         public static final Uri FEEDBACK_URI =
                 Uri.withAppendedPath(Data.CONTENT_URI, "usagefeedback");
+
+        /**
+         * The content:// style URI for deleting all usage information.
+         * Must be used with {@link ContentResolver#delete(Uri, String, String[])}.
+         * The {@code where} and {@code selectionArgs} parameters are ignored.
+         */
+        public static final Uri DELETE_USAGE_URI =
+                Uri.withAppendedPath(Contacts.CONTENT_URI, "delete_usage");
 
         /**
          * <p>
@@ -7562,6 +7660,54 @@ public final class ContactsContract {
         public static final int MODE_LARGE = 3;
 
         /**
+         * Constructs the QuickContacts intent with a view's rect.
+         * @hide
+         */
+        public static Intent composeQuickContactsIntent(Context context, View target, Uri lookupUri,
+                int mode, String[] excludeMimes) {
+            // Find location and bounds of target view, adjusting based on the
+            // assumed local density.
+            final float appScale = context.getResources().getCompatibilityInfo().applicationScale;
+            final int[] pos = new int[2];
+            target.getLocationOnScreen(pos);
+
+            final Rect rect = new Rect();
+            rect.left = (int) (pos[0] * appScale + 0.5f);
+            rect.top = (int) (pos[1] * appScale + 0.5f);
+            rect.right = (int) ((pos[0] + target.getWidth()) * appScale + 0.5f);
+            rect.bottom = (int) ((pos[1] + target.getHeight()) * appScale + 0.5f);
+
+            return composeQuickContactsIntent(context, rect, lookupUri, mode, excludeMimes);
+        }
+
+        /**
+         * Constructs the QuickContacts intent.
+         * @hide
+         */
+        public static Intent composeQuickContactsIntent(Context context, Rect target,
+                Uri lookupUri, int mode, String[] excludeMimes) {
+            // When launching from an Activiy, we don't want to start a new task, but otherwise
+            // we *must* start a new task.  (Otherwise startActivity() would crash.)
+            Context actualContext = context;
+            while ((actualContext instanceof ContextWrapper)
+                    && !(actualContext instanceof Activity)) {
+                actualContext = ((ContextWrapper) actualContext).getBaseContext();
+            }
+            final int intentFlags = (actualContext instanceof Activity)
+                    ? Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET
+                    : Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK;
+
+            // Launch pivot dialog through intent for now
+            final Intent intent = new Intent(ACTION_QUICK_CONTACT).addFlags(intentFlags);
+
+            intent.setData(lookupUri);
+            intent.setSourceBounds(target);
+            intent.putExtra(EXTRA_MODE, mode);
+            intent.putExtra(EXTRA_EXCLUDE_MIMES, excludeMimes);
+            return intent;
+        }
+
+        /**
          * Trigger a dialog that lists the various methods of interacting with
          * the requested {@link Contacts} entry. This may be based on available
          * {@link ContactsContract.Data} rows under that contact, and may also
@@ -7586,20 +7732,10 @@ public final class ContactsContract {
          */
         public static void showQuickContact(Context context, View target, Uri lookupUri, int mode,
                 String[] excludeMimes) {
-            // Find location and bounds of target view, adjusting based on the
-            // assumed local density.
-            final float appScale = context.getResources().getCompatibilityInfo().applicationScale;
-            final int[] pos = new int[2];
-            target.getLocationOnScreen(pos);
-
-            final Rect rect = new Rect();
-            rect.left = (int) (pos[0] * appScale + 0.5f);
-            rect.top = (int) (pos[1] * appScale + 0.5f);
-            rect.right = (int) ((pos[0] + target.getWidth()) * appScale + 0.5f);
-            rect.bottom = (int) ((pos[1] + target.getHeight()) * appScale + 0.5f);
-
             // Trigger with obtained rectangle
-            showQuickContact(context, rect, lookupUri, mode, excludeMimes);
+            Intent intent = composeQuickContactsIntent(context, target, lookupUri, mode,
+                    excludeMimes);
+            context.startActivity(intent);
         }
 
         /**
@@ -7630,15 +7766,8 @@ public final class ContactsContract {
          */
         public static void showQuickContact(Context context, Rect target, Uri lookupUri, int mode,
                 String[] excludeMimes) {
-            // Launch pivot dialog through intent for now
-            final Intent intent = new Intent(ACTION_QUICK_CONTACT);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-
-            intent.setData(lookupUri);
-            intent.setSourceBounds(target);
-            intent.putExtra(EXTRA_MODE, mode);
-            intent.putExtra(EXTRA_EXCLUDE_MIMES, excludeMimes);
+            Intent intent = composeQuickContactsIntent(context, target, lookupUri, mode,
+                    excludeMimes);
             context.startActivity(intent);
         }
     }
@@ -7793,6 +7922,16 @@ public final class ContactsContract {
          */
         public static final String ACTION_GET_MULTIPLE_PHONES =
                 "com.android.contacts.action.GET_MULTIPLE_PHONES";
+
+        /**
+         * A broadcast action which is sent when any change has been made to the profile, such
+         * as the profile name or the picture.  A receiver must have
+         * the android.permission.READ_PROFILE permission.
+         *
+         * @hide
+         */
+        public static final String ACTION_PROFILE_CHANGED =
+                "android.provider.Contacts.PROFILE_CHANGED";
 
         /**
          * Used with {@link #SHOW_OR_CREATE_CONTACT} to force creating a new
@@ -8257,7 +8396,7 @@ public final class ContactsContract {
                 // Line contains the query string - now search for it at the start of tokens.
                 List<String> lineTokens = new ArrayList<String>();
                 List<Integer> tokenOffsets = new ArrayList<Integer>();
-                split(contentLine.trim(), lineTokens, tokenOffsets);
+                split(contentLine, lineTokens, tokenOffsets);
 
                 // As we find matches against the query, we'll populate this list with the marked
                 // (or unchanged) tokens.

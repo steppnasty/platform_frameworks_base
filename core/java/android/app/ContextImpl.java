@@ -18,6 +18,7 @@
 package android.app;
 
 import com.android.internal.policy.PolicyManager;
+import com.android.internal.util.Preconditions;
 
 import android.accounts.AccountManager;
 import android.accounts.IAccountManager;
@@ -37,6 +38,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.AssetManager;
 import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
@@ -48,6 +50,9 @@ import android.database.sqlite.SQLiteDatabase.CursorFactory;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.hardware.SensorManager;
+import android.hardware.SystemSensorManager;
+import android.hardware.display.DisplayManager;
+import android.hardware.input.InputManager;
 import android.hardware.usb.IUsbManager;
 import android.hardware.usb.UsbManager;
 import android.location.CountryDetector;
@@ -69,24 +74,31 @@ import android.net.wifi.p2p.WifiP2pManager;
 import android.nfc.NfcManager;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.DropBoxManager;
 import android.os.Environment;
 import android.os.FileUtils;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IPowerManager;
+import android.os.IUserManager;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.os.Vibrator;
 import android.os.storage.StorageManager;
 import android.telephony.TelephonyManager;
 import android.content.ClipboardManager;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
+import android.util.Slog;
+import android.view.CompatibilityInfoHolder;
 import android.view.ContextThemeWrapper;
+import android.view.Display;
 import android.view.WindowManagerImpl;
 import android.view.accessibility.AccessibilityManager;
 import android.view.inputmethod.InputMethodManager;
@@ -118,12 +130,27 @@ class ReceiverRestrictedContext extends ContextWrapper {
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, Handler scheduler) {
-        throw new ReceiverCallNotAllowedException(
-                "IntentReceiver components are not allowed to register to receive intents");
-        //ex.fillInStackTrace();
-        //Log.e("IntentReceiver", ex.getMessage(), ex);
-        //return mContext.registerReceiver(receiver, filter, broadcastPermission,
-        //        scheduler);
+        if (receiver == null) {
+            // Allow retrieving current sticky broadcast; this is safe since we
+            // aren't actually registering a receiver.
+            return super.registerReceiver(null, filter, broadcastPermission, scheduler);
+        } else {
+            throw new ReceiverCallNotAllowedException(
+                    "BroadcastReceiver components are not allowed to register to receive intents");
+        }
+    }
+
+    @Override
+    public Intent registerReceiverAsUser(BroadcastReceiver receiver, UserHandle user,
+            IntentFilter filter, String broadcastPermission, Handler scheduler) {
+        if (receiver == null) {
+            // Allow retrieving current sticky broadcast; this is safe since we
+            // aren't actually registering a receiver.
+            return super.registerReceiverAsUser(null, user, filter, broadcastPermission, scheduler);
+        } else {
+            throw new ReceiverCallNotAllowedException(
+                    "BroadcastReceiver components are not allowed to register to receive intents");
+        }
     }
 
     @Override
@@ -141,7 +168,7 @@ class ReceiverRestrictedContext extends ContextWrapper {
  * context object for Activity and other application components.
  */
 class ContextImpl extends Context {
-    private final static String TAG = "ApplicationContext";
+    private final static String TAG = "ContextImpl";
     private final static boolean DEBUG = false;
 
     private static final HashMap<String, SharedPreferencesImpl> sSharedPrefs =
@@ -157,8 +184,10 @@ class ContextImpl extends Context {
     private int mThemeResource = 0;
     private Resources.Theme mTheme = null;
     private PackageManager mPackageManager;
+    private Display mDisplay; // may be null if default display
     private Context mReceiverRestrictedContext = null;
     private boolean mRestricted;
+    private UserHandle mUser;
 
     private final Object mSync = new Object();
 
@@ -323,6 +352,17 @@ class ContextImpl extends Context {
                     return createDropBoxManager();
                 }});
 
+        registerService(INPUT_SERVICE, new StaticServiceFetcher() {
+                public Object createStaticService() {
+                    return InputManager.getInstance();
+                }});
+
+        registerService(DISPLAY_SERVICE, new ServiceFetcher() {
+                @Override
+                public Object createService(ContextImpl ctx) {
+                    return new DisplayManager(ctx.getOuterContext());
+                }});
+
         registerService(INPUT_METHOD_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
                     return InputMethodManager.getInstance(ctx);
@@ -347,10 +387,10 @@ class ContextImpl extends Context {
                     return PolicyManager.makeNewLayoutInflater(ctx.getOuterContext());
                 }});
 
-        registerService(LOCATION_SERVICE, new StaticServiceFetcher() {
-                public Object createStaticService() {
+        registerService(LOCATION_SERVICE, new ServiceFetcher() {
+                public Object createService(ContextImpl ctx) {
                     IBinder b = ServiceManager.getService(LOCATION_SERVICE);
-                    return new LocationManager(ILocationManager.Stub.asInterface(b));
+                    return new LocationManager(ctx, ILocationManager.Stub.asInterface(b));
                 }});
 
         registerService(NETWORK_POLICY_SERVICE, new ServiceFetcher() {
@@ -381,7 +421,8 @@ class ContextImpl extends Context {
                 public Object createService(ContextImpl ctx) {
                     IBinder b = ServiceManager.getService(POWER_SERVICE);
                     IPowerManager service = IPowerManager.Stub.asInterface(b);
-                    return new PowerManager(service, ctx.mMainThread.getHandler());
+                    return new PowerManager(ctx.getOuterContext(),
+                            service, ctx.mMainThread.getHandler());
                 }});
 
         registerService(SEARCH_SERVICE, new ServiceFetcher() {
@@ -392,7 +433,7 @@ class ContextImpl extends Context {
 
         registerService(SENSOR_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
-                    return new SensorManager(ctx.mMainThread.getHandler().getLooper());
+                    return new SystemSensorManager(ctx.mMainThread.getHandler().getLooper());
                 }});
 
         registerService(STATUS_BAR_SERVICE, new ServiceFetcher() {
@@ -455,8 +496,21 @@ class ContextImpl extends Context {
 
         registerService(WINDOW_SERVICE, new ServiceFetcher() {
                 public Object getService(ContextImpl ctx) {
-                    return WindowManagerImpl.getDefault(ctx.mPackageInfo.mCompatibilityInfo);
+                    Display display = ctx.mDisplay;
+                    if (display == null) {
+                        DisplayManager dm = (DisplayManager)ctx.getOuterContext().getSystemService(
+                                Context.DISPLAY_SERVICE);
+                        display = dm.getDisplay(Display.DEFAULT_DISPLAY);
+                    }
+                    return new WindowManagerImpl(display);
                 }});
+
+        registerService(USER_SERVICE, new ServiceFetcher() {
+            public Object getService(ContextImpl ctx) {
+                IBinder b = ServiceManager.getService(USER_SERVICE);
+                IUserManager service = IUserManager.Stub.asInterface(b);
+                return new UserManager(ctx, service);
+            }});
     }
 
     static ContextImpl getImpl(Context context) {
@@ -475,7 +529,7 @@ class ContextImpl extends Context {
 
     @Override
     public AssetManager getAssets() {
-        return mResources.getAssets();
+        return getResources().getAssets();
     }
 
     @Override
@@ -776,17 +830,18 @@ class ContextImpl extends Context {
 
     @Override
     public SQLiteDatabase openOrCreateDatabase(String name, int mode, CursorFactory factory) {
-        File f = validateFilePath(name, true);
-        SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(f, factory);
-        setFilePermissionsFromMode(f.getPath(), mode, 0);
-        return db;
+        return openOrCreateDatabase(name, mode, factory, null);
     }
 
     @Override
     public SQLiteDatabase openOrCreateDatabase(String name, int mode, CursorFactory factory,
             DatabaseErrorHandler errorHandler) {
         File f = validateFilePath(name, true);
-        SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(f.getPath(), factory, errorHandler);
+        int flags = SQLiteDatabase.CREATE_IF_NECESSARY;
+        if ((mode & MODE_ENABLE_WRITE_AHEAD_LOGGING) != 0) {
+            flags |= SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING;
+        }
+        SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getPath(), factory, flags, errorHandler);
         setFilePermissionsFromMode(f.getPath(), mode, 0);
         return db;
     }
@@ -795,7 +850,7 @@ class ContextImpl extends Context {
     public boolean deleteDatabase(String name) {
         try {
             File f = validateFilePath(name, false);
-            return f.delete();
+            return SQLiteDatabase.deleteDatabase(f);
         } catch (Exception e) {
         }
         return false;
@@ -862,6 +917,19 @@ class ContextImpl extends Context {
 
     @Override
     public void startActivity(Intent intent) {
+        warnIfCallingFromSystemProcess();
+        startActivity(intent, null);
+    }
+
+    /** @hide */
+    @Override
+    public void startActivityAsUser(Intent intent, UserHandle user) {
+        startActivityAsUser(intent, null, user);
+    }
+
+    @Override
+    public void startActivity(Intent intent, Bundle options) {
+        warnIfCallingFromSystemProcess();
         if ((intent.getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
             throw new AndroidRuntimeException(
                     "Calling startActivity() from outside of an Activity "
@@ -870,11 +938,31 @@ class ContextImpl extends Context {
         }
         mMainThread.getInstrumentation().execStartActivity(
             getOuterContext(), mMainThread.getApplicationThread(), null,
-            (Activity)null, intent, -1);
+            (Activity)null, intent, -1, options);
+    }
+
+    /** @hide */
+    @Override
+    public void startActivityAsUser(Intent intent, Bundle options, UserHandle user) {
+        try {
+            ActivityManagerNative.getDefault().startActivityAsUser(
+                mMainThread.getApplicationThread(), intent,
+                intent.resolveTypeIfNeeded(getContentResolver()),
+                null, null, 0, Intent.FLAG_ACTIVITY_NEW_TASK, null, null, options,
+                user.getIdentifier());
+        } catch (RemoteException re) {
+        }
     }
 
     @Override
     public void startActivities(Intent[] intents) {
+        warnIfCallingFromSystemProcess();
+        startActivities(intents, null);
+    }
+
+    @Override
+    public void startActivities(Intent[] intents, Bundle options) {
+        warnIfCallingFromSystemProcess();
         if ((intents[0].getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
             throw new AndroidRuntimeException(
                     "Calling startActivities() from outside of an Activity "
@@ -883,12 +971,19 @@ class ContextImpl extends Context {
         }
         mMainThread.getInstrumentation().execStartActivities(
             getOuterContext(), mMainThread.getApplicationThread(), null,
-            (Activity)null, intents);
+            (Activity)null, intents, options);
     }
 
     @Override
     public void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
+            throws IntentSender.SendIntentException {
+        startIntentSender(intent, fillInIntent, flagsMask, flagsValues, extraFlags, null);
+    }
+
+    @Override
+    public void startIntentSender(IntentSender intent, Intent fillInIntent,
+            int flagsMask, int flagsValues, int extraFlags, Bundle options)
             throws IntentSender.SendIntentException {
         try {
             String resolvedType = null;
@@ -899,8 +994,8 @@ class ContextImpl extends Context {
             int result = ActivityManagerNative.getDefault()
                 .startActivityIntentSender(mMainThread.getApplicationThread(), intent,
                         fillInIntent, resolvedType, null, null,
-                        0, flagsMask, flagsValues);
-            if (result == IActivityManager.START_CANCELED) {
+                        0, flagsMask, flagsValues, options);
+            if (result == ActivityManager.START_CANCELED) {
                 throw new IntentSender.SendIntentException();
             }
             Instrumentation.checkStartActivityResult(result, null);
@@ -915,7 +1010,8 @@ class ContextImpl extends Context {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
-                Activity.RESULT_OK, null, null, null, false, false);
+                Activity.RESULT_OK, null, null, null, false, false,
+                getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -927,7 +1023,8 @@ class ContextImpl extends Context {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
-                Activity.RESULT_OK, null, null, receiverPermission, false, false);
+                Activity.RESULT_OK, null, null, receiverPermission, false, false,
+                getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -940,7 +1037,8 @@ class ContextImpl extends Context {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
-                Activity.RESULT_OK, null, null, receiverPermission, true, false);
+                Activity.RESULT_OK, null, null, receiverPermission, true, false,
+                getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -973,7 +1071,65 @@ class ContextImpl extends Context {
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, rd,
                 initialCode, initialData, initialExtras, receiverPermission,
-                true, false);
+                true, false, getUserId());
+        } catch (RemoteException e) {
+        }
+    }
+
+    @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user) {
+        String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
+        try {
+            intent.setAllowFds(false);
+            ActivityManagerNative.getDefault().broadcastIntent(mMainThread.getApplicationThread(),
+                    intent, resolvedType, null, Activity.RESULT_OK, null, null, null, false, false,
+                    user.getIdentifier());
+        } catch (RemoteException e) {
+        }
+    }
+
+    @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission) {
+        String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
+        try {
+            intent.setAllowFds(false);
+            ActivityManagerNative.getDefault().broadcastIntent(
+                mMainThread.getApplicationThread(), intent, resolvedType, null,
+                Activity.RESULT_OK, null, null, receiverPermission, false, false,
+                user.getIdentifier());
+        } catch (RemoteException e) {
+        }
+    }
+
+    @Override
+    public void sendOrderedBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission, BroadcastReceiver resultReceiver, Handler scheduler,
+            int initialCode, String initialData, Bundle initialExtras) {
+        IIntentReceiver rd = null;
+        if (resultReceiver != null) {
+            if (mPackageInfo != null) {
+                if (scheduler == null) {
+                    scheduler = mMainThread.getHandler();
+                }
+                rd = mPackageInfo.getReceiverDispatcher(
+                    resultReceiver, getOuterContext(), scheduler,
+                    mMainThread.getInstrumentation(), false);
+            } else {
+                if (scheduler == null) {
+                    scheduler = mMainThread.getHandler();
+                }
+                rd = new LoadedApk.ReceiverDispatcher(
+                        resultReceiver, getOuterContext(), scheduler, null, false).getIIntentReceiver();
+            }
+        }
+        String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
+        try {
+            intent.setAllowFds(false);
+            ActivityManagerNative.getDefault().broadcastIntent(
+                mMainThread.getApplicationThread(), intent, resolvedType, rd,
+                initialCode, initialData, initialExtras, receiverPermission,
+                true, false, user.getIdentifier());
         } catch (RemoteException e) {
         }
     }
@@ -985,7 +1141,7 @@ class ContextImpl extends Context {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
-                Activity.RESULT_OK, null, null, null, false, true);
+                Activity.RESULT_OK, null, null, null, false, true, getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -1018,7 +1174,7 @@ class ContextImpl extends Context {
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, rd,
                 initialCode, initialData, initialExtras, null,
-                true, true);
+                true, true, getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -1033,7 +1189,34 @@ class ContextImpl extends Context {
         try {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().unbroadcastIntent(
-                mMainThread.getApplicationThread(), intent);
+                    mMainThread.getApplicationThread(), intent, getUserId());
+        } catch (RemoteException e) {
+        }
+    }
+
+    @Override
+    public void sendStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
+        try {
+            intent.setAllowFds(false);
+            ActivityManagerNative.getDefault().broadcastIntent(
+                mMainThread.getApplicationThread(), intent, resolvedType, null,
+                Activity.RESULT_OK, null, null, null, false, true, user.getIdentifier());
+        } catch (RemoteException e) {
+        }
+    }
+
+    @Override
+    public void removeStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
+        if (resolvedType != null) {
+            intent = new Intent(intent);
+            intent.setDataAndType(intent.getData(), resolvedType);
+        }
+        try {
+            intent.setAllowFds(false);
+            ActivityManagerNative.getDefault().unbroadcastIntent(
+                mMainThread.getApplicationThread(), intent, user.getIdentifier());
         } catch (RemoteException e) {
         }
     }
@@ -1046,11 +1229,18 @@ class ContextImpl extends Context {
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, Handler scheduler) {
-        return registerReceiverInternal(receiver, filter, broadcastPermission,
-                scheduler, getOuterContext());
+        return registerReceiverInternal(receiver, getUserId(), 
+                filter, broadcastPermission, scheduler, getOuterContext());
     }
 
-    private Intent registerReceiverInternal(BroadcastReceiver receiver,
+    @Override
+    public Intent registerReceiverAsUser(BroadcastReceiver receiver, UserHandle user,
+            IntentFilter filter, String broadcastPermission, Handler scheduler) {
+        return registerReceiverInternal(receiver, user.getIdentifier(),
+                filter, broadcastPermission, scheduler, getOuterContext());
+    }
+
+    private Intent registerReceiverInternal(BroadcastReceiver receiver, int userId,
             IntentFilter filter, String broadcastPermission,
             Handler scheduler, Context context) {
         IIntentReceiver rd = null;
@@ -1073,7 +1263,7 @@ class ContextImpl extends Context {
         try {
             return ActivityManagerNative.getDefault().registerReceiver(
                     mMainThread.getApplicationThread(), mBasePackageName,
-                    rd, filter, broadcastPermission);
+                    rd, filter, broadcastPermission, userId);
         } catch (RemoteException e) {
             return null;
         }
@@ -1095,15 +1285,33 @@ class ContextImpl extends Context {
 
     @Override
     public ComponentName startService(Intent service) {
+        warnIfCallingFromSystemProcess();
+        return startServiceAsUser(service, mUser);
+    }
+
+    @Override
+    public boolean stopService(Intent service) {
+        warnIfCallingFromSystemProcess();
+        return stopServiceAsUser(service, mUser);
+    }
+
+    @Override
+    public ComponentName startServiceAsUser(Intent service, UserHandle user) {
         try {
             service.setAllowFds(false);
             ComponentName cn = ActivityManagerNative.getDefault().startService(
                 mMainThread.getApplicationThread(), service,
-                service.resolveTypeIfNeeded(getContentResolver()));
-            if (cn != null && cn.getPackageName().equals("!")) {
-                throw new SecurityException(
-                        "Not allowed to start service " + service
-                        + " without permission " + cn.getClassName());
+                service.resolveTypeIfNeeded(getContentResolver()), user.getIdentifier());
+            if (cn != null) {
+                if (cn.getPackageName().equals("!")) {
+                    throw new SecurityException(
+                            "Not allowed to start service " + service
+                            + " without permission " + cn.getClassName());
+                } else if (cn.getPackageName().equals("!!")) {
+                    throw new SecurityException(
+                            "Unable to start service " + service
+                            + ": " + cn.getClassName());
+                }
             }
             return cn;
         } catch (RemoteException e) {
@@ -1112,12 +1320,12 @@ class ContextImpl extends Context {
     }
 
     @Override
-    public boolean stopService(Intent service) {
+    public boolean stopServiceAsUser(Intent service, UserHandle user) {
         try {
             service.setAllowFds(false);
             int res = ActivityManagerNative.getDefault().stopService(
                 mMainThread.getApplicationThread(), service,
-                service.resolveTypeIfNeeded(getContentResolver()));
+                service.resolveTypeIfNeeded(getContentResolver()), user.getIdentifier());
             if (res < 0) {
                 throw new SecurityException(
                         "Not allowed to stop service " + service);
@@ -1131,6 +1339,13 @@ class ContextImpl extends Context {
     @Override
     public boolean bindService(Intent service, ServiceConnection conn,
             int flags) {
+        warnIfCallingFromSystemProcess();
+        return bindService(service, conn, flags, UserHandle.getUserId(Process.myUid()));
+    }
+
+    @Override
+    public boolean bindService(Intent service, ServiceConnection conn,
+            int flags, int userHandle) {
         IServiceConnection sd;
         if (mPackageInfo != null) {
             sd = mPackageInfo.getServiceDispatcher(conn, getOuterContext(),
@@ -1149,7 +1364,7 @@ class ContextImpl extends Context {
             int res = ActivityManagerNative.getDefault().bindService(
                 mMainThread.getApplicationThread(), getActivityToken(),
                 service, service.resolveTypeIfNeeded(getContentResolver()),
-                sd, flags);
+                sd, flags, userHandle);
             if (res < 0) {
                 throw new SecurityException(
                         "Not allowed to bind to service " + service);
@@ -1182,7 +1397,7 @@ class ContextImpl extends Context {
                 arguments.setAllowFds(false);
             }
             return ActivityManagerNative.getDefault().startInstrumentation(
-                    className, profileFile, 0, arguments, null);
+                    className, profileFile, 0, arguments, null, getUserId());
         } catch (RemoteException e) {
             // System has crashed, nothing we can do.
         }
@@ -1427,11 +1642,29 @@ class ContextImpl extends Context {
                       message);
     }
 
+    private void warnIfCallingFromSystemProcess() {
+        if (Process.myUid() == Process.SYSTEM_UID) {
+            Slog.w(TAG, "Calling a method in the system process without a qualified user: "
+                    + Debug.getCallers(5));
+        }
+    }
+
     @Override
     public Context createPackageContext(String packageName, int flags)
-        throws PackageManager.NameNotFoundException {
+            throws NameNotFoundException {
+        return createPackageContextAsUser(packageName, flags,
+                mUser != null ? mUser : Process.myUserHandle());
+    }
+
+    @Override
+    public Context createPackageContextAsUser(String packageName, int flags,
+            UserHandle user) throws PackageManager.NameNotFoundException {
         if (packageName.equals("system") || packageName.equals("android")) {
-            return new ContextImpl(mMainThread.getSystemContext());
+            final ContextImpl context = new ContextImpl(mMainThread.getSystemContext());
+            context.mRestricted = (flags & CONTEXT_RESTRICTED) == CONTEXT_RESTRICTED;
+            context.init(mPackageInfo, null, mMainThread, mResources, mBasePackageName,
+                    user);
+            return context;
         }
 
         LoadedApk pi =
@@ -1439,7 +1672,7 @@ class ContextImpl extends Context {
         if (pi != null) {
             ContextImpl c = new ContextImpl();
             c.mRestricted = (flags & CONTEXT_RESTRICTED) == CONTEXT_RESTRICTED;
-            c.init(pi, null, mMainThread, mResources, mBasePackageName);
+            c.init(pi, null, mMainThread, mResources, mBasePackageName, user);
             if (c.mResources != null) {
                 return c;
             }
@@ -1451,8 +1684,54 @@ class ContextImpl extends Context {
     }
 
     @Override
+    public Context createConfigurationContext(Configuration overrideConfiguration) {
+        if (overrideConfiguration == null) {
+            throw new IllegalArgumentException("overrideConfiguration must not be null");
+        }
+
+        ContextImpl c = new ContextImpl();
+        c.init(mPackageInfo, null, mMainThread);
+        c.mResources = mMainThread.getTopLevelResources(
+                mPackageInfo.getResDir(),
+                getDisplayId(), overrideConfiguration,
+                mResources.getCompatibilityInfo());
+        return c;
+    }
+
+    @Override
+    public Context createDisplayContext(Display display) {
+        if (display == null) {
+            throw new IllegalArgumentException("display must not be null");
+        }
+
+        int displayId = display.getDisplayId();
+        CompatibilityInfo ci = CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;
+        CompatibilityInfoHolder cih = getCompatibilityInfo(displayId);
+        if (cih != null) {
+            ci = cih.get();
+        }
+
+        ContextImpl context = new ContextImpl();
+        context.init(mPackageInfo, null, mMainThread);
+        context.mDisplay = display;
+        context.mResources = mMainThread.getTopLevelResources(
+                mPackageInfo.getResDir(), displayId, null, ci);
+        return context;
+    }
+
+    private int getDisplayId() {
+        return mDisplay != null ? mDisplay.getDisplayId() : Display.DEFAULT_DISPLAY;
+    }
+
+    @Override
     public boolean isRestricted() {
         return mRestricted;
+    }
+
+    @Override
+    public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
+        Log.w(TAG, "getCompatibilityInfo");
+        return displayId == Display.DEFAULT_DISPLAY ? mPackageInfo.mCompatibilityInfo : null;
     }
 
     private File getDataDirFile() {
@@ -1474,9 +1753,14 @@ class ContextImpl extends Context {
         return file;
     }
 
+    /** {@hide} */
+    public int getUserId() {
+        return mUser.getIdentifier();
+    }
+
     static ContextImpl createSystemContext(ActivityThread mainThread) {
-        ContextImpl context = new ContextImpl();
-        context.init(Resources.getSystem(), mainThread);
+        final ContextImpl context = new ContextImpl();
+        context.init(Resources.getSystem(), mainThread, Process.myUserHandle());
         return context;
     }
 
@@ -1496,17 +1780,19 @@ class ContextImpl extends Context {
         mResources = context.mResources;
         mMainThread = context.mMainThread;
         mContentResolver = context.mContentResolver;
+        mUser = context.mUser;
+        mDisplay = context.mDisplay;
         mOuterContext = this;
     }
 
     final void init(LoadedApk packageInfo,
             IBinder activityToken, ActivityThread mainThread) {
-        init(packageInfo, activityToken, mainThread, null, null);
+        init(packageInfo, activityToken, mainThread, null, null, Process.myUserHandle());
     }
 
     final void init(LoadedApk packageInfo,
                 IBinder activityToken, ActivityThread mainThread,
-                Resources container, String basePackageName) {
+                Resources container, String basePackageName, UserHandle user) {
         mPackageInfo = packageInfo;
         mBasePackageName = basePackageName != null ? basePackageName : packageInfo.mPackageName;
         mResources = mPackageInfo.getResources(mainThread);
@@ -1519,20 +1805,22 @@ class ContextImpl extends Context {
                         " compatiblity info:" + container.getDisplayMetrics());
             }
             mResources = mainThread.getTopLevelResources(
-                    mPackageInfo.getResDir(), container.getCompatibilityInfo());
+                    mPackageInfo.getResDir(), Display.DEFAULT_DISPLAY,
+                    null, container.getCompatibilityInfo());
         }
         mMainThread = mainThread;
-        mContentResolver = new ApplicationContentResolver(this, mainThread);
-
-        setActivityToken(activityToken);
+        mActivityToken = activityToken;
+        mContentResolver = new ApplicationContentResolver(this, mainThread, user);
+        mUser = user;
     }
 
-    final void init(Resources resources, ActivityThread mainThread) {
+    final void init(Resources resources, ActivityThread mainThread, UserHandle user) {
         mPackageInfo = null;
         mBasePackageName = null;
         mResources = resources;
         mMainThread = mainThread;
-        mContentResolver = new ApplicationContentResolver(this, mainThread);
+        mContentResolver = new ApplicationContentResolver(this, mainThread, user);
+        mUser = user;
     }
 
     final void scheduleFinalCleanup(String who, String what) {
@@ -1621,26 +1909,45 @@ class ContextImpl extends Context {
     // ----------------------------------------------------------------------
 
     private static final class ApplicationContentResolver extends ContentResolver {
-        public ApplicationContentResolver(Context context, ActivityThread mainThread) {
+        private final ActivityThread mMainThread;
+        private final UserHandle mUser;
+
+        public ApplicationContentResolver(
+                Context context, ActivityThread mainThread, UserHandle user) {
             super(context);
-            mMainThread = mainThread;
+            mMainThread = Preconditions.checkNotNull(mainThread);
+            mUser = Preconditions.checkNotNull(user);
         }
 
         @Override
-        protected IContentProvider acquireProvider(Context context, String name) {
-            return mMainThread.acquireProvider(context, name);
+        protected IContentProvider acquireProvider(Context context, String auth) {
+            return mMainThread.acquireProvider(context, auth, mUser.getIdentifier(),
+                    true);
         }
 
         @Override
-        protected IContentProvider acquireExistingProvider(Context context, String name) {
-            return mMainThread.acquireExistingProvider(context, name);
+        protected IContentProvider acquireExistingProvider(Context context, String auth) {
+            return mMainThread.acquireExistingProvider(context, auth, mUser.getIdentifier(), true);
         }
 
         @Override
         public boolean releaseProvider(IContentProvider provider) {
-            return mMainThread.releaseProvider(provider);
+            return mMainThread.releaseProvider(provider, true);
         }
 
-        private final ActivityThread mMainThread;
+        @Override
+        protected IContentProvider acquireUnstableProvider(Context c, String auth) {
+            return mMainThread.acquireProvider(c, auth, mUser.getIdentifier(), false);
+        }
+
+        @Override
+        public boolean releaseUnstableProvider(IContentProvider icp) {
+            return mMainThread.releaseProvider(icp, false);
+        }
+
+        @Override
+        public void unstableProviderDied(IContentProvider icp) {
+            mMainThread.handleUnstableProviderDied(icp.asBinder(), true);
+        }
     }
 }

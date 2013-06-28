@@ -339,6 +339,35 @@ public class ViewDebug {
         boolean retrieveReturn() default false;
     }
 
+    /**
+     * Allows a View to inject custom children into HierarchyViewer. For example,
+     * WebView uses this to add its internal layer tree as a child to itself
+     * @hide
+     */
+    public interface HierarchyHandler {
+        /**
+         * Dumps custom children to hierarchy viewer.
+         * See ViewDebug.dumpViewWithProperties(Context, View, BufferedWriter, int)
+         * for the format
+         *
+         * An empty implementation should simply do nothing
+         *
+         * @param out The output writer
+         * @param level The indentation level
+         */
+        public void dumpViewHierarchyWithProperties(BufferedWriter out, int level);
+
+        /**
+         * Returns a View to enable grabbing screenshots from custom children
+         * returned in dumpViewHierarchyWithProperties.
+         *
+         * @param className The className of the view to find
+         * @param hashCode The hashCode of the view to find
+         * @return the View to capture from, or null if not found
+         */
+        public View findHierarchyView(String className, int hashCode);
+    }
+
     private static HashMap<Class<?>, Method[]> mCapturedViewMethodsForClasses = null;
     private static HashMap<Class<?>, Field[]> mCapturedViewFieldsForClasses = null;
 
@@ -1030,7 +1059,7 @@ public class ViewDebug {
             throws IOException {
 
         long durationMeasure =
-                (root || (view.mPrivateFlags & View.MEASURED_DIMENSION_SET) != 0) ? profileViewOperation(
+                (root || (view.mPrivateFlags & View.PFLAG_MEASURED_DIMENSION_SET) != 0) ? profileViewOperation(
                         view, new ViewOperation<Void>() {
                             public Void[] pre() {
                                 forceLayout(view);
@@ -1057,7 +1086,7 @@ public class ViewDebug {
                         })
                         : 0;
         long durationLayout =
-                (root || (view.mPrivateFlags & View.LAYOUT_REQUIRED) != 0) ? profileViewOperation(
+                (root || (view.mPrivateFlags & View.PFLAG_LAYOUT_REQUIRED) != 0) ? profileViewOperation(
                         view, new ViewOperation<Void>() {
                             public Void[] pre() {
                                 return null;
@@ -1071,7 +1100,7 @@ public class ViewDebug {
                             }
                         }) : 0;
         long durationDraw =
-                (root || !view.willNotDraw() || (view.mPrivateFlags & View.DRAWN) != 0) ? profileViewOperation(
+                (root || !view.willNotDraw() || (view.mPrivateFlags & View.PFLAG_DRAWN) != 0) ? profileViewOperation(
                         view,
                         new ViewOperation<Object>() {
                             public Object[] pre() {
@@ -1184,7 +1213,7 @@ public class ViewDebug {
 
         final boolean localVisible = view.getVisibility() == View.VISIBLE && visible;
 
-        if ((view.mPrivateFlags & View.SKIP_DRAW) != View.SKIP_DRAW) {
+        if ((view.mPrivateFlags & View.PFLAG_SKIP_DRAW) != View.PFLAG_SKIP_DRAW) {
             final int id = view.getId();
             String name = view.getClass().getSimpleName();
             if (id != View.NO_ID) {

@@ -230,7 +230,17 @@ public class SurfaceView extends View {
     public void setVisibility(int visibility) {
         super.setVisibility(visibility);
         mViewVisibility = visibility == VISIBLE;
-        mRequestedVisible = mWindowVisibility && mViewVisibility;
+        boolean newRequestedVisible = mWindowVisibility && mViewVisibility;
+        if (newRequestedVisible != mRequestedVisible) {
+            // our base class (View) invalidates the layout only when
+            // we go from/to the GONE state. However, SurfaceView needs
+            // to request a re-layout when the visibility changes at all.
+            // This is needed because the transparent region is computed
+            // as part of the layout phase, and it changes (obviously) when
+            // the visibility changes.
+            requestLayout();
+        }
+        mRequestedVisible = newRequestedVisible;
         updateWindow(false, false);
     }
 
@@ -286,7 +296,7 @@ public class SurfaceView extends View {
         }
         
         boolean opaque = true;
-        if ((mPrivateFlags & SKIP_DRAW) == 0) {
+        if ((mPrivateFlags & PFLAG_SKIP_DRAW) == 0) {
             // this view draws, remove it from the transparent region
             opaque = super.gatherTransparentRegion(region);
         } else if (region != null) {
@@ -310,7 +320,7 @@ public class SurfaceView extends View {
     public void draw(Canvas canvas) {
         if (mWindowType != WindowManager.LayoutParams.TYPE_APPLICATION_PANEL) {
             // draw() is not called when SKIP_DRAW is set
-            if ((mPrivateFlags & SKIP_DRAW) == 0) {
+            if ((mPrivateFlags & PFLAG_SKIP_DRAW) == 0) {
                 // punch a whole in the view-hierarchy below us
                 canvas.drawColor(0, PorterDuff.Mode.CLEAR);
             }
@@ -322,7 +332,7 @@ public class SurfaceView extends View {
     protected void dispatchDraw(Canvas canvas) {
         if (mWindowType != WindowManager.LayoutParams.TYPE_APPLICATION_PANEL) {
             // if SKIP_DRAW is cleared, draw() has already punched a hole
-            if ((mPrivateFlags & SKIP_DRAW) == SKIP_DRAW) {
+            if ((mPrivateFlags & PFLAG_SKIP_DRAW) == PFLAG_SKIP_DRAW) {
                 // punch a whole in the view-hierarchy below us
                 canvas.drawColor(0, PorterDuff.Mode.CLEAR);
             }
@@ -384,7 +394,7 @@ public class SurfaceView extends View {
         if (!mHaveFrame) {
             return;
         }
-        ViewRootImpl viewRoot = (ViewRootImpl) getRootView().getParent();
+        ViewRootImpl viewRoot = getViewRootImpl();
         if (viewRoot != null) {
             mTranslator = viewRoot.mTranslator;
         }
@@ -470,10 +480,10 @@ public class SurfaceView extends View {
                     relayoutResult = mSession.relayout(
                         mWindow, mWindow.mSeq, mLayout, mWidth, mHeight,
                             visible ? VISIBLE : GONE,
-                            WindowManagerImpl.RELAYOUT_DEFER_SURFACE_DESTROY,
+                            WindowManagerGlobal.RELAYOUT_DEFER_SURFACE_DESTROY,
                             mWinFrame, mContentInsets,
                             mVisibleInsets, mConfiguration, mNewSurface);
-                    if ((relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0) {
+                    if ((relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0) {
                         mReportDrawNeeded = true;
                     }
 
@@ -507,7 +517,7 @@ public class SurfaceView extends View {
                     SurfaceHolder.Callback callbacks[] = null;
 
                     final boolean surfaceChanged =
-                            (relayoutResult&WindowManagerImpl.RELAYOUT_RES_SURFACE_CHANGED) != 0;
+                            (relayoutResult&WindowManagerGlobal.RELAYOUT_RES_SURFACE_CHANGED) != 0;
                     if (mSurfaceCreated && (surfaceChanged || (!visible && visibleChanged))) {
                         mSurfaceCreated = false;
                         if (mSurface.isValid()) {
@@ -614,21 +624,22 @@ public class SurfaceView extends View {
             mSurfaceView = new WeakReference<SurfaceView>(surfaceView);
         }
 
-        public void resized(int w, int h, Rect coveredInsets,
+        @Override
+        public void resized(Rect frame, Rect coveredInsets,
                 Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
             SurfaceView surfaceView = mSurfaceView.get();
             if (surfaceView != null) {
                 if (DEBUG) Log.v(
-                        "SurfaceView", surfaceView + " got resized: w=" +
-                                w + " h=" + h + ", cur w=" + mCurWidth + " h=" + mCurHeight);
+                        "SurfaceView", surfaceView + " got resized: w=" + frame.width()
+                        + " h=" + frame.height() + ", cur w=" + mCurWidth + " h=" + mCurHeight);
                 surfaceView.mSurfaceLock.lock();
                 try {
                     if (reportDraw) {
                         surfaceView.mUpdateWindowNeeded = true;
                         surfaceView.mReportDrawNeeded = true;
                         surfaceView.mHandler.sendEmptyMessage(UPDATE_WINDOW_MSG);
-                    } else if (surfaceView.mWinFrame.width() != w
-                            || surfaceView.mWinFrame.height() != h) {
+                    } else if (surfaceView.mWinFrame.width() != frame.width()
+                            || surfaceView.mWinFrame.height() != frame.height()) {
                         surfaceView.mUpdateWindowNeeded = true;
                         surfaceView.mHandler.sendEmptyMessage(UPDATE_WINDOW_MSG);
                     }
@@ -701,16 +712,7 @@ public class SurfaceView extends View {
         }
 
         public void setFormat(int format) {
-            switch (format) {
-                case STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_HALF_L_R:
-                case STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_R_L:
-                case STEREOSCOPIC_3D_FORMAT_TOP_BOTTOM:
-                case STEREOSCOPIC_3D_FORMAT_INTERLEAVED:
-                    mSurface.setStereoscopic3DFormat(format);
-                    return;
-                default:
-                    break;
-            }
+
             // for backward compatibility reason, OPAQUE always
             // means 565 for SurfaceView
             if (format == PixelFormat.OPAQUE)

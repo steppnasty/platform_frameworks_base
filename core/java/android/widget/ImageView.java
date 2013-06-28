@@ -192,15 +192,6 @@ public class ImageView extends View {
         }
     }
 
-    /**
-     * @hide
-     */
-    @Override
-    public int getResolvedLayoutDirection(Drawable dr) {
-        return (dr == mDrawable) ?
-                getResolvedLayoutDirection() : super.getResolvedLayoutDirection(dr);
-    }
-
     @Override
     protected boolean onSetAlpha(int alpha) {
         if (getBackground() == null) {

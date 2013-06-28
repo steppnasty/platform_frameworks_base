@@ -19,6 +19,9 @@ package android.content;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.DeadObjectException;
+import android.os.ICancellationSignal;
 import android.os.RemoteException;
 import android.os.ParcelFileDescriptor;
 import android.content.res.AssetFileDescriptor;
@@ -35,19 +38,49 @@ import java.util.ArrayList;
 public class ContentProviderClient {
     private final IContentProvider mContentProvider;
     private final ContentResolver mContentResolver;
+    private final boolean mStable;
 
     /**
      * @hide
      */
-    ContentProviderClient(ContentResolver contentResolver, IContentProvider contentProvider) {
+    ContentProviderClient(ContentResolver contentResolver,
+            IContentProvider contentProvider, boolean stable) {
         mContentProvider = contentProvider;
         mContentResolver = contentResolver;
+        mStable = stable;
     }
 
     /** See {@link ContentProvider#query ContentProvider.query} */
     public Cursor query(Uri url, String[] projection, String selection,
             String[] selectionArgs, String sortOrder) throws RemoteException {
-        return mContentProvider.query(url, projection, selection,  selectionArgs, sortOrder);
+        try {
+            return query(url, projection, selection,  selectionArgs, sortOrder, null);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
+    }
+
+    /** See {@link ContentProvider#query ContentProvider.query} */
+    public Cursor query(Uri url, String[] projection, String selection,
+            String[] selectionArgs, String sortOrder, CancellationSignal cancellationSignal)
+                    throws RemoteException {
+        ICancellationSignal remoteCancellationSignal = null;
+        if (cancellationSignal != null) {
+            remoteCancellationSignal = mContentProvider.createCancellationSignal();
+            cancellationSignal.setRemote(remoteCancellationSignal);
+        }
+        try {
+            return mContentProvider.query(url, projection, selection,  selectionArgs, sortOrder,
+                    remoteCancellationSignal);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#getType ContentProvider.getType} */

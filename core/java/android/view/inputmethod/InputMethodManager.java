@@ -16,7 +16,7 @@
 
 package android.view.inputmethod;
 
-import com.android.internal.os.HandlerCaller;
+import com.android.internal.os.SomeArgs;
 import com.android.internal.view.IInputConnectionWrapper;
 import com.android.internal.view.IInputContext;
 import com.android.internal.view.IInputMethodCallback;
@@ -35,6 +35,7 @@ import android.os.Message;
 import android.os.RemoteException;
 import android.os.ResultReceiver;
 import android.os.ServiceManager;
+import android.os.SystemClock;
 import android.text.style.SuggestionSpan;
 import android.util.Log;
 import android.util.PrintWriterPrinter;
@@ -62,6 +63,9 @@ import java.util.concurrent.TimeUnit;
  * <p>Topics covered here:
  * <ol>
  * <li><a href="#ArchitectureOverview">Architecture Overview</a>
+ * <li><a href="#Applications">Applications</a>
+ * <li><a href="#InputMethods">Input Methods</a>
+ * <li><a href="#Security">Security</a>
  * </ol>
  * 
  * <a name="ArchitectureOverview"></a>
@@ -222,6 +226,13 @@ public final class InputMethodManager {
      */
     public static final int CONTROL_START_INITIAL = 1<<8;
 
+    /**
+     * Timeout in milliseconds for delivering a key to an IME.
+     */
+    static final long INPUT_METHOD_NOT_RESPONDING_TIMEOUT = 2500;
+
+    private static final int MAX_PENDING_EVENT_POOL_SIZE = 4;
+
     final IInputMethodManager mService;
     final Looper mMainLooper;
     
@@ -280,6 +291,7 @@ public final class InputMethodManager {
      * The InputConnection that was last retrieved from the served view.
      */
     InputConnection mServedInputConnection;
+    ControlledInputConnectionWrapper mServedInputConnectionWrapper;
     /**
      * The completions that were last provided by the served view.
      */
@@ -308,12 +320,17 @@ public final class InputMethodManager {
      */
     IInputMethodSession mCurMethod;
 
+    PendingEvent mPendingEventPool;
+    int mPendingEventPoolSize;
+    PendingEvent mFirstPendingEvent;
+
     // -----------------------------------------------------------
     
     static final int MSG_DUMP = 1;
     static final int MSG_BIND = 2;
     static final int MSG_UNBIND = 3;
     static final int MSG_SET_ACTIVE = 4;
+    static final int MSG_EVENT_TIMEOUT = 5;
     
     class H extends Handler {
         H(Looper looper) {
@@ -324,7 +341,7 @@ public final class InputMethodManager {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_DUMP: {
-                    HandlerCaller.SomeArgs args = (HandlerCaller.SomeArgs)msg.obj;
+                    SomeArgs args = (SomeArgs)msg.obj;
                     try {
                         doDump((FileDescriptor)args.arg1,
                                 (PrintWriter)args.arg2, (String[])args.arg3);
@@ -334,10 +351,14 @@ public final class InputMethodManager {
                     synchronized (args.arg4) {
                         ((CountDownLatch)args.arg4).countDown();
                     }
+                    args.recycle();
                     return;
                 }
                 case MSG_BIND: {
                     final InputBindResult res = (InputBindResult)msg.obj;
+                    if (DEBUG) {
+                        Log.i(TAG, "handleMessage: MSG_BIND " + res.sequence + "," + res.id);
+                    }
                     synchronized (mH) {
                         if (mBindSequence < 0 || mBindSequence != res.sequence) {
                             Log.w(TAG, "Ignoring onBind: cur seq=" + mBindSequence
@@ -354,6 +375,9 @@ public final class InputMethodManager {
                 }
                 case MSG_UNBIND: {
                     final int sequence = msg.arg1;
+                    if (DEBUG) {
+                        Log.i(TAG, "handleMessage: MSG_UNBIND " + sequence);
+                    }
                     boolean startInput = false;
                     synchronized (mH) {
                         if (mBindSequence == sequence) {
@@ -386,6 +410,9 @@ public final class InputMethodManager {
                 }
                 case MSG_SET_ACTIVE: {
                     final boolean active = msg.arg1 != 0;
+                    if (DEBUG) {
+                        Log.i(TAG, "handleMessage: MSG_SET_ACTIVE " + active + ", was " + mActive);
+                    }
                     synchronized (mH) {
                         mActive = active;
                         mFullscreenMode = false;
@@ -400,8 +427,33 @@ public final class InputMethodManager {
                                 mIInputContext.finishComposingText();
                             } catch (RemoteException e) {
                             }
+                            // Check focus again in case that "onWindowFocus" is called before
+                            // handling this message.
+                            if (mServedView != null && mServedView.hasWindowFocus()) {
+                                // "finishComposingText" has been already called above. So we
+                                // should not call mServedInputConnection.finishComposingText here.
+                                // Also, please note that this handler thread could be different
+                                // from a thread that created mServedView. That could happen
+                                // the current activity is running in the system process.
+                                // In that case, we really should not call
+                                // mServedInputConnection.finishComposingText.
+                                if (checkFocusNoStartInput(mHasBeenInactive, false)) {
+                                    startInputInner(null, 0, 0, 0);
+                                }
+                            }
                         }
                     }
+                    return;
+                }
+                case MSG_EVENT_TIMEOUT: {
+                    // Even though the message contains both the sequence number
+                    // and the PendingEvent object itself, we only pass the
+                    // sequence number to the timeoutEvent function because it's
+                    // possible for the PendingEvent object to be dequeued and
+                    // recycled concurrently.  To avoid a possible race, we make
+                    // a point of always looking up the PendingEvent within the
+                    // queue given only the sequence number of the event.
+                    timeoutEvent(msg.arg1);
                     return;
                 }
             }
@@ -410,16 +462,22 @@ public final class InputMethodManager {
     
     private static class ControlledInputConnectionWrapper extends IInputConnectionWrapper {
         private final InputMethodManager mParentInputMethodManager;
+        private boolean mActive;
 
         public ControlledInputConnectionWrapper(final Looper mainLooper, final InputConnection conn,
                 final InputMethodManager inputMethodManager) {
             super(mainLooper, conn);
             mParentInputMethodManager = inputMethodManager;
+            mActive = true;
         }
 
         @Override
         public boolean isActive() {
-            return mParentInputMethodManager.mActive;
+            return mParentInputMethodManager.mActive && mActive;
+        }
+
+        void deactivate() {
+            mActive = false;
         }
     }
     
@@ -429,7 +487,7 @@ public final class InputMethodManager {
             // interface to the system.
             
             CountDownLatch latch = new CountDownLatch(1);
-            HandlerCaller.SomeArgs sargs = new HandlerCaller.SomeArgs();
+            SomeArgs sargs = SomeArgs.obtain();
             sargs.arg1 = fd;
             sargs.arg2 = fout;
             sargs.arg3 = args;
@@ -461,6 +519,18 @@ public final class InputMethodManager {
     };    
     
     final InputConnection mDummyInputConnection = new BaseInputConnection(this, false);
+
+    final IInputMethodCallback mInputMethodCallback = new IInputMethodCallback.Stub() {
+        @Override
+        public void finishedEvent(int seq, boolean handled) {
+            InputMethodManager.this.finishedEvent(seq, handled);
+        }
+
+        @Override
+        public void sessionCreated(IInputMethodSession session) {
+            // Stub -- not for use in the client.
+        }
+    };
     
     InputMethodManager(IInputMethodManager service, Looper looper) {
         mService = service;
@@ -658,12 +728,17 @@ public final class InputMethodManager {
     void clearConnectionLocked() {
         mCurrentTextBoxAttribute = null;
         mServedInputConnection = null;
+        if (mServedInputConnectionWrapper != null) {
+            mServedInputConnectionWrapper.deactivate();
+            mServedInputConnectionWrapper = null;
+        }
     }
     
     /**
      * Disconnect any existing input connection, clearing the served view.
      */
     void finishInputLocked() {
+        mCurRootView = null;
         mNextServedView = null;
         if (mServedView != null) {
             if (DEBUG) Log.v(TAG, "FINISH INPUT: " + mServedView);
@@ -675,19 +750,7 @@ public final class InputMethodManager {
                 }
             }
             
-            if (mServedInputConnection != null) {
-                // We need to tell the previously served view that it is no
-                // longer the input target, so it can reset its state.  Schedule
-                // this call on its window's Handler so it will be on the correct
-                // thread and outside of our lock.
-                Handler vh = mServedView.getHandler();
-                if (vh != null) {
-                    // This will result in a call to reportFinishInputConnection()
-                    // below.
-                    vh.sendMessage(vh.obtainMessage(ViewRootImpl.FINISH_INPUT_CONNECTION,
-                            mServedInputConnection));
-                }
-            }
+            notifyInputConnectionFinished();
             
             mServedView = null;
             mCompletions = null;
@@ -695,7 +758,24 @@ public final class InputMethodManager {
             clearConnectionLocked();
         }
     }
-    
+
+    /**
+     * Notifies the served view that the current InputConnection will no longer be used.
+     */
+    private void notifyInputConnectionFinished() {
+        if (mServedView != null && mServedInputConnection != null) {
+            // We need to tell the previously served view that it is no
+            // longer the input target, so it can reset its state.  Schedule
+            // this call on its window's Handler so it will be on the correct
+            // thread and outside of our lock.
+            ViewRootImpl viewRootImpl = mServedView.getViewRootImpl();
+            if (viewRootImpl != null) {
+                // This will result in a call to reportFinishInputConnection() below.
+                viewRootImpl.dispatchFinishInputConnection(mServedInputConnection);
+            }
+        }
+    }
+
     /**
      * Called from the FINISH_INPUT_CONNECTION message above.
      * @hide
@@ -703,9 +783,13 @@ public final class InputMethodManager {
     public void reportFinishInputConnection(InputConnection ic) {
         if (mServedInputConnection != ic) {
             ic.finishComposingText();
+            // To avoid modifying the public InputConnection interface
+            if (ic instanceof BaseInputConnection) {
+                ((BaseInputConnection) ic).reportFinish();
+            }
         }
     }
-    
+
     public void displayCompletions(View view, CompletionInfo[] completions) {
         checkFocus();
         synchronized (mH) {
@@ -855,7 +939,7 @@ public final class InputMethodManager {
      * shown with {@link #SHOW_FORCED}.
      */
     public static final int HIDE_NOT_ALWAYS = 0x0002;
-    
+
     /**
      * Synonym for {@link #hideSoftInputFromWindow(IBinder, int, ResultReceiver)}
      * without a result: request to hide the soft input window from the
@@ -994,8 +1078,11 @@ public final class InputMethodManager {
         Handler vh = view.getHandler();
         if (vh == null) {
             // If the view doesn't have a handler, something has changed out
-            // from under us, so just bail.
-            if (DEBUG) Log.v(TAG, "ABORT input: no handler for view!");
+            // from under us, so just close the current input.
+            // If we don't close the current input, the current input method can remain on the
+            // screen without a connection.
+            if (DEBUG) Log.v(TAG, "ABORT input: no handler for view! Close current input.");
+            closeCurrentInput();
             return false;
         }
         if (vh.getLooper() != Looper.myLooper()) {
@@ -1018,7 +1105,7 @@ public final class InputMethodManager {
         tba.fieldId = view.getId();
         InputConnection ic = view.onCreateInputConnection(tba);
         if (DEBUG) Log.v(TAG, "Starting input: tba=" + tba + " ic=" + ic);
-        
+
         synchronized (mH) {
             // Now that we are locked again, validate that our state hasn't
             // changed.
@@ -1039,8 +1126,10 @@ public final class InputMethodManager {
             // Hook 'em up and let 'er rip.
             mCurrentTextBoxAttribute = tba;
             mServedConnecting = false;
+            // Notify the served view that its previous input connection is finished
+            notifyInputConnectionFinished();
             mServedInputConnection = ic;
-            IInputContext servedContext;
+            ControlledInputConnectionWrapper servedContext;
             if (ic != null) {
                 mCursorSelStart = tba.initialSelStart;
                 mCursorSelEnd = tba.initialSelEnd;
@@ -1051,6 +1140,10 @@ public final class InputMethodManager {
             } else {
                 servedContext = null;
             }
+            if (mServedInputConnectionWrapper != null) {
+                mServedInputConnectionWrapper.deactivate();
+            }
+            mServedInputConnectionWrapper = servedContext;
             
             try {
                 if (DEBUG) Log.v(TAG, "START INPUT: " + view + " ic="
@@ -1070,6 +1163,7 @@ public final class InputMethodManager {
                     if (res.id != null) {
                         mBindSequence = res.sequence;
                         mCurMethod = res.method;
+                        mCurId = res.id;
                     } else if (mCurMethod == null) {
                         // This means there is no input method available.
                         if (DEBUG) Log.v(TAG, "ABORT input: no input method!");
@@ -1152,24 +1246,23 @@ public final class InputMethodManager {
         }
     }
 
-    void scheduleCheckFocusLocked(View view) {
-        Handler vh = view.getHandler();
-        if (vh != null && !vh.hasMessages(ViewRootImpl.CHECK_FOCUS)) {
-            // This will result in a call to checkFocus() below.
-            vh.sendMessage(vh.obtainMessage(ViewRootImpl.CHECK_FOCUS));
+    static void scheduleCheckFocusLocked(View view) {
+        ViewRootImpl viewRootImpl = view.getViewRootImpl();
+        if (viewRootImpl != null) {
+            viewRootImpl.dispatchCheckFocus();
         }
     }
-    
+
     /**
      * @hide
      */
     public void checkFocus() {
-        if (checkFocusNoStartInput(false)) {
+        if (checkFocusNoStartInput(false, true)) {
             startInputInner(null, 0, 0, 0);
         }
     }
 
-    private boolean checkFocusNoStartInput(boolean forceNewFocus) {
+    private boolean checkFocusNoStartInput(boolean forceNewFocus, boolean finishComposingText) {
         // This is called a lot, so short-circuit before locking.
         if (mServedView == mNextServedView && !forceNewFocus) {
             return false;
@@ -1182,7 +1275,9 @@ public final class InputMethodManager {
             }
             if (DEBUG) Log.v(TAG, "checkFocus: view=" + mServedView
                     + " next=" + mNextServedView
-                    + " forceNewFocus=" + forceNewFocus);
+                    + " forceNewFocus=" + forceNewFocus
+                    + " package="
+                    + (mServedView != null ? mServedView.getContext().getPackageName() : "<none>"));
 
             if (mNextServedView == null) {
                 finishInputLocked();
@@ -1201,7 +1296,7 @@ public final class InputMethodManager {
             mServedConnecting = true;
         }
 
-        if (ic != null) {
+        if (finishComposingText && ic != null) {
             ic.finishComposingText();
         }
 
@@ -1246,7 +1341,7 @@ public final class InputMethodManager {
             controlFlags |= CONTROL_WINDOW_FIRST;
         }
         
-        if (checkFocusNoStartInput(forceNewFocus)) {
+        if (checkFocusNoStartInput(forceNewFocus, true)) {
             // We need to restart input on the current focus view.  This
             // should be done in conjunction with telling the system service
             // about the window gaining focus, to help make the transition
@@ -1261,6 +1356,7 @@ public final class InputMethodManager {
         // we'll just do a window focus gain and call it a day.
         synchronized (mH) {
             try {
+                if (DEBUG) Log.v(TAG, "Reporting focus gain, without startInput");
                 mService.windowGainedFocus(mClient, rootView.getWindowToken(),
                         controlFlags, softInputMode, windowFlags, null, null);
             } catch (RemoteException e) {
@@ -1470,76 +1566,184 @@ public final class InputMethodManager {
      * @hide
      */
     public void dispatchKeyEvent(Context context, int seq, KeyEvent key,
-            IInputMethodCallback callback) {
+            FinishedEventCallback callback) {
+        boolean handled = false;
         synchronized (mH) {
             if (DEBUG) Log.d(TAG, "dispatchKeyEvent");
-    
-            if (mCurMethod == null) {
-                try {
-                    callback.finishedEvent(seq, false);
-                } catch (RemoteException e) {
-                }
-                return;
-            }
-    
-            if (key.getAction() == KeyEvent.ACTION_DOWN
-                    && key.getKeyCode() == KeyEvent.KEYCODE_SYM) {
-                showInputMethodPicker();
-                try {
-                    callback.finishedEvent(seq, true);
-                } catch (RemoteException e) {
-                }
-                return;
-            }
-            try {
-                if (DEBUG) Log.v(TAG, "DISPATCH KEY: " + mCurMethod);
-                mCurMethod.dispatchKeyEvent(seq, key, callback);
-            } catch (RemoteException e) {
-                Log.w(TAG, "IME died: " + mCurId + " dropping: " + key, e);
-                try {
-                    callback.finishedEvent(seq, false);
-                } catch (RemoteException ex) {
+
+            if (mCurMethod != null) {
+                if (key.getAction() == KeyEvent.ACTION_DOWN
+                        && key.getKeyCode() == KeyEvent.KEYCODE_SYM) {
+                    showInputMethodPickerLocked();
+                    handled = true;
+                } else {
+                    try {
+                        if (DEBUG) Log.v(TAG, "DISPATCH KEY: " + mCurMethod);
+                        final long startTime = SystemClock.uptimeMillis();
+                        enqueuePendingEventLocked(startTime, seq, mCurId, callback);
+                        mCurMethod.dispatchKeyEvent(seq, key, mInputMethodCallback);
+                        return;
+                    } catch (RemoteException e) {
+                        Log.w(TAG, "IME died: " + mCurId + " dropping: " + key, e);
+                    }
                 }
             }
         }
+
+        callback.finishedEvent(seq, handled);
     }
 
     /**
      * @hide
      */
-    void dispatchTrackballEvent(Context context, int seq, MotionEvent motion,
-            IInputMethodCallback callback) {
+    public void dispatchTrackballEvent(Context context, int seq, MotionEvent motion,
+            FinishedEventCallback callback) {
         synchronized (mH) {
             if (DEBUG) Log.d(TAG, "dispatchTrackballEvent");
-    
-            if (mCurMethod == null || mCurrentTextBoxAttribute == null) {
+
+            if (mCurMethod != null && mCurrentTextBoxAttribute != null) {
                 try {
-                    callback.finishedEvent(seq, false);
+                    if (DEBUG) Log.v(TAG, "DISPATCH TRACKBALL: " + mCurMethod);
+                    final long startTime = SystemClock.uptimeMillis();
+                    enqueuePendingEventLocked(startTime, seq, mCurId, callback);
+                    mCurMethod.dispatchTrackballEvent(seq, motion, mInputMethodCallback);
+                    return;
                 } catch (RemoteException e) {
+                    Log.w(TAG, "IME died: " + mCurId + " dropping trackball: " + motion, e);
                 }
-                return;
             }
-    
-            try {
-                if (DEBUG) Log.v(TAG, "DISPATCH TRACKBALL: " + mCurMethod);
-                mCurMethod.dispatchTrackballEvent(seq, motion, callback);
-            } catch (RemoteException e) {
-                Log.w(TAG, "IME died: " + mCurId + " dropping trackball: " + motion, e);
+        }
+
+        callback.finishedEvent(seq, false);
+    }
+
+    /**
+     * @hide
+     */
+    public void dispatchGenericMotionEvent(Context context, int seq, MotionEvent motion,
+            FinishedEventCallback callback) {
+        synchronized (mH) {
+            if (DEBUG) Log.d(TAG, "dispatchGenericMotionEvent");
+
+            if (mCurMethod != null && mCurrentTextBoxAttribute != null) {
                 try {
-                    callback.finishedEvent(seq, false);
-                } catch (RemoteException ex) {
+                    if (DEBUG) Log.v(TAG, "DISPATCH GENERIC MOTION: " + mCurMethod);
+                    final long startTime = SystemClock.uptimeMillis();
+                    enqueuePendingEventLocked(startTime, seq, mCurId, callback);
+                    mCurMethod.dispatchGenericMotionEvent(seq, motion, mInputMethodCallback);
+                    return;
+                } catch (RemoteException e) {
+                    Log.w(TAG, "IME died: " + mCurId + " dropping generic motion: " + motion, e);
                 }
             }
+        }
+
+        callback.finishedEvent(seq, false);
+    }
+
+    void finishedEvent(int seq, boolean handled) {
+        final FinishedEventCallback callback;
+        synchronized (mH) {
+            PendingEvent p = dequeuePendingEventLocked(seq);
+            if (p == null) {
+                return; // spurious, event already finished or timed out
+            }
+            mH.removeMessages(MSG_EVENT_TIMEOUT, p);
+            callback = p.mCallback;
+            recyclePendingEventLocked(p);
+        }
+        callback.finishedEvent(seq, handled);
+    }
+
+    void timeoutEvent(int seq) {
+        final FinishedEventCallback callback;
+        synchronized (mH) {
+            PendingEvent p = dequeuePendingEventLocked(seq);
+            if (p == null) {
+                return; // spurious, event already finished or timed out
+            }
+            long delay = SystemClock.uptimeMillis() - p.mStartTime;
+            Log.w(TAG, "Timeout waiting for IME to handle input event after "
+                    + delay + "ms: " + p.mInputMethodId);
+            callback = p.mCallback;
+            recyclePendingEventLocked(p);
+        }
+        callback.finishedEvent(seq, false);
+    }
+
+    private void enqueuePendingEventLocked(
+            long startTime, int seq, String inputMethodId, FinishedEventCallback callback) {
+        PendingEvent p = obtainPendingEventLocked(startTime, seq, inputMethodId, callback);
+        p.mNext = mFirstPendingEvent;
+        mFirstPendingEvent = p;
+
+        Message msg = mH.obtainMessage(MSG_EVENT_TIMEOUT, seq, 0, p);
+        msg.setAsynchronous(true);
+        mH.sendMessageDelayed(msg, INPUT_METHOD_NOT_RESPONDING_TIMEOUT);
+    }
+
+    private PendingEvent dequeuePendingEventLocked(int seq) {
+        PendingEvent p = mFirstPendingEvent;
+        if (p == null) {
+            return null;
+        }
+        if (p.mSeq == seq) {
+            mFirstPendingEvent = p.mNext;
+        } else {
+            PendingEvent prev;
+            do {
+                prev = p;
+                p = p.mNext;
+                if (p == null) {
+                    return null;
+                }
+            } while (p.mSeq != seq);
+            prev.mNext = p.mNext;
+        }
+        p.mNext = null;
+        return p;
+    }
+
+    private PendingEvent obtainPendingEventLocked(
+            long startTime, int seq, String inputMethodId, FinishedEventCallback callback) {
+        PendingEvent p = mPendingEventPool;
+        if (p != null) {
+            mPendingEventPoolSize -= 1;
+            mPendingEventPool = p.mNext;
+            p.mNext = null;
+        } else {
+            p = new PendingEvent();
+        }
+
+        p.mStartTime = startTime;
+        p.mSeq = seq;
+        p.mInputMethodId = inputMethodId;
+        p.mCallback = callback;
+        return p;
+    }
+
+    private void recyclePendingEventLocked(PendingEvent p) {
+        p.mInputMethodId = null;
+        p.mCallback = null;
+
+        if (mPendingEventPoolSize < MAX_PENDING_EVENT_POOL_SIZE) {
+            mPendingEventPoolSize += 1;
+            p.mNext = mPendingEventPool;
+            mPendingEventPool = p;
         }
     }
 
     public void showInputMethodPicker() {
         synchronized (mH) {
-            try {
-                mService.showInputMethodPickerFromClient(mClient);
-            } catch (RemoteException e) {
-                Log.w(TAG, "IME died: " + mCurId, e);
-            }
+            showInputMethodPickerLocked();
+        }
+    }
+
+    private void showInputMethodPickerLocked() {
+        try {
+            mService.showInputMethodPickerFromClient(mClient);
+        } catch (RemoteException e) {
+            Log.w(TAG, "IME died: " + mCurId, e);
         }
     }
 
@@ -1647,6 +1851,27 @@ public final class InputMethodManager {
     }
 
     /**
+     * Force switch to the next input method and subtype. If there is no IME enabled except
+     * current IME and subtype, do nothing.
+     * @param imeToken Supplies the identifying token given to an input method when it was started,
+     * which allows it to perform this operation on itself.
+     * @param onlyCurrentIme if true, the framework will find the next subtype which
+     * belongs to the current IME
+     * @return true if the current input method and subtype was successfully switched to the next
+     * input method and subtype.
+     */
+    public boolean switchToNextInputMethod(IBinder imeToken, boolean onlyCurrentIme) {
+        synchronized (mH) {
+            try {
+                return mService.switchToNextInputMethod(imeToken, onlyCurrentIme);
+            } catch (RemoteException e) {
+                Log.w(TAG, "IME died: " + mCurId, e);
+                return false;
+            }
+        }
+    }
+
+    /**
      * Set additional input method subtypes. Only a process which shares the same uid with the IME
      * can add additional input method subtypes to the IME.
      * Please note that a subtype's status is stored in the system.
@@ -1710,5 +1935,23 @@ public final class InputMethodManager {
                 + " mCursorSelEnd=" + mCursorSelEnd
                 + " mCursorCandStart=" + mCursorCandStart
                 + " mCursorCandEnd=" + mCursorCandEnd);
+    }
+
+    /**
+     * Callback that is invoked when an input event that was dispatched to
+     * the IME has been finished.
+     * @hide
+     */
+    public interface FinishedEventCallback {
+        public void finishedEvent(int seq, boolean handled);
+    }
+
+    private static final class PendingEvent {
+        public PendingEvent mNext;
+
+        public long mStartTime;
+        public int mSeq;
+        public String mInputMethodId;
+        public FinishedEventCallback mCallback;
     }
 }

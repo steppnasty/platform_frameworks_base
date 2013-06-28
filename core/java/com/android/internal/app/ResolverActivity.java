@@ -96,7 +96,7 @@ public class ResolverActivity extends AlertActivity implements
         ap.mTitle = title;
         ap.mOnClickListener = this;
 
-        mPackageMonitor.register(this, false);
+        mPackageMonitor.register(this, getMainLooper(), false);
 
         if (alwaysUseOption) {
             LayoutInflater inflater = (LayoutInflater) getSystemService(
@@ -127,7 +127,7 @@ public class ResolverActivity extends AlertActivity implements
     @Override
     protected void onRestart() {
         super.onRestart();
-        mPackageMonitor.register(this, false);
+        mPackageMonitor.register(this, getMainLooper(), false);
         mAdapter.handlePackagesChanged();
     }
 

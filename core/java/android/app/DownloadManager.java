@@ -355,6 +355,7 @@ public class DownloadManager {
         private CharSequence mDescription;
         private String mMimeType;
         private boolean mRoamingAllowed = true;
+        private boolean mMeteredAllowed = true;
         private int mAllowedNetworkTypes = ~0; // default to all network types allowed
         private boolean mIsVisibleInDownloadsUi = true;
         private boolean mScannable = false;
@@ -638,6 +639,17 @@ public class DownloadManager {
         }
 
         /**
+         * Set whether this download may proceed over a metered network
+         * connection. By default, metered networks are allowed.
+         *
+         * @see ConnectivityManager#isActiveNetworkMetered()
+         */
+        public Request setAllowedOverMetered(boolean allow) {
+            mMeteredAllowed = allow;
+            return this;
+        }
+
+        /**
          * Set whether this download should be displayed in the system's Downloads UI. True by
          * default.
          * @param isVisible whether to display this download in the Downloads UI
@@ -682,6 +694,7 @@ public class DownloadManager {
             values.put(Downloads.Impl.COLUMN_VISIBILITY, mNotificationVisibility);
             values.put(Downloads.Impl.COLUMN_ALLOWED_NETWORK_TYPES, mAllowedNetworkTypes);
             values.put(Downloads.Impl.COLUMN_ALLOW_ROAMING, mRoamingAllowed);
+            values.put(Downloads.Impl.COLUMN_ALLOW_METERED, mMeteredAllowed);
             values.put(Downloads.Impl.COLUMN_IS_VISIBLE_IN_DOWNLOADS_UI, mIsVisibleInDownloadsUi);
 
             return values;

@@ -18,6 +18,7 @@ package android.net;
 
 import static android.net.ConnectivityManager.TYPE_ETHERNET;
 import static android.net.ConnectivityManager.TYPE_WIFI;
+import static android.net.ConnectivityManager.TYPE_WIFI_P2P;
 import static android.net.ConnectivityManager.TYPE_WIMAX;
 import static android.net.NetworkIdentity.scrubSubscriberId;
 import static android.telephony.TelephonyManager.NETWORK_CLASS_2_G;
@@ -41,16 +42,13 @@ import com.android.internal.util.Objects;
  */
 public class NetworkTemplate implements Parcelable {
 
-    /** {@hide} */
     public static final int MATCH_MOBILE_ALL = 1;
-    /** {@hide} */
     public static final int MATCH_MOBILE_3G_LOWER = 2;
-    /** {@hide} */
     public static final int MATCH_MOBILE_4G = 3;
-    /** {@hide} */
     public static final int MATCH_WIFI = 4;
-    /** {@hide} */
     public static final int MATCH_ETHERNET = 5;
+    public static final int MATCH_MOBILE_WILDCARD = 6;
+    public static final int MATCH_WIFI_WILDCARD = 7;
 
     /**
      * Set of {@link NetworkInfo#getType()} that reflect data usage.
@@ -62,12 +60,14 @@ public class NetworkTemplate implements Parcelable {
                 com.android.internal.R.array.config_data_usage_network_types);
     }
 
+    private static boolean sForceAllNetworkTypes = false;
+
     /**
      * Template to combine all {@link ConnectivityManager#TYPE_MOBILE} style
      * networks together. Only uses statistics for requested IMSI.
      */
     public static NetworkTemplate buildTemplateMobileAll(String subscriberId) {
-        return new NetworkTemplate(MATCH_MOBILE_ALL, subscriberId);
+        return new NetworkTemplate(MATCH_MOBILE_ALL, subscriberId, null);
     }
 
     /**
@@ -76,7 +76,7 @@ public class NetworkTemplate implements Parcelable {
      * uses statistics for requested IMSI.
      */
     public static NetworkTemplate buildTemplateMobile3gLower(String subscriberId) {
-        return new NetworkTemplate(MATCH_MOBILE_3G_LOWER, subscriberId);
+        return new NetworkTemplate(MATCH_MOBILE_3G_LOWER, subscriberId, null);
     }
 
     /**
@@ -85,15 +85,36 @@ public class NetworkTemplate implements Parcelable {
      * requested IMSI.
      */
     public static NetworkTemplate buildTemplateMobile4g(String subscriberId) {
-        return new NetworkTemplate(MATCH_MOBILE_4G, subscriberId);
+        return new NetworkTemplate(MATCH_MOBILE_4G, subscriberId, null);
+    }
+
+    /**
+     * Template to match {@link ConnectivityManager#TYPE_MOBILE} networks,
+     * regardless of IMSI.
+     */
+    public static NetworkTemplate buildTemplateMobileWildcard() {
+        return new NetworkTemplate(MATCH_MOBILE_WILDCARD, null, null);
+    }
+
+    /**
+     * Template to match all {@link ConnectivityManager#TYPE_WIFI} networks,
+     * regardless of SSID.
+     */
+    public static NetworkTemplate buildTemplateWifiWildcard() {
+        return new NetworkTemplate(MATCH_WIFI_WILDCARD, null, null);
+    }
+
+    @Deprecated
+    public static NetworkTemplate buildTemplateWifi() {
+        return buildTemplateWifiWildcard();
     }
 
     /**
      * Template to combine all {@link ConnectivityManager#TYPE_WIFI} style
      * networks together.
      */
-    public static NetworkTemplate buildTemplateWifi() {
-        return new NetworkTemplate(MATCH_WIFI, null);
+    public static NetworkTemplate buildTemplateWifi(String networkId) {
+        return new NetworkTemplate(MATCH_WIFI, null, networkId);
     }
 
     /**
@@ -101,27 +122,31 @@ public class NetworkTemplate implements Parcelable {
      * networks together.
      */
     public static NetworkTemplate buildTemplateEthernet() {
-        return new NetworkTemplate(MATCH_ETHERNET, null);
+        return new NetworkTemplate(MATCH_ETHERNET, null, null);
     }
 
     private final int mMatchRule;
     private final String mSubscriberId;
+    private final String mNetworkId;
 
     /** {@hide} */
-    public NetworkTemplate(int matchRule, String subscriberId) {
-        this.mMatchRule = matchRule;
-        this.mSubscriberId = subscriberId;
+    public NetworkTemplate(int matchRule, String subscriberId, String networkId) {
+        mMatchRule = matchRule;
+        mSubscriberId = subscriberId;
+        mNetworkId = networkId;        
     }
 
     private NetworkTemplate(Parcel in) {
         mMatchRule = in.readInt();
         mSubscriberId = in.readString();
+        mNetworkId = in.readString();
     }
 
     /** {@inheritDoc} */
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeInt(mMatchRule);
         dest.writeString(mSubscriberId);
+        dest.writeString(mNetworkId);
     }
 
     /** {@inheritDoc} */
@@ -176,6 +201,10 @@ public class NetworkTemplate implements Parcelable {
                 return matchesWifi(ident);
             case MATCH_ETHERNET:
                 return matchesEthernet(ident);
+            case MATCH_MOBILE_WILDCARD:
+                return matchesMobileWildcard(ident);
+            case MATCH_WIFI_WILDCARD:
+                return matchesWifiWildcard(ident);
             default:
                 throw new IllegalArgumentException("unknown network template");
         }
@@ -247,6 +276,24 @@ public class NetworkTemplate implements Parcelable {
         return false;
     }
 
+    private boolean matchesMobileWildcard(NetworkIdentity ident) {
+        if (ident.mType == TYPE_WIMAX) {
+            return true;
+        } else {
+            return sForceAllNetworkTypes || contains(DATA_USAGE_NETWORK_TYPES, ident.mType);
+        }
+    }
+
+    private boolean matchesWifiWildcard(NetworkIdentity ident) {
+        switch (ident.mType) {
+            case TYPE_WIFI:
+            case TYPE_WIFI_P2P:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static String getMatchRuleName(int matchRule) {
         switch (matchRule) {
             case MATCH_MOBILE_3G_LOWER:
@@ -259,6 +306,10 @@ public class NetworkTemplate implements Parcelable {
                 return "WIFI";
             case MATCH_ETHERNET:
                 return "ETHERNET";
+            case MATCH_MOBILE_WILDCARD:
+                return "MOBILE_WILDCARD";
+            case MATCH_WIFI_WILDCARD:
+                return "WIFI_WILDCARD";
             default:
                 return "UNKNOWN";
         }

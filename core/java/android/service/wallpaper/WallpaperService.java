@@ -18,7 +18,6 @@ package android.service.wallpaper;
 
 import com.android.internal.os.HandlerCaller;
 import com.android.internal.view.BaseIWindow;
-import com.android.internal.view.BaseInputHandler;
 import com.android.internal.view.BaseSurfaceHolder;
 
 import android.annotation.SdkConstant;
@@ -45,7 +44,8 @@ import android.view.Gravity;
 import android.view.IWindowSession;
 import android.view.InputChannel;
 import android.view.InputDevice;
-import android.view.InputHandler;
+import android.view.InputEvent;
+import android.view.InputEventReceiver;
 import android.view.InputQueue;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -53,7 +53,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewRootImpl;
 import android.view.WindowManager;
-import android.view.WindowManagerImpl;
+import android.view.WindowManagerGlobal;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -141,6 +141,7 @@ public abstract class WallpaperService extends Service {
         boolean mIsCreating;
         boolean mDrawingAllowed;
         boolean mOffsetsChanged;
+        boolean mFixedSizeAllowed;
         int mWidth;
         int mHeight;
         int mFormat;
@@ -212,7 +213,7 @@ public abstract class WallpaperService extends Service {
 
             @Override
             public void setFixedSize(int width, int height) {
-                if (Process.myUid() != Process.SYSTEM_UID) {
+                if (!mFixedSizeAllowed) {
                     // Regular apps can't do this.  It can only work for
                     // certain designs of window animations, so you can't
                     // rely on it.
@@ -228,33 +229,38 @@ public abstract class WallpaperService extends Service {
             }
             
         };
-        
-        final InputHandler mInputHandler = new BaseInputHandler() {
+
+        final class WallpaperInputEventReceiver extends InputEventReceiver {
+            public WallpaperInputEventReceiver(InputChannel inputChannel, Looper looper) {
+                super(inputChannel, looper);
+            }
+
             @Override
-            public void handleMotion(MotionEvent event,
-                    InputQueue.FinishedCallback finishedCallback) {
+            public void onInputEvent(InputEvent event) {
                 boolean handled = false;
                 try {
-                    int source = event.getSource();
-                    if ((source & InputDevice.SOURCE_CLASS_POINTER) != 0) {
-                        dispatchPointer(event);
+                    if (event instanceof MotionEvent
+                            && (event.getSource() & InputDevice.SOURCE_CLASS_POINTER) != 0) {
+                        MotionEvent dup = MotionEvent.obtainNoHistory((MotionEvent)event);
+                        dispatchPointer(dup);
                         handled = true;
                     }
                 } finally {
-                    finishedCallback.finished(handled);
+                    finishInputEvent(event, handled);
                 }
             }
-        };
-        
+        }
+        WallpaperInputEventReceiver mInputEventReceiver;
+
         final BaseIWindow mWindow = new BaseIWindow() {
             @Override
-            public void resized(int w, int h, Rect coveredInsets,
+            public void resized(Rect frame, Rect contentInsets,
                     Rect visibleInsets, boolean reportDraw, Configuration newConfig) {
                 Message msg = mCaller.obtainMessageI(MSG_WINDOW_RESIZED,
                         reportDraw ? 1 : 0);
                 mCaller.sendMessage(msg);
             }
-            
+
             @Override
             public void dispatchAppVisibility(boolean visible) {
                 // We don't do this in preview mode; we'll let the preview
@@ -381,7 +387,12 @@ public abstract class WallpaperService extends Service {
                 updateSurface(false, false, false);
             }
         }
-        
+
+        /** {@hide} */
+        public void setFixedSizeAllowed(boolean allowed) {
+            mFixedSizeAllowed = allowed;
+        }
+
         /**
          * Called once to initialize the engine.  After returning, the
          * engine's surface will be created by the framework.
@@ -599,8 +610,8 @@ public abstract class WallpaperService extends Service {
                         }
                         mCreated = true;
 
-                        InputQueue.registerInputChannel(mInputChannel, mInputHandler,
-                                Looper.myQueue());
+                        mInputEventReceiver = new WallpaperInputEventReceiver(
+                                mInputChannel, Looper.myLooper());
                     }
                     
                     mSurfaceHolder.mSurfaceLock.lock();
@@ -654,7 +665,7 @@ public abstract class WallpaperService extends Service {
                         }
 
                         redrawNeeded |= creating
-                                || (relayoutResult&WindowManagerImpl.RELAYOUT_RES_FIRST_TIME) != 0;
+                                || (relayoutResult&WindowManagerGlobal.RELAYOUT_RES_FIRST_TIME) != 0;
 
                         if (forceReport || creating || surfaceCreating
                                 || formatChanged || sizeChanged) {
@@ -741,7 +752,7 @@ public abstract class WallpaperService extends Service {
             mWindowToken = wrapper.mWindowToken;
             mSurfaceHolder.setSizeFromLayout();
             mInitializing = true;
-            mSession = ViewRootImpl.getWindowSession(getMainLooper());
+            mSession = WindowManagerGlobal.getWindowSession(getMainLooper());
             
             mWindow.setSession(mSession);
 
@@ -902,8 +913,9 @@ public abstract class WallpaperService extends Service {
                     if (DEBUG) Log.v(TAG, "Removing window and destroying surface "
                             + mSurfaceHolder.getSurface() + " of: " + this);
                     
-                    if (mInputChannel != null) {
-                        InputQueue.unregisterInputChannel(mInputChannel);
+                    if (mInputEventReceiver != null) {
+                        mInputEventReceiver.dispose();
+                        mInputEventReceiver = null;
                     }
                     
                     mSession.remove(mWindow);

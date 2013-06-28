@@ -70,17 +70,6 @@ public class ActionMenuItemView extends LinearLayout
         a.recycle();
     }
 
-    @Override
-    public void onFinishInflate() {
-        mImageButton = (ImageButton) findViewById(com.android.internal.R.id.imageButton);
-        mTextButton = (Button) findViewById(com.android.internal.R.id.textButton);
-        mImageButton.setOnClickListener(this);
-        mTextButton.setOnClickListener(this);
-        mImageButton.setOnLongClickListener(this);
-        setOnClickListener(this);
-        setOnLongClickListener(this);
-    }
-
     public MenuItemImpl getItemData() {
         return mItemData;
     }

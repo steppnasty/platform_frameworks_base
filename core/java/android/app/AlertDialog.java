@@ -110,8 +110,8 @@ public class AlertDialog extends Dialog implements DialogInterface {
         this(context, theme, true);
     }
 
-    AlertDialog(Context context, int theme, boolean createContextWrapper) {
-        super(context, resolveDialogTheme(context, theme), createContextWrapper);
+    AlertDialog(Context context, int theme, boolean createThemeContextWrapper) {
+        super(context, resolveDialogTheme(context, theme), createThemeContextWrapper);
         mWindow.alwaysReadCloseOnTouchAttr();
         mAlert = new AlertController(getContext(), this, getWindow());
     }
@@ -574,7 +574,17 @@ public class AlertDialog extends Dialog implements DialogInterface {
             P.mOnCancelListener = onCancelListener;
             return this;
         }
-        
+
+        /**
+         * Sets the callback that will be called when the dialog is dismissed for any reason.
+         *
+         * @return This Builder object to allow for chaining of calls to set methods
+         */
+        public Builder setOnDismissListener(OnDismissListener onDismissListener) {
+            P.mOnDismissListener = onDismissListener;
+            return this;
+        }
+
         /**
          * Sets the callback that will be called if a key is dispatched to the dialog.
          *

@@ -336,6 +336,14 @@ public final class Downloads {
         public static final String COLUMN_ALLOW_ROAMING = "allow_roaming";
 
         /**
+         * The name of the column indicating whether metered connections can be used.  This is only
+         * used for public API downloads.
+         * <P>Type: BOOLEAN</P>
+         * <P>Owner can Init/Read</P>
+         */
+        public static final String COLUMN_ALLOW_METERED = "allow_metered";
+
+        /**
          * The name of the column holding a bitmask of allowed network types.  This is only used for
          * public API downloads.
          * <P>Type: INTEGER</P>

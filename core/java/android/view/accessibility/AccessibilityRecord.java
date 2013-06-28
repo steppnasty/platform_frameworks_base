@@ -55,6 +55,12 @@ public class AccessibilityRecord {
     private static final int PROPERTY_PASSWORD = 0x00000004;
     private static final int PROPERTY_FULL_SCREEN = 0x00000080;
     private static final int PROPERTY_SCROLLABLE = 0x00000100;
+    private static final int PROPERTY_IMPORTANT_FOR_ACCESSIBILITY = 0x00000200;
+
+    private static final int GET_SOURCE_PREFETCH_FLAGS =
+        AccessibilityNodeInfo.FLAG_PREFETCH_PREDECESSORS
+        | AccessibilityNodeInfo.FLAG_PREFETCH_SIBLINGS
+        | AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS;
 
     // Housekeeping
     private static final int MAX_POOL_SIZE = 10;
@@ -77,6 +83,7 @@ public class AccessibilityRecord {
 
     int mAddedCount= UNDEFINED;
     int mRemovedCount = UNDEFINED;
+    long mSourceNodeId = AccessibilityNodeInfo.makeNodeId(UNDEFINED, UNDEFINED);
     int mSourceViewId = UNDEFINED;
     int mSourceWindowId = UNDEFINED;
 
@@ -103,14 +110,35 @@ public class AccessibilityRecord {
      * @throws IllegalStateException If called from an AccessibilityService.
      */
     public void setSource(View source) {
+        setSource(source, UNDEFINED);
+    }
+
+    /**
+     * Sets the source to be a virtual descendant of the given <code>root</code>.
+     * If <code>virtualDescendantId</code> equals to {@link View#NO_ID} the root
+     * is set as the source.
+     * <p>
+     * A virtual descendant is an imaginary View that is reported as a part of the view
+     * hierarchy for accessibility purposes. This enables custom views that draw complex
+     * content to report them selves as a tree of virtual views, thus conveying their
+     * logical structure.
+     * </p>
+     *
+     * @param root The root of the virtual subtree.
+     * @param virtualDescendantId The id of the virtual descendant.
+     */
+    public void setSource(View root, int virtualDescendantId) {
         enforceNotSealed();
-        if (source != null) {
-            mSourceWindowId = source.getAccessibilityWindowId();
-            mSourceViewId = source.getAccessibilityViewId();
+        final boolean important;
+        if (virtualDescendantId == UNDEFINED) {
+            important = (root != null) ? root.isImportantForAccessibility() : true;
         } else {
-            mSourceWindowId = UNDEFINED;
-            mSourceViewId = UNDEFINED;
+            important = true;
         }
+        setBooleanProperty(PROPERTY_IMPORTANT_FOR_ACCESSIBILITY, important);
+        mSourceWindowId = (root != null) ? root.getAccessibilityWindowId() : UNDEFINED;
+        final int rootViewId = (root != null) ? root.getAccessibilityViewId() : UNDEFINED;
+        mSourceNodeId = AccessibilityNodeInfo.makeNodeId(rootViewId, virtualDescendantId);
     }
 
     /**
@@ -130,7 +158,7 @@ public class AccessibilityRecord {
         }
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
         return client.findAccessibilityNodeInfoByAccessibilityId(mConnectionId, mSourceWindowId,
-                mSourceViewId);
+                mSourceViewId, GET_SOURCE_PREFETCH_FLAGS);
     }
 
     /**
@@ -245,6 +273,23 @@ public class AccessibilityRecord {
     public void setScrollable(boolean scrollable) {
         enforceNotSealed();
         setBooleanProperty(PROPERTY_SCROLLABLE, scrollable);
+    }
+
+    /**
+     * Gets if the source is important for accessibility.
+     *
+     * <strong>Note:</strong> Used only internally to determine whether
+     * to deliver the event to a given accessibility service since some
+     * services may want to regard all views for accessibility while others
+     * may want to regard only the important views for accessibility.
+     *
+     * @return True if the source is important for accessibility,
+     *        false otherwise.
+     *
+     * @hide
+     */
+    public boolean isImportantForAccessibility() {
+        return getBooleanProperty(PROPERTY_IMPORTANT_FOR_ACCESSIBILITY);
     }
 
     /**
@@ -546,6 +591,17 @@ public class AccessibilityRecord {
     public void setParcelableData(Parcelable parcelableData) {
         enforceNotSealed();
         mParcelableData = parcelableData;
+    }
+
+    /**
+     * Gets the id of the source node.
+     *
+     * @return The id.
+     *
+     * @hide
+     */
+    public long getSourceNodeId() {
+        return mSourceNodeId;
     }
 
     /**

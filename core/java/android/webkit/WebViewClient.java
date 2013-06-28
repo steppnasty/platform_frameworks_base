@@ -20,6 +20,7 @@ import android.graphics.Bitmap;
 import android.net.http.SslError;
 import android.os.Message;
 import android.view.KeyEvent;
+import android.view.ViewRootImpl;
 
 public class WebViewClient {
 
@@ -203,43 +204,16 @@ public class WebViewClient {
     }
 
     /**
-     * Notify the host application that an SSL error occurred while loading a
-     * resource, but the WebView but chose to proceed anyway based on a
-     * decision retained from a previous response to onReceivedSslError().
-     * @hide
-     */
-    public void onProceededAfterSslError(WebView view, SslError error) {
-    }
-
-    /**
-     * Notify the host application to handle a SSL client certificate
-     * request (display the request to the user and ask whether to
-     * proceed with a client certificate or not). The host application
-     * has to call either handler.cancel() or handler.proceed() as the
-     * connection is suspended and waiting for the response. The
-     * default behavior is to cancel, returning no client certificate.
+     * Notifies the host application that the WebView received an HTTP
+     * authentication request. The host application can use the supplied
+     * {@link HttpAuthHandler} to set the WebView's response to the request.
+     * The default behavior is to cancel the request.
      *
-     * @param view The WebView that is initiating the callback.
-     * @param handler An ClientCertRequestHandler object that will
-     *            handle the user's response.
-     * @param host_and_port The host and port of the requesting server.
-     *
-     * @hide
-     */
-    public void onReceivedClientCertRequest(WebView view,
-            ClientCertRequestHandler handler, String host_and_port) {
-        handler.cancel();
-    }
-
-    /**
-     * Notify the host application to handle an authentication request. The
-     * default behavior is to cancel the request.
-     *
-     * @param view The WebView that is initiating the callback.
-     * @param handler The HttpAuthHandler that will handle the user's response.
-     * @param host The host requiring authentication.
-     * @param realm A description to help store user credentials for future
-     *            visits.
+     * @param view the WebView that is initiating the callback
+     * @param handler the HttpAuthHandler used to set the WebView's response
+     * @param host the host requiring authentication
+     * @param realm the realm for which authentication is required
+     * @see Webview#getHttpAuthUsernamePassword
      */
     public void onReceivedHttpAuthRequest(WebView view,
             HttpAuthHandler handler, String host, String realm) {
@@ -266,13 +240,17 @@ public class WebViewClient {
      * Notify the host application that a key was not handled by the WebView.
      * Except system keys, WebView always consumes the keys in the normal flow
      * or if shouldOverrideKeyEvent returns true. This is called asynchronously
-     * from where the key is dispatched. It gives the host application an chance
+     * from where the key is dispatched. It gives the host application a chance
      * to handle the unhandled key events.
      *
      * @param view The WebView that is initiating the callback.
      * @param event The key event.
      */
     public void onUnhandledKeyEvent(WebView view, KeyEvent event) {
+        ViewRootImpl root = view.getViewRootImpl();
+        if (root != null) {
+            root.dispatchUnhandledKey(event);
+        }
     }
 
     /**

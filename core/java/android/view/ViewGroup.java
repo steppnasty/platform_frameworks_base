@@ -22,6 +22,8 @@ import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PointF;
@@ -45,6 +47,7 @@ import com.android.internal.R;
 import com.android.internal.util.Predicate;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 
 /**
@@ -77,6 +80,7 @@ import java.util.HashSet;
  * @attr ref android.R.styleable#ViewGroup_animateLayoutChanges
  */
 public abstract class ViewGroup extends View implements ViewParent, ViewManager {
+    private static final String TAG = "ViewGroup";
 
     private static final boolean DBG = false;
 
@@ -103,18 +107,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * A Transformation used when drawing children, to
      * apply on the child being drawn.
      */
-    private final Transformation mChildTransformation = new Transformation();
+    final Transformation mChildTransformation = new Transformation();
 
     /**
      * Used to track the current invalidation region.
      */
-    private RectF mInvalidateRegion;
+    RectF mInvalidateRegion;
 
     /**
      * A Transformation used to calculate a correct
      * invalidation area when the application is autoscaled.
      */
-    private Transformation mInvalidationTransformation;
+    Transformation mInvalidationTransformation;
 
     // View currently under an ongoing drag
     private View mCurrentDragView;
@@ -166,11 +170,29 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * This field should be made private, so it is hidden from the SDK.
      * {@hide}
      */
+    @ViewDebug.ExportedProperty(flagMapping = {
+            @ViewDebug.FlagToString(mask = FLAG_CLIP_CHILDREN, equals = FLAG_CLIP_CHILDREN,
+                    name = "CLIP_CHILDREN"),
+            @ViewDebug.FlagToString(mask = FLAG_CLIP_TO_PADDING, equals = FLAG_CLIP_TO_PADDING,
+                    name = "CLIP_TO_PADDING"),
+            @ViewDebug.FlagToString(mask = FLAG_PADDING_NOT_NULL, equals = FLAG_PADDING_NOT_NULL,
+                    name = "PADDING_NOT_NULL")
+    })
     protected int mGroupFlags;
 
+    /*
+     * The layout mode: either {@link #CLIP_BOUNDS} or {@link #OPTICAL_BOUNDS}
+     */
+    private int mLayoutMode = CLIP_BOUNDS;
+
+    /**
+     * NOTE: If you change the flags below make sure to reflect the changes
+     *       the DisplayList class
+     */
+    
     // When set, ViewGroup invalidates only the child's rectangle
     // Set by default
-    private static final int FLAG_CLIP_CHILDREN = 0x1;
+    static final int FLAG_CLIP_CHILDREN = 0x1;
 
     // When set, ViewGroup excludes the padding area from the invalidate rectangle
     // Set by default
@@ -178,7 +200,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     // When set, dispatchDraw() will invoke invalidate(); this is set by drawChild() when
     // a child needs to be invalidated and FLAG_OPTIMIZE_INVALIDATE is set
-    private static final int FLAG_INVALIDATE_REQUIRED  = 0x4;
+    static final int FLAG_INVALIDATE_REQUIRED  = 0x4;
 
     // When set, dispatchDraw() will run the layout animation and unset the flag
     private static final int FLAG_RUN_ANIMATION = 0x8;
@@ -186,7 +208,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     // When set, there is either no layout animation on the ViewGroup or the layout
     // animation is over
     // Set by default
-    private static final int FLAG_ANIMATION_DONE = 0x10;
+    static final int FLAG_ANIMATION_DONE = 0x10;
 
     // If set, this ViewGroup has padding; if unset there is no padding and we don't need
     // to clip it, even if FLAG_CLIP_TO_PADDING is set
@@ -200,10 +222,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     // layout animation; this avoid clobbering the hierarchy
     // Automatically set when the layout animation starts, depending on the animation's
     // characteristics
-    private static final int FLAG_OPTIMIZE_INVALIDATE = 0x80;
+    static final int FLAG_OPTIMIZE_INVALIDATE = 0x80;
 
     // When set, the next call to drawChild() will clear mChildTransformation's matrix
-    private static final int FLAG_CLEAR_TRANSFORMATION = 0x100;
+    static final int FLAG_CLEAR_TRANSFORMATION = 0x100;
 
     // When set, this ViewGroup invokes mAnimationListener.onAnimationEnd() and removes
     // the children's Bitmap caches if necessary
@@ -233,7 +255,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     // When the previous drawChild() invocation used an alpha value that was lower than
     // 1.0 and set it in mCachePaint
-    private static final int FLAG_ALPHA_LOWER_THAN_ONE = 0x1000;
+    static final int FLAG_ALPHA_LOWER_THAN_ONE = 0x1000;
 
     /**
      * When set, this ViewGroup's drawable states also include those
@@ -244,13 +266,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * When set, this ViewGroup tries to always draw its children using their drawing cache.
      */
-    private static final int FLAG_ALWAYS_DRAWN_WITH_CACHE = 0x4000;
+    static final int FLAG_ALWAYS_DRAWN_WITH_CACHE = 0x4000;
 
     /**
      * When set, and if FLAG_ALWAYS_DRAWN_WITH_CACHE is not set, this ViewGroup will try to
      * draw its children with their drawing cache.
      */
-    private static final int FLAG_CHILDREN_DRAWN_WITH_CACHE = 0x8000;
+    static final int FLAG_CHILDREN_DRAWN_WITH_CACHE = 0x8000;
 
     /**
      * When set, this group will go through its list of children to notify them of
@@ -328,6 +350,27 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     public static final int PERSISTENT_ALL_CACHES = 0x3;
 
+    // Layout Modes
+
+    /**
+     * This constant is a {@link #setLayoutMode(int) layoutMode}.
+     * Clip bounds are the raw values of {@link #getLeft() left}, {@link #getTop() top},
+     * {@link #getRight() right} and {@link #getBottom() bottom}.
+     *
+     * @hide
+     */
+    public static final int CLIP_BOUNDS = 0;
+
+    /**
+     * This constant is a {@link #setLayoutMode(int) layoutMode}.
+     * Optical bounds describe where a widget appears to be. They sit inside the clip
+     * bounds which need to cover a larger area to allow other effects,
+     * such as shadows and glows, to be drawn.
+     *
+     * @hide
+     */
+    public static final int OPTICAL_BOUNDS = 1;
+
     /**
      * We clip to padding when FLAG_CLIP_TO_PADDING and FLAG_PADDING_NOT_NULL
      * are set at the same time.
@@ -351,8 +394,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     private static final int ARRAY_INITIAL_CAPACITY = 12;
     private static final int ARRAY_CAPACITY_INCREMENT = 12;
 
+    private static Paint sDebugPaint;
+    private static float[] sDebugLines;
+
     // Used to draw cached views
-    private Paint mCachePaint;
+    Paint mCachePaint;
 
     // Used to animate add/remove changes in layout
     private LayoutTransition mTransition;
@@ -366,9 +412,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     // views during a transition when they otherwise would have become gone/invisible
     private ArrayList<View> mVisibilityChangingChildren;
 
-    // Indicates whether this container will use its children layers to draw
-    @ViewDebug.ExportedProperty(category = "drawing")
-    private boolean mDrawLayers = true;
+    // Indicates how many of this container's child subtrees contain transient state
+    @ViewDebug.ExportedProperty(category = "layout")
+    private int mChildCountWithTransientState = 0;
 
     public ViewGroup(Context context) {
         super(context);
@@ -387,9 +433,15 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         initFromAttributes(context, attrs);
     }
 
+    private boolean debugDraw() {
+        return mAttachInfo != null && mAttachInfo.mDebugLayout;
+    }
+
     private void initViewGroup() {
         // ViewGroup doesn't draw by default
-        setFlags(WILL_NOT_DRAW, DRAW_MASK);
+        if (!debugDraw()) {
+            setFlags(WILL_NOT_DRAW, DRAW_MASK);
+        }
         mGroupFlags |= FLAG_CLIP_CHILDREN;
         mGroupFlags |= FLAG_CLIP_TO_PADDING;
         mGroupFlags |= FLAG_ANIMATION_DONE;
@@ -601,13 +653,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-        ViewParent parent = getParent();
+        ViewParent parent = mParent;
         if (parent == null) {
             return false;
         }
         final boolean propagate = onRequestSendAccessibilityEvent(child, event);
-        //noinspection SimplifiableIfStatement
         if (!propagate) {
             return false;
         }
@@ -648,6 +700,38 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
+     * Called when a child view has changed whether or not it is tracking transient state.
+     *
+     * @hide
+     */
+    public void childHasTransientStateChanged(View child, boolean childHasTransientState) {
+        final boolean oldHasTransientState = hasTransientState();
+        if (childHasTransientState) {
+            mChildCountWithTransientState++;
+        } else {
+            mChildCountWithTransientState--;
+        }
+
+        final boolean newHasTransientState = hasTransientState();
+        if (mParent != null && oldHasTransientState != newHasTransientState) {
+            try {
+                mParent.childHasTransientStateChanged(this, newHasTransientState);
+            } catch (AbstractMethodError e) {
+                Log.e(TAG, mParent.getClass().getSimpleName() +
+                        " does not fully implement ViewParent", e);
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public boolean hasTransientState() {
+        return mChildCountWithTransientState > 0 || super.hasTransientState();
+    }
+
+    /**
      * {@inheritDoc}
      */
     @Override
@@ -675,11 +759,15 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override
     public void clearFocus() {
-        super.clearFocus();
-
-        // clear any child focus if it exists
-        if (mFocused != null) {
-            mFocused.clearFocus();
+        if (DBG) {
+            System.out.println(this + " clearFocus()");
+        }
+        if (mFocused == null) {
+            super.clearFocus();
+        } else {
+            View focused = mFocused;
+            mFocused = null;
+            focused.clearFocus();
         }
     }
 
@@ -691,12 +779,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         if (DBG) {
             System.out.println(this + " unFocus()");
         }
-
-        super.unFocus();
-        if (mFocused != null) {
+        if (mFocused == null) {
+            super.unFocus();
+        } else {
             mFocused.unFocus();
+            mFocused = null;
         }
-        mFocused = null;
     }
 
     /**
@@ -716,7 +804,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override
     public boolean hasFocus() {
-        return (mPrivateFlags & FOCUSED) != 0 || mFocused != null;
+        return (mPrivateFlags & PFLAG_FOCUSED) != 0 || mFocused != null;
     }
 
     /*
@@ -774,14 +862,6 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * {@inheritDoc}
      */
     @Override
-    public void addFocusables(ArrayList<View> views, int direction) {
-        addFocusables(views, direction, FOCUSABLES_TOUCH_MODE);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     public void addFocusables(ArrayList<View> views, int direction, int focusableMode) {
         final int focusableCount = views.size();
 
@@ -803,10 +883,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         // FOCUS_AFTER_DESCENDANTS and there are some descendants focusable.  this is
         // to avoid the focus search finding layouts when a more precise search
         // among the focusable children would be more interesting.
-        if (
-            descendantFocusability != FOCUS_AFTER_DESCENDANTS ||
+        if (descendantFocusability != FOCUS_AFTER_DESCENDANTS
                 // No focusable descendants
-                (focusableCount == views.size())) {
+                || (focusableCount == views.size())) {
             super.addFocusables(views, direction, focusableMode);
         }
     }
@@ -819,7 +898,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         for (int i = 0; i < childrenCount; i++) {
             View child = children[i];
             if ((child.mViewFlags & VISIBILITY_MASK) == VISIBLE
-                    && (child.mPrivateFlags & IS_ROOT_NAMESPACE) == 0) {
+                    && (child.mPrivateFlags & PFLAG_IS_ROOT_NAMESPACE) == 0) {
                 child.findViewsWithText(outViews, text, flags);
             }
         }
@@ -873,7 +952,20 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             }
         }
     }
-    
+
+    /**
+     * @hide
+     */
+    @Override
+    public void makeOptionalFitsSystemWindows() {
+        super.makeOptionalFitsSystemWindows();
+        final int count = mChildrenCount;
+        final View[] children = mChildren;
+        for (int i = 0; i < count; i++) {
+            children[i].makeOptionalFitsSystemWindows();
+        }
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -888,25 +980,27 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
+     * Called when a view's visibility has changed. Notify the parent to take any appropriate
+     * action.
+     *
+     * @param child The view whose visibility has changed
+     * @param oldVisibility The previous visibility value (GONE, INVISIBLE, or VISIBLE).
+     * @param newVisibility The new visibility value (GONE, INVISIBLE, or VISIBLE).
      * @hide
-     * @param child
-     * @param visibility
      */
-    protected void onChildVisibilityChanged(View child, int visibility) {
+    protected void onChildVisibilityChanged(View child, int oldVisibility, int newVisibility) {
         if (mTransition != null) {
-            if (visibility == VISIBLE) {
-                mTransition.showChild(this, child);
+            if (newVisibility == VISIBLE) {
+                mTransition.showChild(this, child, oldVisibility);
             } else {
-                mTransition.hideChild(this, child);
-            }
-            if (visibility != VISIBLE) {
-                // Only track this on disappearing views - appearing views are already visible
-                // and don't need special handling during drawChild()
-                if (mVisibilityChangingChildren == null) {
-                    mVisibilityChangingChildren = new ArrayList<View>();
-                }
-                mVisibilityChangingChildren.add(child);
+                mTransition.hideChild(this, child, newVisibility);
                 if (mTransitioningViews != null && mTransitioningViews.contains(child)) {
+                    // Only track this on disappearing views - appearing views are already visible
+                    // and don't need special handling during drawChild()
+                    if (mVisibilityChangingChildren == null) {
+                        mVisibilityChangingChildren = new ArrayList<View>();
+                    }
+                    mVisibilityChangingChildren.add(child);
                     addDisappearingView(child);
                 }
             }
@@ -914,7 +1008,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
         // in all cases, for drags
         if (mCurrentDrag != null) {
-            if (visibility == VISIBLE) {
+            if (newVisibility == VISIBLE) {
                 notifyChildOfDrag(child);
             }
         }
@@ -970,13 +1064,16 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     @Override
-    void dispatchCollectViewAttributes(int visibility) {
-        visibility |= mViewFlags&VISIBILITY_MASK;
-        super.dispatchCollectViewAttributes(visibility);
-        final int count = mChildrenCount;
-        final View[] children = mChildren;
-        for (int i = 0; i < count; i++) {
-            children[i].dispatchCollectViewAttributes(visibility);
+    void dispatchCollectViewAttributes(AttachInfo attachInfo, int visibility) {
+        if ((visibility & VISIBILITY_MASK) == VISIBLE) {
+            super.dispatchCollectViewAttributes(attachInfo, visibility);
+            final int count = mChildrenCount;
+            final View[] children = mChildren;
+            for (int i = 0; i < count; i++) {
+                final View child = children[i];
+                child.dispatchCollectViewAttributes(attachInfo,
+                        visibility | (child.mViewFlags&VISIBILITY_MASK));
+            }
         }
     }
 
@@ -994,9 +1091,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     /**
      * {@inheritDoc}
-     *
-     * !!! TODO: write real docs
      */
+    // TODO: Write real docs
     @Override
     public boolean dispatchDragEvent(DragEvent event) {
         boolean retval = false;
@@ -1081,7 +1177,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                     final View view = mCurrentDragView;
                     event.mAction = DragEvent.ACTION_DRAG_EXITED;
                     view.dispatchDragEvent(event);
-                    view.mPrivateFlags2 &= ~View.DRAG_HOVERED;
+                    view.mPrivateFlags2 &= ~View.PFLAG2_DRAG_HOVERED;
                     view.refreshDrawableState();
                 }
                 mCurrentDragView = target;
@@ -1090,7 +1186,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 if (target != null) {
                     event.mAction = DragEvent.ACTION_DRAG_ENTERED;
                     target.dispatchDragEvent(event);
-                    target.mPrivateFlags2 |= View.DRAG_HOVERED;
+                    target.mPrivateFlags2 |= View.PFLAG2_DRAG_HOVERED;
                     target.refreshDrawableState();
                 }
                 event.mAction = action;  // restore the event's original state
@@ -1124,7 +1220,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             if (mCurrentDragView != null) {
                 final View view = mCurrentDragView;
                 view.dispatchDragEvent(event);
-                view.mPrivateFlags2 &= ~View.DRAG_HOVERED;
+                view.mPrivateFlags2 &= ~View.PFLAG2_DRAG_HOVERED;
                 view.refreshDrawableState();
 
                 mCurrentDragView = null;
@@ -1185,11 +1281,23 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             mDragNotifiedChildren.add(child);
             canAccept = child.dispatchDragEvent(mCurrentDrag);
             if (canAccept && !child.canAcceptDrag()) {
-                child.mPrivateFlags2 |= View.DRAG_CAN_ACCEPT;
+                child.mPrivateFlags2 |= View.PFLAG2_DRAG_CAN_ACCEPT;
                 child.refreshDrawableState();
             }
         }
         return canAccept;
+    }
+
+    @Override
+    public void dispatchWindowSystemUiVisiblityChanged(int visible) {
+        super.dispatchWindowSystemUiVisiblityChanged(visible);
+
+        final int count = mChildrenCount;
+        final View[] children = mChildren;
+        for (int i=0; i <count; i++) {
+            final View child = children[i];
+            child.dispatchWindowSystemUiVisiblityChanged(visible);
+        }
     }
 
     @Override
@@ -1205,15 +1313,16 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     @Override
-    void updateLocalSystemUiVisibility(int localValue, int localChanges) {
-        super.updateLocalSystemUiVisibility(localValue, localChanges);
+    boolean updateLocalSystemUiVisibility(int localValue, int localChanges) {
+        boolean changed = super.updateLocalSystemUiVisibility(localValue, localChanges);
 
         final int count = mChildrenCount;
         final View[] children = mChildren;
         for (int i=0; i <count; i++) {
             final View child = children[i];
-            child.updateLocalSystemUiVisibility(localValue, localChanges);
+            changed |= child.updateLocalSystemUiVisibility(localValue, localChanges);
         }
+        return changed;
     }
 
     /**
@@ -1221,9 +1330,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override
     public boolean dispatchKeyEventPreIme(KeyEvent event) {
-        if ((mPrivateFlags & (FOCUSED | HAS_BOUNDS)) == (FOCUSED | HAS_BOUNDS)) {
+        if ((mPrivateFlags & (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS))
+                == (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS)) {
             return super.dispatchKeyEventPreIme(event);
-        } else if (mFocused != null && (mFocused.mPrivateFlags & HAS_BOUNDS) == HAS_BOUNDS) {
+        } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
+                == PFLAG_HAS_BOUNDS) {
             return mFocused.dispatchKeyEventPreIme(event);
         }
         return false;
@@ -1238,11 +1349,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             mInputEventConsistencyVerifier.onKeyEvent(event, 1);
         }
 
-        if ((mPrivateFlags & (FOCUSED | HAS_BOUNDS)) == (FOCUSED | HAS_BOUNDS)) {
+        if ((mPrivateFlags & (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS))
+                == (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS)) {
             if (super.dispatchKeyEvent(event)) {
                 return true;
             }
-        } else if (mFocused != null && (mFocused.mPrivateFlags & HAS_BOUNDS) == HAS_BOUNDS) {
+        } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
+                == PFLAG_HAS_BOUNDS) {
             if (mFocused.dispatchKeyEvent(event)) {
                 return true;
             }
@@ -1259,9 +1372,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     @Override
     public boolean dispatchKeyShortcutEvent(KeyEvent event) {
-        if ((mPrivateFlags & (FOCUSED | HAS_BOUNDS)) == (FOCUSED | HAS_BOUNDS)) {
+        if ((mPrivateFlags & (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS))
+                == (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS)) {
             return super.dispatchKeyShortcutEvent(event);
-        } else if (mFocused != null && (mFocused.mPrivateFlags & HAS_BOUNDS) == HAS_BOUNDS) {
+        } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
+                == PFLAG_HAS_BOUNDS) {
             return mFocused.dispatchKeyShortcutEvent(event);
         }
         return false;
@@ -1276,11 +1391,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             mInputEventConsistencyVerifier.onTrackballEvent(event, 1);
         }
 
-        if ((mPrivateFlags & (FOCUSED | HAS_BOUNDS)) == (FOCUSED | HAS_BOUNDS)) {
+        if ((mPrivateFlags & (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS))
+                == (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS)) {
             if (super.dispatchTrackballEvent(event)) {
                 return true;
             }
-        } else if (mFocused != null && (mFocused.mPrivateFlags & HAS_BOUNDS) == HAS_BOUNDS) {
+        } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
+                == PFLAG_HAS_BOUNDS) {
             if (mFocused.dispatchTrackballEvent(event)) {
                 return true;
             }
@@ -1472,10 +1589,77 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         return handled;
     }
 
+    private void exitHoverTargets() {
+        if (mHoveredSelf || mFirstHoverTarget != null) {
+            final long now = SystemClock.uptimeMillis();
+            MotionEvent event = MotionEvent.obtain(now, now,
+                    MotionEvent.ACTION_HOVER_EXIT, 0.0f, 0.0f, 0);
+            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            dispatchHoverEvent(event);
+            event.recycle();
+        }
+    }
+
+    private void cancelHoverTarget(View view) {
+        HoverTarget predecessor = null;
+        HoverTarget target = mFirstHoverTarget;
+        while (target != null) {
+            final HoverTarget next = target.next;
+            if (target.child == view) {
+                if (predecessor == null) {
+                    mFirstHoverTarget = next;
+                } else {
+                    predecessor.next = next;
+                }
+                target.recycle();
+
+                final long now = SystemClock.uptimeMillis();
+                MotionEvent event = MotionEvent.obtain(now, now,
+                        MotionEvent.ACTION_HOVER_EXIT, 0.0f, 0.0f, 0);
+                event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+                view.dispatchHoverEvent(event);
+                event.recycle();
+                return;
+            }
+            predecessor = target;
+            target = next;
+        }
+    }
+
     /** @hide */
     @Override
     protected boolean hasHoveredChild() {
         return mFirstHoverTarget != null;
+    }
+
+    @Override
+    public void addChildrenForAccessibility(ArrayList<View> childrenForAccessibility) {
+        ChildListForAccessibility children = ChildListForAccessibility.obtain(this, true);
+        try {
+            final int childrenCount = children.getChildCount();
+            for (int i = 0; i < childrenCount; i++) {
+                View child = children.getChildAt(i);
+                if ((child.mViewFlags & VISIBILITY_MASK) == VISIBLE) {
+                    if (child.includeForAccessibility()) {
+                        childrenForAccessibility.add(child);
+                    } else {
+                        child.addChildrenForAccessibility(childrenForAccessibility);
+                    }
+                }
+            }
+        } finally {
+            children.recycle();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void childAccessibilityStateChanged(View child) {
+        if (mParent != null) {
+            mParent.childAccessibilityStateChanged(child);
+        }
     }
 
     /**
@@ -1539,8 +1723,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             final float x = event.getX();
             final float y = event.getY();
 
+            final boolean customOrder = isChildrenDrawingOrderEnabled();
             for (int i = childrenCount - 1; i >= 0; i--) {
-                final View child = children[i];
+                final int childIndex = customOrder ? getChildDrawingOrder(childrenCount, i) : i;
+                final View child = children[childIndex];
                 if (!canViewReceivePointerEvents(child)
                         || !isTransformedTouchPointInView(x, y, child, null)) {
                     continue;
@@ -1562,9 +1748,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override
     protected boolean dispatchGenericFocusedEvent(MotionEvent event) {
         // Send the event to the focused child or to this view group if it has focus.
-        if ((mPrivateFlags & (FOCUSED | HAS_BOUNDS)) == (FOCUSED | HAS_BOUNDS)) {
+        if ((mPrivateFlags & (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS))
+                == (PFLAG_FOCUSED | PFLAG_HAS_BOUNDS)) {
             return super.dispatchGenericFocusedEvent(event);
-        } else if (mFocused != null && (mFocused.mPrivateFlags & HAS_BOUNDS) == HAS_BOUNDS) {
+        } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
+                == PFLAG_HAS_BOUNDS) {
             return mFocused.dispatchGenericMotionEvent(event);
         }
         return false;
@@ -1665,8 +1853,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                         final float x = ev.getX(actionIndex);
                         final float y = ev.getY(actionIndex);
 
+                        final boolean customOrder = isChildrenDrawingOrderEnabled();
                         for (int i = childrenCount - 1; i >= 0; i--) {
-                            final View child = children[i];
+                            final int childIndex = customOrder ?
+                                    getChildDrawingOrder(childrenCount, i) : i;
+                            final View child = children[childIndex];
                             if (!canViewReceivePointerEvents(child)
                                     || !isTransformedTouchPointInView(x, y, child, null)) {
                                 continue;
@@ -1684,7 +1875,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                             if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
                                 // Child wants to receive touch within its bounds.
                                 mLastTouchDownTime = ev.getDownTime();
-                                mLastTouchDownIndex = i;
+                                mLastTouchDownIndex = childIndex;
                                 mLastTouchDownX = ev.getX();
                                 mLastTouchDownY = ev.getY();
                                 newTouchTarget = addTouchTarget(child, idBitsToAssign);
@@ -1774,9 +1965,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * Resets the cancel next up flag.
      * Returns true if the flag was previously set.
      */
-    private boolean resetCancelNextUpFlag(View view) {
-        if ((view.mPrivateFlags & CANCEL_NEXT_UP_EVENT) != 0) {
-            view.mPrivateFlags &= ~CANCEL_NEXT_UP_EVENT;
+    private static boolean resetCancelNextUpFlag(View view) {
+        if ((view.mPrivateFlags & PFLAG_CANCEL_NEXT_UP_EVENT) != 0) {
+            view.mPrivateFlags &= ~PFLAG_CANCEL_NEXT_UP_EVENT;
             return true;
         }
         return false;
@@ -1867,6 +2058,32 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                     target = next;
                     continue;
                 }
+            }
+            predecessor = target;
+            target = next;
+        }
+    }
+
+    private void cancelTouchTarget(View view) {
+        TouchTarget predecessor = null;
+        TouchTarget target = mFirstTouchTarget;
+        while (target != null) {
+            final TouchTarget next = target.next;
+            if (target.child == view) {
+                if (predecessor == null) {
+                    mFirstTouchTarget = next;
+                } else {
+                    predecessor.next = next;
+                }
+                target.recycle();
+
+                final long now = SystemClock.uptimeMillis();
+                MotionEvent event = MotionEvent.obtain(now, now,
+                        MotionEvent.ACTION_CANCEL, 0.0f, 0.0f, 0);
+                event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+                view.dispatchTouchEvent(event);
+                event.recycle();
+                return;
             }
             predecessor = target;
             target = next;
@@ -2198,30 +2415,50 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         super.dispatchAttachedToWindow(info, visibility);
         mGroupFlags &= ~FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW;
 
-        visibility |= mViewFlags & VISIBILITY_MASK;
+        final int count = mChildrenCount;
+        final View[] children = mChildren;
+        for (int i = 0; i < count; i++) {
+            final View child = children[i];
+            child.dispatchAttachedToWindow(info,
+                    visibility | (child.mViewFlags&VISIBILITY_MASK));
+        }
+    }
+
+    @Override
+    void dispatchScreenStateChanged(int screenState) {
+        super.dispatchScreenStateChanged(screenState);
 
         final int count = mChildrenCount;
         final View[] children = mChildren;
         for (int i = 0; i < count; i++) {
-            children[i].dispatchAttachedToWindow(info, visibility);
+            children[i].dispatchScreenStateChanged(screenState);
         }
     }
 
     @Override
     boolean dispatchPopulateAccessibilityEventInternal(AccessibilityEvent event) {
-        boolean handled = super.dispatchPopulateAccessibilityEventInternal(event);
-        if (handled) {
-            return handled;
+        boolean handled = false;
+        if (includeForAccessibility()) {
+            handled = super.dispatchPopulateAccessibilityEventInternal(event);
+            if (handled) {
+                return handled;
+            }
         }
         // Let our children have a shot in populating the event.
-        for (int i = 0, count = getChildCount(); i < count; i++) {
-            View child = getChildAt(i);
-            if ((child.mViewFlags & VISIBILITY_MASK) == VISIBLE) {
-                handled = getChildAt(i).dispatchPopulateAccessibilityEvent(event);
-                if (handled) {
-                    return handled;
+        ChildListForAccessibility children = ChildListForAccessibility.obtain(this, true);
+        try {
+            final int childCount = children.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                View child = children.getChildAt(i);
+                if ((child.mViewFlags & VISIBILITY_MASK) == VISIBLE) {
+                    handled = child.dispatchPopulateAccessibilityEvent(event);
+                    if (handled) {
+                        return handled;
+                    }
                 }
             }
+        } finally {
+            children.recycle();
         }
         return false;
     }
@@ -2229,12 +2466,36 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override
     void onInitializeAccessibilityNodeInfoInternal(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfoInternal(info);
-        for (int i = 0, count = mChildrenCount; i < count; i++) {
-            View child = mChildren[i];
-            if ((child.mViewFlags & VISIBILITY_MASK) == VISIBLE
-                    && (child.mPrivateFlags & IS_ROOT_NAMESPACE) == 0) {
+        if (mAttachInfo != null) {
+            ArrayList<View> childrenForAccessibility = mAttachInfo.mTempArrayList;
+            childrenForAccessibility.clear();
+            addChildrenForAccessibility(childrenForAccessibility);
+            final int childrenForAccessibilityCount = childrenForAccessibility.size();
+            for (int i = 0; i < childrenForAccessibilityCount; i++) {
+                View child = childrenForAccessibility.get(i);
                 info.addChild(child);
             }
+            childrenForAccessibility.clear();
+        }
+    }
+
+    @Override
+    void onInitializeAccessibilityEventInternal(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEventInternal(event);
+        event.setClassName(ViewGroup.class.getName());
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resetAccessibilityStateChanged() {
+        super.resetAccessibilityStateChanged();
+        View[] children = mChildren;
+        final int childCount = mChildrenCount;
+        for (int i = 0; i < childCount; i++) {
+            View child = children[i];
+            child.resetAccessibilityStateChanged();
         }
     }
 
@@ -2249,6 +2510,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         // down. To make sure we keep the child in a consistent state, we
         // first send it an ACTION_CANCEL motion event.
         cancelAndClearTouchTargets(null);
+
+        // Similarly, set ACTION_EXIT to all hover targets and clear them.
+        exitHoverTargets();
 
         // In case view is detached while transition is running
         mLayoutSuppressed = false;
@@ -2269,11 +2533,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * {@inheritDoc}
+     * @hide
      */
     @Override
-    public void setPadding(int left, int top, int right, int bottom) {
-        super.setPadding(left, top, right, bottom);
+    protected void internalSetPadding(int left, int top, int right, int bottom) {
+        super.internalSetPadding(left, top, right, bottom);
 
         if ((mPaddingLeft | mPaddingTop | mPaddingRight | mPaddingBottom) != 0) {
             mGroupFlags |= FLAG_PADDING_NOT_NULL;
@@ -2418,6 +2682,50 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         return b;
     }
 
+    private static void drawRect(Canvas canvas, int x1, int y1, int x2, int y2, int color) {
+        Paint paint = getDebugPaint();
+        paint.setColor(color);
+
+        canvas.drawLines(getDebugLines(x1, y1, x2, y2), paint);
+    }
+
+    /**
+     * @hide
+     */
+    protected void onDebugDrawMargins(Canvas canvas) {
+        for (int i = 0; i < getChildCount(); i++) {
+            View c = getChildAt(i);
+            c.getLayoutParams().onDebugDraw(c, canvas);
+        }
+    }
+
+    /**
+     * @hide
+     */
+    protected void onDebugDraw(Canvas canvas) {
+        // Draw optical bounds
+        if (getLayoutMode() == OPTICAL_BOUNDS) {
+            for (int i = 0; i < getChildCount(); i++) {
+                View c = getChildAt(i);
+                Insets insets = c.getOpticalInsets();
+                drawRect(canvas,
+                        c.getLeft() + insets.left,
+                        c.getTop() + insets.top,
+                        c.getRight() - insets.right,
+                        c.getBottom() - insets.bottom, Color.RED);
+            }
+        }
+
+        // Draw margins
+        onDebugDrawMargins(canvas);
+
+        // Draw bounds
+        for (int i = 0; i < getChildCount(); i++) {
+            View c = getChildAt(i);
+            drawRect(canvas, c.getLeft(), c.getTop(), c.getRight(), c.getBottom(), Color.BLUE);
+        }
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -2476,7 +2784,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         }
 
         // We will draw our child's animation, let's reset the flag
-        mPrivateFlags &= ~DRAW_ANIMATION;
+        mPrivateFlags &= ~PFLAG_DRAW_ANIMATION;
         mGroupFlags &= ~FLAG_INVALIDATE_REQUIRED;
 
         boolean more = false;
@@ -2507,6 +2815,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 final View child = disappearingChildren.get(i);
                 more |= drawChild(canvas, child, drawingTime);
             }
+        }
+
+        if (debugDraw()) {
+            onDebugDraw(canvas);
         }
 
         if (clipToPadding) {
@@ -2592,8 +2904,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             final View child = children[i];
             if (((child.mViewFlags & VISIBILITY_MASK) == VISIBLE || child.getAnimation() != null) &&
                     child.hasStaticLayer()) {
-                child.mRecreateDisplayList = (child.mPrivateFlags & INVALIDATED) == INVALIDATED;
-                child.mPrivateFlags &= ~INVALIDATED;
+                child.mRecreateDisplayList = (child.mPrivateFlags & PFLAG_INVALIDATED)
+                        == PFLAG_INVALIDATED;
+                child.mPrivateFlags &= ~PFLAG_INVALIDATED;
                 child.getDisplayList();
                 child.mRecreateDisplayList = false;
             }
@@ -2608,364 +2921,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      *
      * @param canvas The canvas on which to draw the child
      * @param child Who to draw
-     * @param drawingTime The time at which draw is occuring
+     * @param drawingTime The time at which draw is occurring
      * @return True if an invalidate() was issued
      */
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-        boolean more = false;
-
-        final int cl = child.mLeft;
-        final int ct = child.mTop;
-        final int cr = child.mRight;
-        final int cb = child.mBottom;
-
-        final boolean childHasIdentityMatrix = child.hasIdentityMatrix();
-
-        final int flags = mGroupFlags;
-
-        if ((flags & FLAG_CLEAR_TRANSFORMATION) == FLAG_CLEAR_TRANSFORMATION) {
-            mChildTransformation.clear();
-            mGroupFlags &= ~FLAG_CLEAR_TRANSFORMATION;
-        }
-
-        Transformation transformToApply = null;
-        Transformation invalidationTransform;
-        final Animation a = child.getAnimation();
-        boolean concatMatrix = false;
-
-        boolean scalingRequired = false;
-        boolean caching;
-        int layerType = mDrawLayers ? child.getLayerType() : LAYER_TYPE_NONE;
-
-        final boolean hardwareAccelerated = canvas.isHardwareAccelerated();
-        if ((flags & FLAG_CHILDREN_DRAWN_WITH_CACHE) == FLAG_CHILDREN_DRAWN_WITH_CACHE ||
-                (flags & FLAG_ALWAYS_DRAWN_WITH_CACHE) == FLAG_ALWAYS_DRAWN_WITH_CACHE) {
-            caching = true;
-            if (mAttachInfo != null) scalingRequired = mAttachInfo.mScalingRequired;
-        } else {
-            caching = (layerType != LAYER_TYPE_NONE) || hardwareAccelerated;
-        }
-
-        if (a != null) {
-            final boolean initialized = a.isInitialized();
-            if (!initialized) {
-                a.initialize(cr - cl, cb - ct, getWidth(), getHeight());
-                a.initializeInvalidateRegion(0, 0, cr - cl, cb - ct);
-                child.onAnimationStart();
-            }
-
-            more = a.getTransformation(drawingTime, mChildTransformation,
-                    scalingRequired ? mAttachInfo.mApplicationScale : 1f);
-            if (scalingRequired && mAttachInfo.mApplicationScale != 1f) {
-                if (mInvalidationTransformation == null) {
-                    mInvalidationTransformation = new Transformation();
-                }
-                invalidationTransform = mInvalidationTransformation;
-                a.getTransformation(drawingTime, invalidationTransform, 1f);
-            } else {
-                invalidationTransform = mChildTransformation;
-            }
-            transformToApply = mChildTransformation;
-
-            concatMatrix = a.willChangeTransformationMatrix();
-
-            if (more) {
-                if (!a.willChangeBounds()) {
-                    if ((flags & (FLAG_OPTIMIZE_INVALIDATE | FLAG_ANIMATION_DONE)) ==
-                            FLAG_OPTIMIZE_INVALIDATE) {
-                        mGroupFlags |= FLAG_INVALIDATE_REQUIRED;
-                    } else if ((flags & FLAG_INVALIDATE_REQUIRED) == 0) {
-                        // The child need to draw an animation, potentially offscreen, so
-                        // make sure we do not cancel invalidate requests
-                        mPrivateFlags |= DRAW_ANIMATION;
-                        invalidate(cl, ct, cr, cb);
-                    }
-                } else {
-                    if (mInvalidateRegion == null) {
-                        mInvalidateRegion = new RectF();
-                    }
-                    final RectF region = mInvalidateRegion;
-                    a.getInvalidateRegion(0, 0, cr - cl, cb - ct, region, invalidationTransform);
-
-                    // The child need to draw an animation, potentially offscreen, so
-                    // make sure we do not cancel invalidate requests
-                    mPrivateFlags |= DRAW_ANIMATION;
-
-                    final int left = cl + (int) region.left;
-                    final int top = ct + (int) region.top;
-                    invalidate(left, top, left + (int) (region.width() + .5f),
-                            top + (int) (region.height() + .5f));
-                }
-            }
-        } else if ((flags & FLAG_SUPPORT_STATIC_TRANSFORMATIONS) ==
-                FLAG_SUPPORT_STATIC_TRANSFORMATIONS) {
-            final boolean hasTransform = getChildStaticTransformation(child, mChildTransformation);
-            if (hasTransform) {
-                final int transformType = mChildTransformation.getTransformationType();
-                transformToApply = transformType != Transformation.TYPE_IDENTITY ?
-                        mChildTransformation : null;
-                concatMatrix = (transformType & Transformation.TYPE_MATRIX) != 0;
-            }
-        }
-
-        concatMatrix |= !childHasIdentityMatrix;
-
-        // Sets the flag as early as possible to allow draw() implementations
-        // to call invalidate() successfully when doing animations
-        child.mPrivateFlags |= DRAWN;
-
-        if (!concatMatrix && canvas.quickReject(cl, ct, cr, cb, Canvas.EdgeType.BW) &&
-                (child.mPrivateFlags & DRAW_ANIMATION) == 0) {
-            return more;
-        }
-
-        if (hardwareAccelerated) {
-            // Clear INVALIDATED flag to allow invalidation to occur during rendering, but
-            // retain the flag's value temporarily in the mRecreateDisplayList flag
-            child.mRecreateDisplayList = (child.mPrivateFlags & INVALIDATED) == INVALIDATED;
-            child.mPrivateFlags &= ~INVALIDATED;
-        }
-
-        child.computeScroll();
-
-        final int sx = child.mScrollX;
-        final int sy = child.mScrollY;
-
-        DisplayList displayList = null;
-        Bitmap cache = null;
-        boolean hasDisplayList = false;
-        if (caching) {
-            if (!hardwareAccelerated) {
-                if (layerType != LAYER_TYPE_NONE) {
-                    layerType = LAYER_TYPE_SOFTWARE;
-                    child.buildDrawingCache(true);
-                }
-                cache = child.getDrawingCache(true);
-            } else {
-                switch (layerType) {
-                    case LAYER_TYPE_SOFTWARE:
-                        child.buildDrawingCache(true);
-                        cache = child.getDrawingCache(true);
-                        break;
-                    case LAYER_TYPE_NONE:
-                        // Delay getting the display list until animation-driven alpha values are
-                        // set up and possibly passed on to the view
-                        hasDisplayList = child.canHaveDisplayList();
-                        break;
-                }
-            }
-        }
-
-        final boolean hasNoCache = cache == null || hasDisplayList;
-        final boolean offsetForScroll = cache == null && !hasDisplayList &&
-                layerType != LAYER_TYPE_HARDWARE;
-
-        final int restoreTo = canvas.save();
-        if (offsetForScroll) {
-            canvas.translate(cl - sx, ct - sy);
-        } else {
-            canvas.translate(cl, ct);
-            if (scalingRequired) {
-                // mAttachInfo cannot be null, otherwise scalingRequired == false
-                final float scale = 1.0f / mAttachInfo.mApplicationScale;
-                canvas.scale(scale, scale);
-            }
-        }
-
-        float alpha = child.getAlpha();
-        if (transformToApply != null || alpha < 1.0f || !child.hasIdentityMatrix()) {
-            if (transformToApply != null || !childHasIdentityMatrix) {
-                int transX = 0;
-                int transY = 0;
-
-                if (offsetForScroll) {
-                    transX = -sx;
-                    transY = -sy;
-                }
-
-                if (transformToApply != null) {
-                    if (concatMatrix) {
-                        // Undo the scroll translation, apply the transformation matrix,
-                        // then redo the scroll translate to get the correct result.
-                        canvas.translate(-transX, -transY);
-                        canvas.concat(transformToApply.getMatrix());
-                        canvas.translate(transX, transY);
-                        mGroupFlags |= FLAG_CLEAR_TRANSFORMATION;
-                    }
-
-                    float transformAlpha = transformToApply.getAlpha();
-                    if (transformAlpha < 1.0f) {
-                        alpha *= transformToApply.getAlpha();
-                        mGroupFlags |= FLAG_CLEAR_TRANSFORMATION;
-                    }
-                }
-
-                if (!childHasIdentityMatrix) {
-                    canvas.translate(-transX, -transY);
-                    canvas.concat(child.getMatrix());
-                    canvas.translate(transX, transY);
-                }
-            }
-
-            if (alpha < 1.0f) {
-                mGroupFlags |= FLAG_CLEAR_TRANSFORMATION;
-                if (hasNoCache) {
-                    final int multipliedAlpha = (int) (255 * alpha);
-                    if (!child.onSetAlpha(multipliedAlpha)) {
-                        int layerFlags = Canvas.HAS_ALPHA_LAYER_SAVE_FLAG;
-                        if ((flags & FLAG_CLIP_CHILDREN) == FLAG_CLIP_CHILDREN ||
-                                layerType != LAYER_TYPE_NONE) {
-                            layerFlags |= Canvas.CLIP_TO_LAYER_SAVE_FLAG;
-                        }
-                        if (layerType == LAYER_TYPE_NONE) {
-                            final int scrollX = hasDisplayList ? 0 : sx;
-                            final int scrollY = hasDisplayList ? 0 : sy;
-                            canvas.saveLayerAlpha(scrollX, scrollY, scrollX + cr - cl,
-                                    scrollY + cb - ct, multipliedAlpha, layerFlags);
-                        }
-                    } else {
-                        // Alpha is handled by the child directly, clobber the layer's alpha
-                        child.mPrivateFlags |= ALPHA_SET;
-                    }
-                }
-            }
-        } else if ((child.mPrivateFlags & ALPHA_SET) == ALPHA_SET) {
-            child.onSetAlpha(255);
-            child.mPrivateFlags &= ~ALPHA_SET;
-        }
-
-        if ((flags & FLAG_CLIP_CHILDREN) == FLAG_CLIP_CHILDREN) {
-            if (offsetForScroll) {
-                canvas.clipRect(sx, sy, sx + (cr - cl), sy + (cb - ct));
-            } else {
-                if (!scalingRequired || cache == null) {
-                    canvas.clipRect(0, 0, cr - cl, cb - ct);
-                } else {
-                    canvas.clipRect(0, 0, cache.getWidth(), cache.getHeight());
-                }
-            }
-        }
-
-        if (hasDisplayList) {
-            displayList = child.getDisplayList();
-            if (!displayList.isValid()) {
-                // Uncommon, but possible. If a view is removed from the hierarchy during the call
-                // to getDisplayList(), the display list will be marked invalid and we should not
-                // try to use it again.
-                displayList = null;
-                hasDisplayList = false;
-            }
-        }
-
-        if (hasNoCache) {
-            boolean layerRendered = false;
-            if (layerType == LAYER_TYPE_HARDWARE) {
-                final HardwareLayer layer = child.getHardwareLayer();
-                if (layer != null && layer.isValid()) {
-                    child.mLayerPaint.setAlpha((int) (alpha * 255));                    
-                    ((HardwareCanvas) canvas).drawHardwareLayer(layer, 0, 0, child.mLayerPaint);
-                    layerRendered = true;
-                } else {
-                    final int scrollX = hasDisplayList ? 0 : sx;
-                    final int scrollY = hasDisplayList ? 0 : sy;                    
-                    canvas.saveLayer(scrollX, scrollY,
-                            scrollX + cr - cl, scrollY + cb - ct, child.mLayerPaint,
-                            Canvas.HAS_ALPHA_LAYER_SAVE_FLAG | Canvas.CLIP_TO_LAYER_SAVE_FLAG);
-                }
-            }
-
-            if (!layerRendered) {
-                if (!hasDisplayList) {
-                    // Fast path for layouts with no backgrounds
-                    if ((child.mPrivateFlags & SKIP_DRAW) == SKIP_DRAW) {
-                        if (ViewDebug.TRACE_HIERARCHY) {
-                            ViewDebug.trace(this, ViewDebug.HierarchyTraceType.DRAW);
-                        }
-                        child.mPrivateFlags &= ~DIRTY_MASK;
-                        child.dispatchDraw(canvas);
-                    } else {
-                        child.draw(canvas);
-                    }
-                } else {
-                    child.mPrivateFlags &= ~DIRTY_MASK;
-                    ((HardwareCanvas) canvas).drawDisplayList(displayList, cr - cl, cb - ct, null);
-                }
-            }
-        } else if (cache != null) {
-            child.mPrivateFlags &= ~DIRTY_MASK;
-            Paint cachePaint;
-
-            if (layerType == LAYER_TYPE_NONE) {
-                cachePaint = mCachePaint;
-                if (cachePaint == null) {
-                    cachePaint = new Paint();
-                    cachePaint.setDither(false);
-                    mCachePaint = cachePaint;
-                }
-                if (alpha < 1.0f) {
-                    cachePaint.setAlpha((int) (alpha * 255));
-                    mGroupFlags |= FLAG_ALPHA_LOWER_THAN_ONE;
-                } else if  ((flags & FLAG_ALPHA_LOWER_THAN_ONE) == FLAG_ALPHA_LOWER_THAN_ONE) {
-                    cachePaint.setAlpha(255);
-                    mGroupFlags &= ~FLAG_ALPHA_LOWER_THAN_ONE;
-                }
-            } else {
-                cachePaint = child.mLayerPaint;
-                cachePaint.setAlpha((int) (alpha * 255));
-            }
-            canvas.drawBitmap(cache, 0.0f, 0.0f, cachePaint);
-        }
-
-        canvas.restoreToCount(restoreTo);
-
-        if (a != null && !more) {
-            if (!hardwareAccelerated && !a.getFillAfter()) {
-                child.onSetAlpha(255);
-            }
-            finishAnimatingView(child, a);
-        }
-
-        if (more && hardwareAccelerated) {
-            // invalidation is the trigger to recreate display lists, so if we're using
-            // display lists to render, force an invalidate to allow the animation to
-            // continue drawing another frame
-            invalidate(true);
-            if (a.hasAlpha() && (child.mPrivateFlags & ALPHA_SET) == ALPHA_SET) {
-                // alpha animations should cause the child to recreate its display list
-                child.invalidate(true);
-            }
-        }
-
-        child.mRecreateDisplayList = false;
-
-        return more;
-    }
-
-    /**
-     * 
-     * @param enabled True if children should be drawn with layers, false otherwise.
-     * 
-     * @hide
-     */
-    public void setChildrenLayersEnabled(boolean enabled) {
-        if (enabled != mDrawLayers) {
-            mDrawLayers = enabled;
-            invalidate(true);
-
-            // We need to invalidate any child with a layer. For instance,
-            // if a child is backed by a hardware layer and we disable layers
-            // the child is marked as not dirty (flags cleared the last time
-            // the child was drawn inside its layer.) However, that child might
-            // never have created its own display list or have an obsolete
-            // display list. By invalidating the child we ensure the display
-            // list is in sync with the content of the hardware layer.
-            for (int i = 0; i < mChildrenCount; i++) {
-                View child = mChildren[i];
-                if (child.mLayerType != LAYER_TYPE_NONE) {
-                    child.invalidate(true);
-                }
-            }
-        }
+        return child.draw(canvas, this, drawingTime);
     }
 
     /**
@@ -2977,7 +2937,16 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * @attr ref android.R.styleable#ViewGroup_clipChildren
      */
     public void setClipChildren(boolean clipChildren) {
-        setBooleanFlag(FLAG_CLIP_CHILDREN, clipChildren);
+        boolean previousValue = (mGroupFlags & FLAG_CLIP_CHILDREN) == FLAG_CLIP_CHILDREN;
+        if (clipChildren != previousValue) {
+            setBooleanFlag(FLAG_CLIP_CHILDREN, clipChildren);
+            for (int i = 0; i < mChildrenCount; ++i) {
+                View child = getChildAt(i);
+                if (child.mDisplayList != null) {
+                    child.mDisplayList.setClipChildren(clipChildren);
+                }
+            }
+        }
     }
 
     /**
@@ -3021,7 +2990,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         final View[] children = mChildren;
         final int count = mChildrenCount;
         for (int i = 0; i < count; i++) {
-            children[i].setPressed(pressed);
+            final View child = children[i];
+            // Children that are clickable on their own should not
+            // show a pressed state when their parent view does.
+            // Clearing a pressed state always propagates.
+            if (!pressed || (!child.isClickable() && !child.isLongClickable())) {
+                child.setPressed(pressed);
+            }
         }
     }
 
@@ -3037,15 +3012,22 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      *
      * @param enabled True to enable static transformations on children, false otherwise.
      *
-     * @see #FLAG_SUPPORT_STATIC_TRANSFORMATIONS
+     * @see #getChildStaticTransformation(View, android.view.animation.Transformation)
      */
     protected void setStaticTransformationsEnabled(boolean enabled) {
         setBooleanFlag(FLAG_SUPPORT_STATIC_TRANSFORMATIONS, enabled);
     }
 
     /**
-     * {@inheritDoc}
+     * Sets  <code>t</code> to be the static transformation of the child, if set, returning a
+     * boolean to indicate whether a static transform was set. The default implementation
+     * simply returns <code>false</code>; subclasses may override this method for different
+     * behavior. {@link #setStaticTransformationsEnabled(boolean)} must be set to true
+     * for this method to be called.
      *
+     * @param child The child view whose static transform is being requested
+     * @param t The Transformation which will hold the result
+     * @return true if the transformation was set, false otherwise
      * @see #setStaticTransformationsEnabled(boolean)
      */
     protected boolean getChildStaticTransformation(View child, Transformation t) {
@@ -3067,7 +3049,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         for (int i = 0; i < len; i++) {
             View v = where[i];
 
-            if ((v.mPrivateFlags & IS_ROOT_NAMESPACE) == 0) {
+            if ((v.mPrivateFlags & PFLAG_IS_ROOT_NAMESPACE) == 0) {
                 v = v.findViewById(id);
 
                 if (v != null) {
@@ -3094,7 +3076,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         for (int i = 0; i < len; i++) {
             View v = where[i];
 
-            if ((v.mPrivateFlags & IS_ROOT_NAMESPACE) == 0) {
+            if ((v.mPrivateFlags & PFLAG_IS_ROOT_NAMESPACE) == 0) {
                 v = v.findViewWithTag(tag);
 
                 if (v != null) {
@@ -3121,7 +3103,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         for (int i = 0; i < len; i++) {
             View v = where[i];
 
-            if (v != childToSkip && (v.mPrivateFlags & IS_ROOT_NAMESPACE) == 0) {
+            if (v != childToSkip && (v.mPrivateFlags & PFLAG_IS_ROOT_NAMESPACE) == 0) {
                 v = v.findViewByPredicate(predicate);
 
                 if (v != null) {
@@ -3134,8 +3116,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * Adds a child view. If no layout parameters are already set on the child, the
-     * default parameters for this ViewGroup are set on the child.
+     * <p>Adds a child view. If no layout parameters are already set on the child, the
+     * default parameters for this ViewGroup are set on the child.</p>
+     * 
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      *
      * @param child the child view to add
      *
@@ -3148,6 +3134,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * Adds a child view. If no layout parameters are already set on the child, the
      * default parameters for this ViewGroup are set on the child.
+     * 
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      *
      * @param child the child view to add
      * @param index the position at which to add the child
@@ -3169,6 +3159,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * Adds a child view with this ViewGroup's default layout parameters and the
      * specified width and height.
      *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
+     *
      * @param child the child view to add
      */
     public void addView(View child, int width, int height) {
@@ -3181,6 +3175,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * Adds a child view with the specified layout parameters.
      *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
+     *
      * @param child the child view to add
      * @param params the layout parameters to set on the child
      */
@@ -3190,6 +3188,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     /**
      * Adds a child view with the specified layout parameters.
+     *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      *
      * @param child the child view to add
      * @param index the position at which to add the child
@@ -3311,7 +3313,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             boolean preventRequestLayout) {
         child.mParent = null;
         addViewInner(child, index, params, preventRequestLayout);
-        child.mPrivateFlags = (child.mPrivateFlags & ~DIRTY_MASK) | DRAWN;
+        child.mPrivateFlags = (child.mPrivateFlags & ~PFLAG_DIRTY_MASK) | PFLAG_DRAWN;
         return true;
     }
 
@@ -3321,7 +3323,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * @param child the child on which to perform the cleanup
      */
     protected void cleanupLayoutState(View child) {
-        child.mPrivateFlags &= ~View.FORCE_LAYOUT;
+        child.mPrivateFlags &= ~View.PFLAG_FORCE_LAYOUT;
     }
 
     private void addViewInner(View child, int index, LayoutParams params,
@@ -3380,10 +3382,18 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             ai.mKeepScreenOn = lastKeepOn;
         }
 
+        if (child.isLayoutDirectionInherited()) {
+            child.resetRtlProperties();
+        }
+
         onViewAdded(child);
 
         if ((child.mViewFlags & DUPLICATE_PARENT_STATE) == DUPLICATE_PARENT_STATE) {
             mGroupFlags |= FLAG_NOTIFY_CHILDREN_ON_DRAWABLE_STATE_CHANGE;
+        }
+
+        if (child.hasTransientState()) {
+            childHasTransientStateChanged(child, true);
         }
     }
 
@@ -3504,6 +3514,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     /**
      * {@inheritDoc}
+     * 
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      */
     public void removeView(View view) {
         removeViewInternal(view);
@@ -3515,6 +3529,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * Removes a view during layout. This is useful if in your onLayout() method,
      * you need to remove more views.
      *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
+     * 
      * @param view the view to remove from the group
      */
     public void removeViewInLayout(View view) {
@@ -3524,6 +3542,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * Removes a range of views during layout. This is useful if in your onLayout() method,
      * you need to remove more views.
+     *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      *
      * @param start the index of the first view to remove from the group
      * @param count the number of views to remove from the group
@@ -3535,6 +3557,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     /**
      * Removes the view at the specified position in the group.
      *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
+     * 
      * @param index the position in the group of the view to remove
      */
     public void removeViewAt(int index) {
@@ -3545,6 +3571,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
     /**
      * Removes the specified range of views from the group.
+     *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      *
      * @param start the first position in the group of the range of views to remove
      * @param count the number of views to remove
@@ -3570,15 +3600,24 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
         boolean clearChildFocus = false;
         if (view == mFocused) {
-            view.clearFocusForRemoval();
+            view.unFocus();
             clearChildFocus = true;
         }
+
+        view.clearAccessibilityFocus();
+
+        cancelTouchTarget(view);
+        cancelHoverTarget(view);
 
         if (view.getAnimation() != null ||
                 (mTransitioningViews != null && mTransitioningViews.contains(view))) {
             addDisappearingView(view);
         } else if (view.mAttachInfo != null) {
            view.dispatchDetachedFromWindow();
+        }
+
+        if (view.hasTransientState()) {
+            childHasTransientStateChanged(view, false);
         }
 
         onViewRemoved(view);
@@ -3589,6 +3628,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
         if (clearChildFocus) {
             clearChildFocus(view);
+            ensureInputFocusOnFirstFocusable();
+        }
+
+        if (view.isAccessibilityFocused()) {
+            view.clearAccessibilityFocus();
         }
     }
 
@@ -3641,15 +3685,24 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             }
 
             if (view == focused) {
-                view.clearFocusForRemoval();
+                view.unFocus();
                 clearChildFocus = view;
             }
+
+            view.clearAccessibilityFocus();
+
+            cancelTouchTarget(view);
+            cancelHoverTarget(view);
 
             if (view.getAnimation() != null ||
                 (mTransitioningViews != null && mTransitioningViews.contains(view))) {
                 addDisappearingView(view);
             } else if (detach) {
                view.dispatchDetachedFromWindow();
+            }
+
+            if (view.hasTransientState()) {
+                childHasTransientStateChanged(view, false);
             }
 
             needGlobalAttributesUpdate(false);
@@ -3661,12 +3714,17 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
         if (clearChildFocus != null) {
             clearChildFocus(clearChildFocus);
+            ensureInputFocusOnFirstFocusable();
         }
     }
 
     /**
      * Call this method to remove all child views from the
      * ViewGroup.
+     * 
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      */
     public void removeAllViews() {
         removeAllViewsInLayout();
@@ -3682,6 +3740,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * that can currently fit inside the object on screen. Do not call
      * this method unless you are extending ViewGroup and understand the
      * view measuring and layout pipeline.
+     *
+     * <p><strong>Note:</strong> do not invoke this method from
+     * {@link #draw(android.graphics.Canvas)}, {@link #onDraw(android.graphics.Canvas)},
+     * {@link #dispatchDraw(android.graphics.Canvas)} or any related method.</p>
      */
     public void removeAllViewsInLayout() {
         final int count = mChildrenCount;
@@ -3706,15 +3768,24 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             }
 
             if (view == focused) {
-                view.clearFocusForRemoval();
+                view.unFocus();
                 clearChildFocus = view;
             }
+
+            view.clearAccessibilityFocus();
+
+            cancelTouchTarget(view);
+            cancelHoverTarget(view);
 
             if (view.getAnimation() != null ||
                     (mTransitioningViews != null && mTransitioningViews.contains(view))) {
                 addDisappearingView(view);
             } else if (detach) {
                view.dispatchDetachedFromWindow();
+            }
+
+            if (view.hasTransientState()) {
+                childHasTransientStateChanged(view, false);
             }
 
             onViewRemoved(view);
@@ -3725,12 +3796,20 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
 
         if (clearChildFocus != null) {
             clearChildFocus(clearChildFocus);
+            ensureInputFocusOnFirstFocusable();
         }
     }
 
     /**
      * Finishes the removal of a detached view. This method will dispatch the detached from
      * window event and notify the hierarchy change listener.
+     * <p>
+     * This method is intended to be lightweight and makes no assumptions about whether the
+     * parent or child should be redrawn. Proper use of this method will include also making
+     * any appropriate {@link #requestLayout()} or {@link #invalidate()} calls.
+     * For example, callers can {@link #post(Runnable) post} a {@link Runnable}
+     * which performs a {@link #requestLayout()} on the next frame, after all detach/remove
+     * calls are finished, causing layout to be run prior to redrawing the view hierarchy.
      *
      * @param child the child to be definitely removed from the view hierarchy
      * @param animate if true and the view has an animation, the view is placed in the
@@ -3750,6 +3829,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             child.clearFocus();
         }
 
+        child.clearAccessibilityFocus();
+
+        cancelTouchTarget(child);
+        cancelHoverTarget(child);
+
         if ((animate && child.getAnimation() != null) ||
                 (mTransitioningViews != null && mTransitioningViews.contains(child))) {
             addDisappearingView(child);
@@ -3757,15 +3841,26 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             child.dispatchDetachedFromWindow();
         }
 
+        if (child.hasTransientState()) {
+            childHasTransientStateChanged(child, false);
+        }
+
         onViewRemoved(child);
     }
 
     /**
      * Attaches a view to this view group. Attaching a view assigns this group as the parent,
-     * sets the layout parameters and puts the view in the list of children so it can be retrieved
-     * by calling {@link #getChildAt(int)}.
-     *
-     * This method should be called only for view which were detached from their parent.
+     * sets the layout parameters and puts the view in the list of children so that
+     * it can be retrieved by calling {@link #getChildAt(int)}.
+     * <p>
+     * This method is intended to be lightweight and makes no assumptions about whether the
+     * parent or child should be redrawn. Proper use of this method will include also making
+     * any appropriate {@link #requestLayout()} or {@link #invalidate()} calls.
+     * For example, callers can {@link #post(Runnable) post} a {@link Runnable}
+     * which performs a {@link #requestLayout()} on the next frame, after all detach/attach
+     * calls are finished, causing layout to be run prior to redrawing the view hierarchy.
+     * <p>
+     * This method should be called only for views which were detached from their parent.
      *
      * @param child the child to attach
      * @param index the index at which the child should be attached
@@ -3786,9 +3881,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         addInArray(child, index);
 
         child.mParent = this;
-        child.mPrivateFlags = (child.mPrivateFlags & ~DIRTY_MASK & ~DRAWING_CACHE_VALID) |
-                DRAWN | INVALIDATED;
-        this.mPrivateFlags |= INVALIDATED;
+        child.mPrivateFlags = (child.mPrivateFlags & ~PFLAG_DIRTY_MASK
+                        & ~PFLAG_DRAWING_CACHE_VALID)
+                | PFLAG_DRAWN | PFLAG_INVALIDATED;
+        this.mPrivateFlags |= PFLAG_INVALIDATED;
 
         if (child.hasFocus()) {
             requestChildFocus(child, child.findFocus());
@@ -3796,10 +3892,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * Detaches a view from its parent. Detaching a view should be temporary and followed
-     * either by a call to {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
-     * or a call to {@link #removeDetachedView(View, boolean)}. When a view is detached,
-     * its parent is null and cannot be retrieved by a call to {@link #getChildAt(int)}.
+     * Detaches a view from its parent. Detaching a view should be followed
+     * either by a call to
+     * {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
+     * or a call to {@link #removeDetachedView(View, boolean)}. Detachment should only be
+     * temporary; reattachment or removal should happen within the same drawing cycle as
+     * detachment. When a view is detached, its parent is null and cannot be retrieved by a
+     * call to {@link #getChildAt(int)}.
      *
      * @param child the child to detach
      *
@@ -3814,10 +3913,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * Detaches a view from its parent. Detaching a view should be temporary and followed
-     * either by a call to {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
-     * or a call to {@link #removeDetachedView(View, boolean)}. When a view is detached,
-     * its parent is null and cannot be retrieved by a call to {@link #getChildAt(int)}.
+     * Detaches a view from its parent. Detaching a view should be followed
+     * either by a call to
+     * {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
+     * or a call to {@link #removeDetachedView(View, boolean)}. Detachment should only be
+     * temporary; reattachment or removal should happen within the same drawing cycle as
+     * detachment. When a view is detached, its parent is null and cannot be retrieved by a
+     * call to {@link #getChildAt(int)}.
      *
      * @param index the index of the child to detach
      *
@@ -3832,10 +3934,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * Detaches a range of view from their parent. Detaching a view should be temporary and followed
-     * either by a call to {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
-     * or a call to {@link #removeDetachedView(View, boolean)}. When a view is detached, its
-     * parent is null and cannot be retrieved by a call to {@link #getChildAt(int)}.
+     * Detaches a range of views from their parents. Detaching a view should be followed
+     * either by a call to
+     * {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
+     * or a call to {@link #removeDetachedView(View, boolean)}. Detachment should only be
+     * temporary; reattachment or removal should happen within the same drawing cycle as
+     * detachment. When a view is detached, its parent is null and cannot be retrieved by a
+     * call to {@link #getChildAt(int)}.
      *
      * @param start the first index of the childrend range to detach
      * @param count the number of children to detach
@@ -3851,10 +3956,13 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * Detaches all views from the parent. Detaching a view should be temporary and followed
-     * either by a call to {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
-     * or a call to {@link #removeDetachedView(View, boolean)}. When a view is detached,
-     * its parent is null and cannot be retrieved by a call to {@link #getChildAt(int)}.
+     * Detaches all views from the parent. Detaching a view should be followed
+     * either by a call to
+     * {@link #attachViewToParent(View, int, android.view.ViewGroup.LayoutParams)}
+     * or a call to {@link #removeDetachedView(View, boolean)}. Detachment should only be
+     * temporary; reattachment or removal should happen within the same drawing cycle as
+     * detachment. When a view is detached, its parent is null and cannot be retrieved by a
+     * call to {@link #getChildAt(int)}.
      *
      * @see #detachViewFromParent(View)
      * @see #detachViewFromParent(int)
@@ -3882,10 +3990,6 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * the view hierarchy.
      */
     public final void invalidateChild(View child, final Rect dirty) {
-        if (ViewDebug.TRACE_HIERARCHY) {
-            ViewDebug.trace(this, ViewDebug.HierarchyTraceType.INVALIDATE_CHILD);
-        }
-
         ViewParent parent = this;
 
         final AttachInfo attachInfo = mAttachInfo;
@@ -3893,130 +3997,96 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             // If the child is drawing an animation, we want to copy this flag onto
             // ourselves and the parent to make sure the invalidate request goes
             // through
-            final boolean drawAnimation = (child.mPrivateFlags & DRAW_ANIMATION) == DRAW_ANIMATION;
+            final boolean drawAnimation = (child.mPrivateFlags & PFLAG_DRAW_ANIMATION)
+                    == PFLAG_DRAW_ANIMATION;
 
-            if (dirty == null) {
-                if (child.mLayerType != LAYER_TYPE_NONE) {
-                    mPrivateFlags |= INVALIDATED;
-                    mPrivateFlags &= ~DRAWING_CACHE_VALID;
-                    child.mLocalDirtyRect.setEmpty();
-                }
-                do {
-                    View view = null;
-                    if (parent instanceof View) {
-                        view = (View) parent;
-                        if (view.mLayerType != LAYER_TYPE_NONE) {
-                            view.mLocalDirtyRect.setEmpty();
-                            if (view.getParent() instanceof View) {
-                                final View grandParent = (View) view.getParent();
-                                grandParent.mPrivateFlags |= INVALIDATED;
-                                grandParent.mPrivateFlags &= ~DRAWING_CACHE_VALID;
-                            }
-                        }
-                        if ((view.mPrivateFlags & DIRTY_MASK) != 0) {
-                            // already marked dirty - we're done
-                            break;
-                        }
-                    }
+            // Check whether the child that requests the invalidate is fully opaque
+            // Views being animated or transformed are not considered opaque because we may
+            // be invalidating their old position and need the parent to paint behind them.
+            Matrix childMatrix = child.getMatrix();
+            final boolean isOpaque = child.isOpaque() && !drawAnimation &&
+                    child.getAnimation() == null && childMatrix.isIdentity();
+            // Mark the child as dirty, using the appropriate flag
+            // Make sure we do not set both flags at the same time
+            int opaqueFlag = isOpaque ? PFLAG_DIRTY_OPAQUE : PFLAG_DIRTY;
 
-                    if (drawAnimation) {
-                        if (view != null) {
-                            view.mPrivateFlags |= DRAW_ANIMATION;
-                        } else if (parent instanceof ViewRootImpl) {
-                            ((ViewRootImpl) parent).mIsAnimating = true;
-                        }
-                    }
-
-                    if (parent instanceof ViewRootImpl) {
-                        ((ViewRootImpl) parent).invalidate();
-                        parent = null;
-                    } else if (view != null) {
-                        if ((view.mPrivateFlags & DRAWN) == DRAWN ||
-                                (view.mPrivateFlags & DRAWING_CACHE_VALID) == DRAWING_CACHE_VALID) {
-                            view.mPrivateFlags &= ~DRAWING_CACHE_VALID;
-                            view.mPrivateFlags |= DIRTY;
-                            parent = view.mParent;
-                        } else {
-                            parent = null;
-                        }
-                    }
-                } while (parent != null);
-            } else {
-                // Check whether the child that requests the invalidate is fully opaque
-                final boolean isOpaque = child.isOpaque() && !drawAnimation &&
-                        child.getAnimation() == null;
-                // Mark the child as dirty, using the appropriate flag
-                // Make sure we do not set both flags at the same time
-                int opaqueFlag = isOpaque ? DIRTY_OPAQUE : DIRTY;
-
-                if (child.mLayerType != LAYER_TYPE_NONE) {
-                    mPrivateFlags |= INVALIDATED;
-                    mPrivateFlags &= ~DRAWING_CACHE_VALID;
-                    child.mLocalDirtyRect.union(dirty);
-                }
-
-                final int[] location = attachInfo.mInvalidateChildLocation;
-                location[CHILD_LEFT_INDEX] = child.mLeft;
-                location[CHILD_TOP_INDEX] = child.mTop;
-                Matrix childMatrix = child.getMatrix();
-                if (!childMatrix.isIdentity()) {
-                    RectF boundingRect = attachInfo.mTmpTransformRect;
-                    boundingRect.set(dirty);
-                    //boundingRect.inset(-0.5f, -0.5f);
-                    childMatrix.mapRect(boundingRect);
-                    dirty.set((int) (boundingRect.left - 0.5f),
-                            (int) (boundingRect.top - 0.5f),
-                            (int) (boundingRect.right + 0.5f),
-                            (int) (boundingRect.bottom + 0.5f));
-                }
-
-                do {
-                    View view = null;
-                    if (parent instanceof View) {
-                        view = (View) parent;
-                        if (view.mLayerType != LAYER_TYPE_NONE &&
-                                view.getParent() instanceof View) {
-                            final View grandParent = (View) view.getParent();
-                            grandParent.mPrivateFlags |= INVALIDATED;
-                            grandParent.mPrivateFlags &= ~DRAWING_CACHE_VALID;
-                        }
-                    }
-
-                    if (drawAnimation) {
-                        if (view != null) {
-                            view.mPrivateFlags |= DRAW_ANIMATION;
-                        } else if (parent instanceof ViewRootImpl) {
-                            ((ViewRootImpl) parent).mIsAnimating = true;
-                        }
-                    }
-
-                    // If the parent is dirty opaque or not dirty, mark it dirty with the opaque
-                    // flag coming from the child that initiated the invalidate
-                    if (view != null) {
-                        if ((view.mViewFlags & FADING_EDGE_MASK) != 0 &&
-                                view.getSolidColor() == 0) {
-                            opaqueFlag = DIRTY;
-                        }
-                        if ((view.mPrivateFlags & DIRTY_MASK) != DIRTY) {
-                            view.mPrivateFlags = (view.mPrivateFlags & ~DIRTY_MASK) | opaqueFlag;
-                        }
-                    }
-
-                    parent = parent.invalidateChildInParent(location, dirty);
-                    if (view != null) {
-                        // Account for transform on current parent
-                        Matrix m = view.getMatrix();
-                        if (!m.isIdentity()) {
-                            RectF boundingRect = attachInfo.mTmpTransformRect;
-                            boundingRect.set(dirty);
-                            m.mapRect(boundingRect);
-                            dirty.set((int) boundingRect.left, (int) boundingRect.top,
-                                    (int) (boundingRect.right + 0.5f),
-                                    (int) (boundingRect.bottom + 0.5f));
-                        }
-                    }
-                } while (parent != null);
+            if (child.mLayerType != LAYER_TYPE_NONE) {
+                mPrivateFlags |= PFLAG_INVALIDATED;
+                mPrivateFlags &= ~PFLAG_DRAWING_CACHE_VALID;
+                child.mLocalDirtyRect.union(dirty);
             }
+
+            final int[] location = attachInfo.mInvalidateChildLocation;
+            location[CHILD_LEFT_INDEX] = child.mLeft;
+            location[CHILD_TOP_INDEX] = child.mTop;
+            if (!childMatrix.isIdentity() ||
+                    (mGroupFlags & ViewGroup.FLAG_SUPPORT_STATIC_TRANSFORMATIONS) != 0) {
+                RectF boundingRect = attachInfo.mTmpTransformRect;
+                boundingRect.set(dirty);
+                Matrix transformMatrix;
+                if ((mGroupFlags & ViewGroup.FLAG_SUPPORT_STATIC_TRANSFORMATIONS) != 0) {
+                    Transformation t = attachInfo.mTmpTransformation;
+                    boolean transformed = getChildStaticTransformation(child, t);
+                    if (transformed) {
+                        transformMatrix = attachInfo.mTmpMatrix;
+                        transformMatrix.set(t.getMatrix());
+                        if (!childMatrix.isIdentity()) {
+                            transformMatrix.preConcat(childMatrix);
+                        }
+                    } else {
+                        transformMatrix = childMatrix;
+                    }
+                } else {
+                    transformMatrix = childMatrix;
+                }
+                transformMatrix.mapRect(boundingRect);
+                dirty.set((int) (boundingRect.left - 0.5f),
+                        (int) (boundingRect.top - 0.5f),
+                        (int) (boundingRect.right + 0.5f),
+                        (int) (boundingRect.bottom + 0.5f));
+            }
+
+            do {
+                View view = null;
+                if (parent instanceof View) {
+                    view = (View) parent;
+                }
+
+                if (drawAnimation) {
+                    if (view != null) {
+                        view.mPrivateFlags |= PFLAG_DRAW_ANIMATION;
+                    } else if (parent instanceof ViewRootImpl) {
+                        ((ViewRootImpl) parent).mIsAnimating = true;
+                    }
+                }
+
+                // If the parent is dirty opaque or not dirty, mark it dirty with the opaque
+                // flag coming from the child that initiated the invalidate
+                if (view != null) {
+                    if ((view.mViewFlags & FADING_EDGE_MASK) != 0 &&
+                            view.getSolidColor() == 0) {
+                        opaqueFlag = PFLAG_DIRTY;
+                    }
+                    if ((view.mPrivateFlags & PFLAG_DIRTY_MASK) != PFLAG_DIRTY) {
+                        view.mPrivateFlags = (view.mPrivateFlags & ~PFLAG_DIRTY_MASK) | opaqueFlag;
+                    }
+                }
+
+                parent = parent.invalidateChildInParent(location, dirty);
+                if (view != null) {
+                    // Account for transform on current parent
+                    Matrix m = view.getMatrix();
+                    if (!m.isIdentity()) {
+                        RectF boundingRect = attachInfo.mTmpTransformRect;
+                        boundingRect.set(dirty);
+                        m.mapRect(boundingRect);
+                        dirty.set((int) (boundingRect.left - 0.5f),
+                                (int) (boundingRect.top - 0.5f),
+                                (int) (boundingRect.right + 0.5f),
+                                (int) (boundingRect.bottom + 0.5f));
+                    }
+                }
+            } while (parent != null);
         }
     }
 
@@ -4029,12 +4099,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * does not intersect with this ViewGroup's bounds.
      */
     public ViewParent invalidateChildInParent(final int[] location, final Rect dirty) {
-        if (ViewDebug.TRACE_HIERARCHY) {
-            ViewDebug.trace(this, ViewDebug.HierarchyTraceType.INVALIDATE_CHILD_IN_PARENT);
-        }
-
-        if ((mPrivateFlags & DRAWN) == DRAWN ||
-                (mPrivateFlags & DRAWING_CACHE_VALID) == DRAWING_CACHE_VALID) {
+        if ((mPrivateFlags & PFLAG_DRAWN) == PFLAG_DRAWN ||
+                (mPrivateFlags & PFLAG_DRAWING_CACHE_VALID) == PFLAG_DRAWING_CACHE_VALID) {
             if ((mGroupFlags & (FLAG_OPTIMIZE_INVALIDATE | FLAG_ANIMATION_DONE)) !=
                         FLAG_OPTIMIZE_INVALIDATE) {
                 dirty.offset(location[CHILD_LEFT_INDEX] - mScrollX,
@@ -4043,22 +4109,25 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 final int left = mLeft;
                 final int top = mTop;
 
-                if ((mGroupFlags & FLAG_CLIP_CHILDREN) != FLAG_CLIP_CHILDREN ||
-                        dirty.intersect(0, 0, mRight - left, mBottom - top) ||
-                        (mPrivateFlags & DRAW_ANIMATION) == DRAW_ANIMATION) {
-                    mPrivateFlags &= ~DRAWING_CACHE_VALID;
-
-                    location[CHILD_LEFT_INDEX] = left;
-                    location[CHILD_TOP_INDEX] = top;
-
-                    if (mLayerType != LAYER_TYPE_NONE) {
-                        mLocalDirtyRect.union(dirty);
+                if ((mGroupFlags & FLAG_CLIP_CHILDREN) == FLAG_CLIP_CHILDREN) {
+                    if (!dirty.intersect(0, 0, mRight - left, mBottom - top)) {
+                        dirty.setEmpty();
                     }
-
-                    return mParent;
                 }
+                mPrivateFlags &= ~PFLAG_DRAWING_CACHE_VALID;
+
+                location[CHILD_LEFT_INDEX] = left;
+                location[CHILD_TOP_INDEX] = top;
+
+                if (mLayerType != LAYER_TYPE_NONE) {
+                    mPrivateFlags |= PFLAG_INVALIDATED;
+                    mLocalDirtyRect.union(dirty);
+                }
+
+                return mParent;
+
             } else {
-                mPrivateFlags &= ~DRAWN & ~DRAWING_CACHE_VALID;
+                mPrivateFlags &= ~PFLAG_DRAWN & ~PFLAG_DRAWING_CACHE_VALID;
 
                 location[CHILD_LEFT_INDEX] = mLeft;
                 location[CHILD_TOP_INDEX] = mTop;
@@ -4070,7 +4139,80 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 }
 
                 if (mLayerType != LAYER_TYPE_NONE) {
+                    mPrivateFlags |= PFLAG_INVALIDATED;
                     mLocalDirtyRect.union(dirty);
+                }
+
+                return mParent;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Quick invalidation method called by View.invalidateViewProperty. This doesn't set the
+     * DRAWN flags and doesn't handle the Animation logic that the default invalidation methods
+     * do; all we want to do here is schedule a traversal with the appropriate dirty rect.
+     *
+     * @hide
+     */
+    public void invalidateChildFast(View child, final Rect dirty) {
+        ViewParent parent = this;
+
+        final AttachInfo attachInfo = mAttachInfo;
+        if (attachInfo != null) {
+            if (child.mLayerType != LAYER_TYPE_NONE) {
+                child.mLocalDirtyRect.union(dirty);
+            }
+
+            int left = child.mLeft;
+            int top = child.mTop;
+            if (!child.getMatrix().isIdentity()) {
+                child.transformRect(dirty);
+            }
+
+            do {
+                if (parent instanceof ViewGroup) {
+                    ViewGroup parentVG = (ViewGroup) parent;
+                    if (parentVG.mLayerType != LAYER_TYPE_NONE) {
+                        // Layered parents should be recreated, not just re-issued
+                        parentVG.invalidate();
+                        parent = null;
+                    } else {
+                        parent = parentVG.invalidateChildInParentFast(left, top, dirty);
+                        left = parentVG.mLeft;
+                        top = parentVG.mTop;
+                    }
+                } else {
+                    // Reached the top; this calls into the usual invalidate method in
+                    // ViewRootImpl, which schedules a traversal
+                    final int[] location = attachInfo.mInvalidateChildLocation;
+                    location[0] = left;
+                    location[1] = top;
+                    parent = parent.invalidateChildInParent(location, dirty);
+                }
+            } while (parent != null);
+        }
+    }
+
+    /**
+     * Quick invalidation method that simply transforms the dirty rect into the parent's
+     * coordinate system, pruning the invalidation if the parent has already been invalidated.
+     */
+    private ViewParent invalidateChildInParentFast(int left, int top, final Rect dirty) {
+        if ((mPrivateFlags & PFLAG_DRAWN) == PFLAG_DRAWN ||
+                (mPrivateFlags & PFLAG_DRAWING_CACHE_VALID) == PFLAG_DRAWING_CACHE_VALID) {
+            dirty.offset(left - mScrollX, top - mScrollY);
+
+            if ((mGroupFlags & FLAG_CLIP_CHILDREN) == 0 ||
+                    dirty.intersect(0, 0, mRight - mLeft, mBottom - mTop)) {
+
+                if (mLayerType != LAYER_TYPE_NONE) {
+                    mLocalDirtyRect.union(dirty);
+                }
+                if (!getMatrix().isIdentity()) {
+                    transformRect(dirty);
                 }
 
                 return mParent;
@@ -4169,6 +4311,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             final View v = children[i];
             v.mTop += offset;
             v.mBottom += offset;
+            if (v.mDisplayList != null) {
+                v.mDisplayList.offsetTopBottom(offset);
+                invalidateViewProperty(false, false);
+            }
         }
     }
 
@@ -4221,6 +4367,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override
     public final void layout(int l, int t, int r, int b) {
         if (mTransition == null || !mTransition.isChangingLayout()) {
+            if (mTransition != null) {
+                mTransition.layoutChange(this);
+            }
             super.layout(l, t, r, b);
         } else {
             // record the fact that we noop'd it; request layout when transition finishes
@@ -4460,6 +4609,39 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
+     * Returns the basis of alignment during layout operations on this view group:
+     * either {@link #CLIP_BOUNDS} or {@link #OPTICAL_BOUNDS}.
+     *
+     * @return the layout mode to use during layout operations
+     *
+     * @see #setLayoutMode(int)
+     *
+     * @hide
+     */
+    public int getLayoutMode() {
+        return mLayoutMode;
+    }
+
+    /**
+     * Sets the basis of alignment during the layout of this view group.
+     * Valid values are either {@link #CLIP_BOUNDS} or {@link #OPTICAL_BOUNDS}.
+     * <p>
+     * The default is {@link #CLIP_BOUNDS}.
+     *
+     * @param layoutMode the layout mode to use during layout operations
+     *
+     * @see #getLayoutMode()
+     *
+     * @hide
+     */
+    public void setLayoutMode(int layoutMode) {
+        if (mLayoutMode != layoutMode) {
+            mLayoutMode = layoutMode;
+            requestLayout();
+        }
+    }
+
+    /**
      * Returns a new set of layout parameters based on the supplied attributes set.
      *
      * @param attrs the attributes to build the layout parameters from
@@ -4498,61 +4680,6 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     protected LayoutParams generateDefaultLayoutParams() {
         return new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-    }
-
-    /**
-     * @hide
-     */
-    @Override
-    protected boolean dispatchConsistencyCheck(int consistency) {
-        boolean result = super.dispatchConsistencyCheck(consistency);
-
-        final int count = mChildrenCount;
-        final View[] children = mChildren;
-        for (int i = 0; i < count; i++) {
-            if (!children[i].dispatchConsistencyCheck(consistency)) result = false;
-        }
-
-        return result;
-    }
-
-    /**
-     * @hide
-     */
-    @Override
-    protected boolean onConsistencyCheck(int consistency) {
-        boolean result = super.onConsistencyCheck(consistency);
-
-        final boolean checkLayout = (consistency & ViewDebug.CONSISTENCY_LAYOUT) != 0;
-        final boolean checkDrawing = (consistency & ViewDebug.CONSISTENCY_DRAWING) != 0;
-
-        if (checkLayout) {
-            final int count = mChildrenCount;
-            final View[] children = mChildren;
-            for (int i = 0; i < count; i++) {
-                if (children[i].getParent() != this) {
-                    result = false;
-                    android.util.Log.d(ViewDebug.CONSISTENCY_LOG_TAG,
-                            "View " + children[i] + " has no parent/a parent that is not " + this);
-                }
-            }
-        }
-
-        if (checkDrawing) {
-            // If this group is dirty, check that the parent is dirty as well
-            if ((mPrivateFlags & DIRTY_MASK) != 0) {
-                final ViewParent parent = getParent();
-                if (parent != null && !(parent instanceof ViewRootImpl)) {
-                    if ((((View) parent).mPrivateFlags & DIRTY_MASK) == 0) {
-                        result = false;
-                        android.util.Log.d(ViewDebug.CONSISTENCY_LOG_TAG,
-                                "ViewGroup " + this + " is dirty but its parent is not: " + this);
-                    }
-                }
-            }
-        }
-
-        return result;
     }
 
     /**
@@ -4793,6 +4920,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public void clearDisappearingChildren() {
         if (mDisappearingChildren != null) {
             mDisappearingChildren.clear();
+            invalidate();
         }
     }
 
@@ -4818,7 +4946,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      * @param view The view whose animation has finished
      * @param animation The animation, cannot be null
      */
-    private void finishAnimatingView(final View view, Animation animation) {
+    void finishAnimatingView(final View view, Animation animation) {
         final ArrayList<View> disappearingChildren = mDisappearingChildren;
         if (disappearingChildren != null) {
             if (disappearingChildren.contains(view)) {
@@ -4837,11 +4965,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             view.clearAnimation();
         }
 
-        if ((view.mPrivateFlags & ANIMATION_STARTED) == ANIMATION_STARTED) {
+        if ((view.mPrivateFlags & PFLAG_ANIMATION_STARTED) == PFLAG_ANIMATION_STARTED) {
             view.onAnimationEnd();
             // Should be performed by onAnimationEnd() but this avoid an infinite loop,
             // so we'd rather be safe than sorry
-            view.mPrivateFlags &= ~ANIMATION_STARTED;
+            view.mPrivateFlags &= ~PFLAG_ANIMATION_STARTED;
             // Draw one more frame after the animation is done
             mGroupFlags |= FLAG_INVALIDATE_REQUIRED;
         }
@@ -4904,7 +5032,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                         view.mParent = null;
                     }
                 }
-                mGroupFlags |= FLAG_INVALIDATE_REQUIRED;
+                invalidate();
             }
         }
     }
@@ -4940,7 +5068,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     @Override
     public boolean gatherTransparentRegion(Region region) {
         // If no transparent regions requested, we are always opaque.
-        final boolean meOpaque = (mPrivateFlags & View.REQUEST_TRANSPARENT_REGIONS) == 0;
+        final boolean meOpaque = (mPrivateFlags & View.PFLAG_REQUEST_TRANSPARENT_REGIONS) == 0;
         if (meOpaque && region == null) {
             // The caller doesn't care about the region, so stop now.
             return true;
@@ -4965,7 +5093,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     public void requestTransparentRegion(View child) {
         if (child != null) {
-            child.mPrivateFlags |= View.REQUEST_TRANSPARENT_REGIONS;
+            child.mPrivateFlags |= View.PFLAG_REQUEST_TRANSPARENT_REGIONS;
             if (mParent != null) {
                 mParent.requestTransparentRegion(this);
             }
@@ -5087,7 +5215,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
 
     /**
-     * If {link #addStatesFromChildren} is true, refreshes this group's
+     * If {@link #addStatesFromChildren} is true, refreshes this group's
      * drawable state (to include the states from its children).
      */
     public void childDrawableStateChanged(View child) {
@@ -5126,30 +5254,194 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         }
     }
 
+    /**
+     * @hide
+     */
     @Override
-    protected void resetResolvedLayoutDirection() {
-        super.resetResolvedLayoutDirection();
-
-        // Take care of resetting the children resolution too
-        final int count = getChildCount();
+    public void resolveRtlPropertiesIfNeeded() {
+        super.resolveRtlPropertiesIfNeeded();
+        int count = getChildCount();
         for (int i = 0; i < count; i++) {
             final View child = getChildAt(i);
-            if (child.getLayoutDirection() == LAYOUT_DIRECTION_INHERIT) {
+            if (child.isLayoutDirectionInherited()) {
+                child.resolveRtlPropertiesIfNeeded();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public boolean resolveLayoutDirection() {
+        final boolean result = super.resolveLayoutDirection();
+        if (result) {
+            int count = getChildCount();
+            for (int i = 0; i < count; i++) {
+                final View child = getChildAt(i);
+                if (child.isLayoutDirectionInherited()) {
+                    child.resolveLayoutDirection();
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public boolean resolveTextDirection() {
+        final boolean result = super.resolveTextDirection();
+        if (result) {
+            int count = getChildCount();
+            for (int i = 0; i < count; i++) {
+                final View child = getChildAt(i);
+                if (child.isTextDirectionInherited()) {
+                    child.resolveTextDirection();
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public boolean resolveTextAlignment() {
+        final boolean result = super.resolveTextAlignment();
+        if (result) {
+            int count = getChildCount();
+            for (int i = 0; i < count; i++) {
+                final View child = getChildAt(i);
+                if (child.isTextAlignmentInherited()) {
+                    child.resolveTextAlignment();
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resolvePadding() {
+        super.resolvePadding();
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isLayoutDirectionInherited()) {
+                child.resolvePadding();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    protected void resolveDrawables() {
+        super.resolveDrawables();
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isLayoutDirectionInherited()) {
+                child.resolveDrawables();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resolveLayoutParams() {
+        super.resolveLayoutParams();
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            child.resolveLayoutParams();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resetResolvedLayoutDirection() {
+        super.resetResolvedLayoutDirection();
+
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isLayoutDirectionInherited()) {
                 child.resetResolvedLayoutDirection();
             }
         }
     }
 
+    /**
+     * @hide
+     */
     @Override
-    protected void resetResolvedTextDirection() {
+    public void resetResolvedTextDirection() {
         super.resetResolvedTextDirection();
 
-        // Take care of resetting the children resolution too
-        final int count = getChildCount();
+        int count = getChildCount();
         for (int i = 0; i < count; i++) {
             final View child = getChildAt(i);
-            if (child.getTextDirection() == TEXT_DIRECTION_INHERIT) {
+            if (child.isTextDirectionInherited()) {
                 child.resetResolvedTextDirection();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resetResolvedTextAlignment() {
+        super.resetResolvedTextAlignment();
+
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isTextAlignmentInherited()) {
+                child.resetResolvedTextAlignment();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public void resetResolvedPadding() {
+        super.resetResolvedPadding();
+
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isLayoutDirectionInherited()) {
+                child.resetResolvedPadding();
+            }
+        }
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    protected void resetResolvedDrawables() {
+        super.resetResolvedDrawables();
+
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            final View child = getChildAt(i);
+            if (child.isLayoutDirectionInherited()) {
+                child.resetResolvedDrawables();
             }
         }
     }
@@ -5165,6 +5457,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     public boolean shouldDelayChildPressedState() {
         return true;
+    }
+
+    /** @hide */
+    protected void onSetLayoutParams(View child, LayoutParams layoutParams) {
     }
 
     /**
@@ -5328,10 +5624,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
          *
          * {@link View#LAYOUT_DIRECTION_LTR}
          * {@link View#LAYOUT_DIRECTION_RTL}
-         *
-         * @hide
          */
-        protected void resolveWithDirection(int layoutDirection) {
+        public void resolveLayoutDirection(int layoutDirection) {
         }
 
         /**
@@ -5346,6 +5640,17 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         public String debug(String output) {
             return output + "ViewGroup.LayoutParams={ width="
                     + sizeToString(width) + ", height=" + sizeToString(height) + " }";
+        }
+
+        /**
+         * Use {@code canvas} to draw suitable debugging annotations for these LayoutParameters.
+         *
+         * @param view the view that contains these layout parameters
+         * @param canvas the canvas on which to draw
+         *
+         * @hide
+         */
+        public void onDebugDraw(View view, Canvas canvas) {
         }
 
         /**
@@ -5375,54 +5680,66 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
      */
     public static class MarginLayoutParams extends ViewGroup.LayoutParams {
         /**
-         * The left margin in pixels of the child. Whenever this value is changed, a call to
-         * {@link android.view.View#requestLayout()} needs to be done.
+         * The left margin in pixels of the child.
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
         public int leftMargin;
 
         /**
-         * The top margin in pixels of the child. Whenever this value is changed, a call to
-         * {@link android.view.View#requestLayout()} needs to be done.
+         * The top margin in pixels of the child.
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
         public int topMargin;
 
         /**
-         * The right margin in pixels of the child. Whenever this value is changed, a call to
-         * {@link android.view.View#requestLayout()} needs to be done.
+         * The right margin in pixels of the child.
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
         public int rightMargin;
 
         /**
-         * The bottom margin in pixels of the child. Whenever this value is changed, a call to
-         * {@link android.view.View#requestLayout()} needs to be done.
+         * The bottom margin in pixels of the child.
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
         public int bottomMargin;
 
         /**
          * The start margin in pixels of the child.
-         *
-         * @hide
-         *
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
-        protected int startMargin = DEFAULT_RELATIVE;
+        private int startMargin = DEFAULT_RELATIVE;
 
         /**
          * The end margin in pixels of the child.
-         *
-         * @hide
+         * Call {@link ViewGroup#setLayoutParams(LayoutParams)} after reassigning a new value
+         * to this field.
          */
         @ViewDebug.ExportedProperty(category = "layout")
-        protected int endMargin = DEFAULT_RELATIVE;
+        private int endMargin = DEFAULT_RELATIVE;
 
         /**
          * The default start and end margin.
+         * @hide
          */
-        static private final int DEFAULT_RELATIVE = Integer.MIN_VALUE;
+        public static final int DEFAULT_RELATIVE = Integer.MIN_VALUE;
+
+        private int initialLeftMargin;
+        private int initialRightMargin;
+
+        private static int LAYOUT_DIRECTION_UNDEFINED = -1;
+
+        // Layout direction undefined by default
+        private int layoutDirection = LAYOUT_DIRECTION_UNDEFINED;
 
         /**
          * Creates a new set of layout parameters. The values are extracted from
@@ -5462,6 +5779,9 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                         R.styleable.ViewGroup_MarginLayout_layout_marginEnd, DEFAULT_RELATIVE);
             }
 
+            initialLeftMargin = leftMargin;
+            initialRightMargin = rightMargin;
+
             a.recycle();
         }
 
@@ -5487,6 +5807,11 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             this.bottomMargin = source.bottomMargin;
             this.startMargin = source.startMargin;
             this.endMargin = source.endMargin;
+
+            this.initialLeftMargin = source.leftMargin;
+            this.initialRightMargin = source.rightMargin;
+
+            setLayoutDirection(source.layoutDirection);
         }
 
         /**
@@ -5516,6 +5841,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             topMargin = top;
             rightMargin = right;
             bottomMargin = bottom;
+            initialLeftMargin = left;
+            initialRightMargin = right;
         }
 
         /**
@@ -5541,6 +5868,19 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             topMargin = top;
             endMargin = end;
             bottomMargin = bottom;
+            initialLeftMargin = 0;
+            initialRightMargin = 0;
+        }
+
+        /**
+         * Sets the relative start margin.
+         *
+         * @param start the start margin size
+         *
+         * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginStart
+         */
+        public void setMarginStart(int start) {
+            startMargin = start;
         }
 
         /**
@@ -5549,11 +5889,27 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
          * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginStart
          *
          * @return the start margin in pixels.
-         *
-         * @hide
          */
         public int getMarginStart() {
-            return startMargin;
+            if (startMargin != DEFAULT_RELATIVE) return startMargin;
+            switch(layoutDirection) {
+                case View.LAYOUT_DIRECTION_RTL:
+                    return rightMargin;
+                case View.LAYOUT_DIRECTION_LTR:
+                default:
+                    return leftMargin;
+            }
+        }
+
+        /**
+         * Sets the relative end margin.
+         *
+         * @param end the end margin size
+         *
+         * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginEnd
+         */
+        public void setMarginEnd(int end) {
+            endMargin = end;
         }
 
         /**
@@ -5562,11 +5918,16 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
          * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginEnd
          *
          * @return the end margin in pixels.
-         *
-         * @hide
          */
         public int getMarginEnd() {
-            return endMargin;
+            if (endMargin != DEFAULT_RELATIVE) return endMargin;
+            switch(layoutDirection) {
+                case View.LAYOUT_DIRECTION_RTL:
+                    return leftMargin;
+                case View.LAYOUT_DIRECTION_LTR:
+                default:
+                    return rightMargin;
+            }
         }
 
         /**
@@ -5575,33 +5936,74 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
          * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginStart
          * @attr ref android.R.styleable#ViewGroup_MarginLayout_layout_marginEnd
          *
-         * @return true if either marginStart or marginEnd has been set
-         *
-         * @hide
+         * @return true if either marginStart or marginEnd has been set.
          */
         public boolean isMarginRelative() {
             return (startMargin != DEFAULT_RELATIVE) || (endMargin != DEFAULT_RELATIVE);
         }
 
         /**
-         * This will be called by {@link android.view.View#requestLayout()}. Left and Right margins
-         * maybe overriden depending on layout direction.
+         * Set the layout direction
+         * @param layoutDirection the layout direction.
+         *        Should be either {@link View#LAYOUT_DIRECTION_LTR}
+         *                     or {@link View#LAYOUT_DIRECTION_RTL}.
+         */
+        public void setLayoutDirection(int layoutDirection) {
+            if (layoutDirection != View.LAYOUT_DIRECTION_LTR &&
+                    layoutDirection != View.LAYOUT_DIRECTION_RTL) return;
+            this.layoutDirection = layoutDirection;
+        }
+
+        /**
+         * Retuns the layout direction. Can be either {@link View#LAYOUT_DIRECTION_LTR} or
+         * {@link View#LAYOUT_DIRECTION_RTL}.
          *
-         * @hide
+         * @return the layout direction.
+         */
+        public int getLayoutDirection() {
+            return layoutDirection;
+        }
+
+        /**
+         * This will be called by {@link android.view.View#requestLayout()}. Left and Right margins
+         * may be overridden depending on layout direction.
          */
         @Override
-        protected void resolveWithDirection(int layoutDirection) {
+        public void resolveLayoutDirection(int layoutDirection) {
+            setLayoutDirection(layoutDirection);
+
+            if (!isMarginRelative()) return;
+
             switch(layoutDirection) {
                 case View.LAYOUT_DIRECTION_RTL:
-                    leftMargin = (endMargin > DEFAULT_RELATIVE) ? endMargin : leftMargin;
-                    rightMargin = (startMargin > DEFAULT_RELATIVE) ? startMargin : rightMargin;
+                    leftMargin = (endMargin > DEFAULT_RELATIVE) ? endMargin : initialLeftMargin;
+                    rightMargin = (startMargin > DEFAULT_RELATIVE) ? startMargin : initialRightMargin;
                     break;
                 case View.LAYOUT_DIRECTION_LTR:
                 default:
-                    leftMargin = (startMargin > DEFAULT_RELATIVE) ? startMargin : leftMargin;
-                    rightMargin = (endMargin > DEFAULT_RELATIVE) ? endMargin : rightMargin;
+                    leftMargin = (startMargin > DEFAULT_RELATIVE) ? startMargin : initialLeftMargin;
+                    rightMargin = (endMargin > DEFAULT_RELATIVE) ? endMargin : initialRightMargin;
                     break;
             }
+        }
+
+        /**
+         * @hide
+         */
+        public boolean isLayoutRtl() {
+            return (layoutDirection == View.LAYOUT_DIRECTION_RTL);
+        }
+
+        /**
+         * @hide
+         */
+        @Override
+        public void onDebugDraw(View view, Canvas canvas) {
+            drawRect(canvas,
+                    view.getLeft() - leftMargin,
+                    view.getTop() - topMargin,
+                    view.getRight() + rightMargin,
+                    view.getBottom() + bottomMargin, Color.MAGENTA);
         }
     }
 
@@ -5707,5 +6109,262 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                 child = null;
             }
         }
+    }
+
+    /**
+     * Pooled class that orderes the children of a ViewGroup from start
+     * to end based on how they are laid out and the layout direction.
+     */
+    static class ChildListForAccessibility {
+
+        private static final int MAX_POOL_SIZE = 32;
+
+        private static final Object sPoolLock = new Object();
+
+        private static ChildListForAccessibility sPool;
+
+        private static int sPoolSize;
+
+        private boolean mIsPooled;
+
+        private ChildListForAccessibility mNext;
+
+        private final ArrayList<View> mChildren = new ArrayList<View>();
+
+        private final ArrayList<ViewLocationHolder> mHolders = new ArrayList<ViewLocationHolder>();
+
+        public static ChildListForAccessibility obtain(ViewGroup parent, boolean sort) {
+            ChildListForAccessibility list = null;
+            synchronized (sPoolLock) {
+                if (sPool != null) {
+                    list = sPool;
+                    sPool = list.mNext;
+                    list.mNext = null;
+                    list.mIsPooled = false;
+                    sPoolSize--;
+                } else {
+                    list = new ChildListForAccessibility();
+                }
+                list.init(parent, sort);
+                return list;
+            }
+        }
+
+        public void recycle() {
+            if (mIsPooled) {
+                throw new IllegalStateException("Instance already recycled.");
+            }
+            clear();
+            synchronized (sPoolLock) {
+                if (sPoolSize < MAX_POOL_SIZE) {
+                    mNext = sPool;
+                    mIsPooled = true;
+                    sPool = this;
+                    sPoolSize++;
+                }
+            }
+        }
+
+        public int getChildCount() {
+            return mChildren.size();
+        }
+
+        public View getChildAt(int index) {
+            return mChildren.get(index);
+        }
+
+        public int getChildIndex(View child) {
+            return mChildren.indexOf(child);
+        }
+
+        private void init(ViewGroup parent, boolean sort) {
+            ArrayList<View> children = mChildren;
+            final int childCount = parent.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                View child = parent.getChildAt(i);
+                children.add(child);
+            }
+            if (sort) {
+                ArrayList<ViewLocationHolder> holders = mHolders;
+                for (int i = 0; i < childCount; i++) {
+                    View child = children.get(i);
+                    ViewLocationHolder holder = ViewLocationHolder.obtain(parent, child);
+                    holders.add(holder);
+                }
+                Collections.sort(holders);
+                for (int i = 0; i < childCount; i++) {
+                    ViewLocationHolder holder = holders.get(i);
+                    children.set(i, holder.mView);
+                    holder.recycle();
+                }
+                holders.clear();
+            }
+        }
+
+        private void clear() {
+            mChildren.clear();
+        }
+    }
+
+    /**
+     * Pooled class that holds a View and its location with respect to
+     * a specified root. This enables sorting of views based on their
+     * coordinates without recomputing the position relative to the root
+     * on every comparison.
+     */
+    static class ViewLocationHolder implements Comparable<ViewLocationHolder> {
+
+        private static final int MAX_POOL_SIZE = 32;
+
+        private static final Object sPoolLock = new Object();
+
+        private static ViewLocationHolder sPool;
+
+        private static int sPoolSize;
+
+        private boolean mIsPooled;
+
+        private ViewLocationHolder mNext;
+
+        private final Rect mLocation = new Rect();
+
+        public View mView;
+
+        private int mLayoutDirection;
+
+        public static ViewLocationHolder obtain(ViewGroup root, View view) {
+            ViewLocationHolder holder = null;
+            synchronized (sPoolLock) {
+                if (sPool != null) {
+                    holder = sPool;
+                    sPool = holder.mNext;
+                    holder.mNext = null;
+                    holder.mIsPooled = false;
+                    sPoolSize--;
+                } else {
+                    holder = new ViewLocationHolder();
+                }
+                holder.init(root, view);
+                return holder;
+            }
+        }
+
+        public void recycle() {
+            if (mIsPooled) {
+                throw new IllegalStateException("Instance already recycled.");
+            }
+            clear();
+            synchronized (sPoolLock) {
+                if (sPoolSize < MAX_POOL_SIZE) {
+                    mNext = sPool;
+                    mIsPooled = true;
+                    sPool = this;
+                    sPoolSize++;
+                }
+            }
+        }
+
+        @Override
+        public int compareTo(ViewLocationHolder another) {
+            // This instance is greater than an invalid argument.
+            if (another == null) {
+                return 1;
+            }
+            if (getClass() != another.getClass()) {
+                return 1;
+            }
+            // First is above second.
+            if (mLocation.bottom - another.mLocation.top <= 0) {
+                return -1;
+            }
+            // First is below second.
+            if (mLocation.top - another.mLocation.bottom >= 0) {
+                return 1;
+            }
+            // LTR
+            if (mLayoutDirection == LAYOUT_DIRECTION_LTR) {
+                final int leftDifference = mLocation.left - another.mLocation.left;
+                // First more to the left than second.
+                if (leftDifference != 0) {
+                    return leftDifference;
+                }
+            } else { // RTL
+                final int rightDifference = mLocation.right - another.mLocation.right;
+                // First more to the right than second.
+                if (rightDifference != 0) {
+                    return -rightDifference;
+                }
+            }
+            // Break tie by top.
+            final int topDiference = mLocation.top - another.mLocation.top;
+            if (topDiference != 0) {
+                return topDiference;
+            }
+            // Break tie by height.
+            final int heightDiference = mLocation.height() - another.mLocation.height();
+            if (heightDiference != 0) {
+                return -heightDiference;
+            }
+            // Break tie by width.
+            final int widthDiference = mLocation.width() - another.mLocation.width();
+            if (widthDiference != 0) {
+                return -widthDiference;
+            }
+            // Just break the tie somehow. The accessibliity ids are unique
+            // and stable, hence this is deterministic tie breaking.
+            return mView.getAccessibilityViewId() - another.mView.getAccessibilityViewId();
+        }
+
+        private void init(ViewGroup root, View view) {
+            Rect viewLocation = mLocation;
+            view.getDrawingRect(viewLocation);
+            root.offsetDescendantRectToMyCoords(view, viewLocation);
+            mView = view;
+            mLayoutDirection = root.getLayoutDirection();
+        }
+
+        private void clear() {
+            mView = null;
+            mLocation.set(0, 0, 0, 0);
+        }
+    }
+
+    private static Paint getDebugPaint() {
+        if (sDebugPaint == null) {
+            sDebugPaint = new Paint();
+            sDebugPaint.setAntiAlias(false);
+        }
+        return sDebugPaint;
+    }
+
+    private static float[] getDebugLines(int x1, int y1, int x2, int y2) {
+        if (sDebugLines== null) {
+            sDebugLines = new float[16];
+        }
+
+        x2--;
+        y2--;
+
+        sDebugLines[0] = x1;
+        sDebugLines[1] = y1;
+        sDebugLines[2] = x2;
+        sDebugLines[3] = y1;
+
+        sDebugLines[4] = x2;
+        sDebugLines[5] = y1;
+        sDebugLines[6] = x2;
+        sDebugLines[7] = y2 + 1;
+
+        sDebugLines[8] = x2 + 1;
+        sDebugLines[9] = y2;
+        sDebugLines[10] = x1;
+        sDebugLines[11] = y2;
+
+        sDebugLines[12]  = x1;
+        sDebugLines[13]  = y2;
+        sDebugLines[14] = x1;
+        sDebugLines[15] = y1;
+
+        return sDebugLines;
     }
 }

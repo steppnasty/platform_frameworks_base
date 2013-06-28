@@ -93,6 +93,28 @@ public class BatteryManager {
      */
     public static final String EXTRA_INVALID_CHARGER = "invalid_charger";
 
+    // Dock intents
+    /** @hide **/
+    public static final String EXTRA_DOCK_STATUS = "dock_status";
+    /** @hide **/
+    public static final String EXTRA_DOCK_HEALTH = "dock_health";
+    /** @hide **/
+    public static final String EXTRA_DOCK_PRESENT = "dock_present";
+    /** @hide **/
+    public static final String EXTRA_DOCK_LEVEL = "dock_level";
+    /** @hide **/
+    public static final String EXTRA_DOCK_SCALE = "dock_scale";
+    /** @hide **/
+    public static final String EXTRA_DOCK_ICON_SMALL = "dock_icon-small";
+    /** @hide **/
+    public static final String EXTRA_DOCK_PLUGGED = "dock_plugged";
+    /** @hide **/
+    public static final String EXTRA_DOCK_VOLTAGE = "dock_voltage";
+    /** @hide **/
+    public static final String EXTRA_DOCK_TEMPERATURE = "dock_temperature";
+    /** @hide **/
+    public static final String EXTRA_DOCK_TECHNOLOGY = "dock_technology";
+
     // values for "status" field in the ACTION_BATTERY_CHANGED Intent
     public static final int BATTERY_STATUS_UNKNOWN = 1;
     public static final int BATTERY_STATUS_CHARGING = 2;
@@ -115,4 +137,10 @@ public class BatteryManager {
     public static final int BATTERY_PLUGGED_AC = 1;
     /** Power source is a USB port. */
     public static final int BATTERY_PLUGGED_USB = 2;
+    /** Power source is wireless. */
+    public static final int BATTERY_PLUGGED_WIRELESS = 4;
+
+    /** @hide */
+    public static final int BATTERY_PLUGGED_ANY =
+            BATTERY_PLUGGED_AC | BATTERY_PLUGGED_USB | BATTERY_PLUGGED_WIRELESS;
 }

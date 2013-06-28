@@ -25,6 +25,10 @@ import android.os.ServiceManager;
 import android.util.Log;
 import android.util.SparseArray;
 
+import com.android.internal.util.Preconditions;
+
+import java.io.File;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
@@ -420,25 +424,23 @@ public class StorageManager
      * That is, shared UID applications can attempt to mount any other
      * application's OBB that shares its UID.
      * 
-     * @param filename the path to the OBB file
+     * @param rawPath the path to the OBB file
      * @param key secret used to encrypt the OBB; may be <code>null</code> if no
      *            encryption was used on the OBB.
      * @param listener will receive the success or failure of the operation
      * @return whether the mount call was successfully queued or not
      */
-    public boolean mountObb(String filename, String key, OnObbStateChangeListener listener) {
-        if (filename == null) {
-            throw new IllegalArgumentException("filename cannot be null");
-        }
-
-        if (listener == null) {
-            throw new IllegalArgumentException("listener cannot be null");
-        }
+    public boolean mountObb(String rawPath, String key, OnObbStateChangeListener listener) {
+        Preconditions.checkNotNull(rawPath, "rawPath cannot be null");
+        Preconditions.checkNotNull(listener, "listener cannot be null");
 
         try {
+            final String canonicalPath = new File(rawPath).getCanonicalPath();
             final int nonce = mObbActionListener.addListener(listener);
-            mMountService.mountObb(filename, key, mObbActionListener, nonce);
+            mMountService.mountObb(rawPath, canonicalPath, key, mObbActionListener, nonce);
             return true;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Failed to resolve path: " + rawPath, e);
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to mount OBB", e);
         }

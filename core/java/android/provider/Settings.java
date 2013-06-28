@@ -36,13 +36,18 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.os.Process;
 import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.SystemProperties;
-import android.speech.tts.TextToSpeech;
+import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.AndroidException;
 import android.util.Log;
 import android.view.WindowOrientationListener;
+
+import com.android.internal.widget.ILockSettings;
 
 import java.net.URISyntaxException;
 import java.util.HashMap;
@@ -206,6 +211,21 @@ public final class Settings {
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String ACTION_BLUETOOTH_SETTINGS =
             "android.settings.BLUETOOTH_SETTINGS";
+
+    /**
+     * Activity Action: Show settings to allow configuration of Wifi Displays.
+     * <p>
+     * In some cases, a matching Activity may not exist, so ensure you
+     * safeguard against this.
+     * <p>
+     * Input: Nothing.
+     * <p>
+     * Output: Nothing.
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
+    public static final String ACTION_WIFI_DISPLAY_SETTINGS =
+            "android.settings.WIFI_DISPLAY_SETTINGS";
 
     /**
      * Activity Action: Show settings to allow configuration of date and time.
@@ -595,6 +615,25 @@ public final class Settings {
     public static final String CALL_METHOD_GET_SECURE = "GET_secure";
 
     /**
+     * @hide - Private call() method on SettingsProvider to read from 'global' table.
+     */
+    public static final String CALL_METHOD_GET_GLOBAL = "GET_global";
+
+    /**
+     * @hide - User handle argument extra to the fast-path call()-based requests
+     */
+    public static final String CALL_METHOD_USER_KEY = "_user";
+
+    /** @hide - Private call() method to write to 'system' table */
+    public static final String CALL_METHOD_PUT_SYSTEM = "PUT_system";
+
+    /** @hide - Private call() method to write to 'secure' table */
+    public static final String CALL_METHOD_PUT_SECURE = "PUT_secure";
+
+    /** @hide - Private call() method to write to 'global' table */
+    public static final String CALL_METHOD_PUT_GLOBAL= "PUT_global";
+
+    /**
      * Activity Extra: Limit available options in launched activity based on the given authority.
      * <p>
      * This can be passed as an extra field in an Activity Intent with one or more syncable content
@@ -667,33 +706,18 @@ public final class Settings {
 
         // The method we'll call (or null, to not use) on the provider
         // for the fast path of retrieving settings.
-        private final String mCallCommand;
+        private final String mCallGetCommand;
+        private final String mCallSetCommand;
 
-        public NameValueCache(String versionSystemProperty, Uri uri, String callCommand) {
+        public NameValueCache(String versionSystemProperty, Uri uri, 
+                String getCommand, String setCommand) {
             mVersionSystemProperty = versionSystemProperty;
             mUri = uri;
-            mCallCommand = callCommand;
+            mCallGetCommand = getCommand;
+            mCallSetCommand = setCommand;
         }
 
-        public String getString(ContentResolver cr, String name) {
-            long newValuesVersion = SystemProperties.getLong(mVersionSystemProperty, 0);
-
-            synchronized (this) {
-                if (mValuesVersion != newValuesVersion) {
-                    if (LOCAL_LOGV) {
-                        Log.v(TAG, "invalidate [" + mUri.getLastPathSegment() + "]: current " +
-                                newValuesVersion + " != cached " + mValuesVersion);
-                    }
-
-                    mValues.clear();
-                    mValuesVersion = newValuesVersion;
-                }
-
-                if (mValues.containsKey(name)) {
-                    return mValues.get(name);  // Could be null, that's OK -- negative caching
-                }
-            }
-
+        private IContentProvider lazyGetProvider(ContentResolver cr) {
             IContentProvider cp = null;
             synchronized (this) {
                 cp = mContentProvider;
@@ -701,18 +725,75 @@ public final class Settings {
                     cp = mContentProvider = cr.acquireProvider(mUri.getAuthority());
                 }
             }
+            return cp;
+        }
+
+        public boolean putStringForUser(ContentResolver cr, String name, String value,
+                final int userHandle) {
+            try {
+                Bundle arg = new Bundle();
+                arg.putString(Settings.NameValueTable.VALUE, value);
+                arg.putInt(CALL_METHOD_USER_KEY, userHandle);
+                IContentProvider cp = lazyGetProvider(cr);
+                cp.call(mCallSetCommand, name, arg);
+            } catch (RemoteException e) {
+                Log.w(TAG, "Can't set key " + name + " in " + mUri, e);
+                return false;
+            }
+            return true;
+        }
+
+        public String getStringForUser(ContentResolver cr, String name, final int userHandle) {
+            final boolean isSelf = (userHandle == UserHandle.myUserId());
+            if (isSelf) {
+                long newValuesVersion = SystemProperties.getLong(mVersionSystemProperty, 0);
+
+                // Our own user's settings data uses a client-side cache
+                synchronized (this) {
+                    if (mValuesVersion != newValuesVersion) {
+                        if (LOCAL_LOGV || false) {
+                            Log.v(TAG, "invalidate [" + mUri.getLastPathSegment() + "]: current "
+                                    + newValuesVersion + " != cached " + mValuesVersion);
+                        }
+
+                        mValues.clear();
+                        mValuesVersion = newValuesVersion;
+                    }
+
+                    if (mValues.containsKey(name)) {
+                        return mValues.get(name);  // Could be null, that's OK -- negative caching
+                    }
+                }
+            } else {
+                if (LOCAL_LOGV) Log.v(TAG, "get setting for user " + userHandle
+                        + " by user " + UserHandle.myUserId() + " so skipping cache");
+            }
+
+            IContentProvider cp = lazyGetProvider(cr);
 
             // Try the fast path first, not using query().  If this
             // fails (alternate Settings provider that doesn't support
             // this interface?) then we fall back to the query/table
             // interface.
-            if (mCallCommand != null) {
+            if (mCallGetCommand != null) {
                 try {
-                    Bundle b = cp.call(mCallCommand, name, null);
+                    Bundle args = null;
+                    if (!isSelf) {
+                        args = new Bundle();
+                        args.putInt(CALL_METHOD_USER_KEY, userHandle);
+                    }
+                    Bundle b = cp.call(mCallGetCommand, name, args);
                     if (b != null) {
                         String value = b.getPairValue();
-                        synchronized (this) {
-                            mValues.put(name, value);
+                        // Don't update our cache for reads of other users' data
+                        if (isSelf) {
+                            synchronized (this) {
+                                mValues.put(name, value);
+                            }
+                        } else {
+                            if (LOCAL_LOGV) Log.i(TAG, "call-query of user " + userHandle
+                                    + " by " + UserHandle.myUserId()
+                                    + " so not updating cache");
                         }
                         return value;
                     }
@@ -727,7 +808,7 @@ public final class Settings {
             Cursor c = null;
             try {
                 c = cp.query(mUri, SELECT_VALUE, NAME_EQ_PLACEHOLDER,
-                             new String[]{name}, null);
+                             new String[]{name}, null, null);
                 if (c == null) {
                     Log.w(TAG, "Can't get key " + name + " from " + mUri);
                     return null;
@@ -759,29 +840,35 @@ public final class Settings {
     public static final class System extends NameValueTable {
         public static final String SYS_PROP_SETTING_VERSION = "sys.settings_system_version";
 
-        // Populated lazily, guarded by class object:
-        private static NameValueCache sNameValueCache = null;
+        /**
+         * The content:// style URL for this table
+         */
+        public static final Uri CONTENT_URI =
+            Uri.parse("content://" + AUTHORITY + "/system");
+
+        private static NameValueCache sNameValueCache = new NameValueCache(
+            SYS_PROP_SETTING_VERSION,
+            CONTENT_URI,
+            CALL_METHOD_GET_SYSTEM,
+            CALL_METHOD_PUT_SYSTEM);
 
         private static final HashSet<String> MOVED_TO_SECURE;
         static {
             MOVED_TO_SECURE = new HashSet<String>(30);
-            MOVED_TO_SECURE.add(Secure.ADB_ENABLED);
             MOVED_TO_SECURE.add(Secure.ANDROID_ID);
-            MOVED_TO_SECURE.add(Secure.BLUETOOTH_ON);
-            MOVED_TO_SECURE.add(Secure.DATA_ROAMING);
-            MOVED_TO_SECURE.add(Secure.DEVICE_PROVISIONED);
             MOVED_TO_SECURE.add(Secure.HTTP_PROXY);
-            MOVED_TO_SECURE.add(Secure.INSTALL_NON_MARKET_APPS);
             MOVED_TO_SECURE.add(Secure.LOCATION_PROVIDERS_ALLOWED);
+            MOVED_TO_SECURE.add(Secure.LOCK_BIOMETRIC_WEAK_FLAGS);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_ENABLED);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_VISIBLE);
+            MOVED_TO_SECURE.add(Secure.LOCK_SHOW_ERROR_PATH);
+            MOVED_TO_SECURE.add(Secure.LOCK_DOTS_VISIBLE);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
             MOVED_TO_SECURE.add(Secure.LOGGING_ID);
             MOVED_TO_SECURE.add(Secure.PARENTAL_CONTROL_ENABLED);
             MOVED_TO_SECURE.add(Secure.PARENTAL_CONTROL_LAST_UPDATE);
             MOVED_TO_SECURE.add(Secure.PARENTAL_CONTROL_REDIRECT_URL);
             MOVED_TO_SECURE.add(Secure.SETTINGS_CLASSNAME);
-            MOVED_TO_SECURE.add(Secure.USB_MASS_STORAGE_ENABLED);
             MOVED_TO_SECURE.add(Secure.USE_GOOGLE_MAIL);
             MOVED_TO_SECURE.add(Secure.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON);
             MOVED_TO_SECURE.add(Secure.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY);
@@ -800,23 +887,71 @@ public final class Settings {
             MOVED_TO_SECURE.add(Secure.WIFI_WATCHDOG_PING_TIMEOUT_MS);
         }
 
+        private static final HashSet<String> MOVED_TO_GLOBAL;
+        private static final HashSet<String> MOVED_TO_SECURE_THEN_GLOBAL;
+        static {
+            MOVED_TO_GLOBAL = new HashSet<String>();
+            MOVED_TO_SECURE_THEN_GLOBAL = new HashSet<String>();
+
+            // these were originally in system but migrated to secure in the past,
+            // so are duplicated in the Secure.* namespace
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.ADB_ENABLED);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.BLUETOOTH_ON);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.DATA_ROAMING);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.DEVICE_PROVISIONED);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.INSTALL_NON_MARKET_APPS);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.USB_MASS_STORAGE_ENABLED);
+
+            // these are moving directly from system to global
+            MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.LOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.UNLOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.STAY_ON_WHILE_PLUGGED_IN);
+            MOVED_TO_GLOBAL.add(Settings.Global.WINDOW_ANIMATION_SCALE);
+            MOVED_TO_GLOBAL.add(Settings.Global.TRANSITION_ANIMATION_SCALE);
+            MOVED_TO_GLOBAL.add(Settings.Global.ANIMATOR_DURATION_SCALE);
+            MOVED_TO_GLOBAL.add(Settings.Global.COMPATIBILITY_MODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.DEBUG_APP);
+            MOVED_TO_GLOBAL.add(Settings.Global.WAIT_FOR_DEBUGGER);
+            MOVED_TO_GLOBAL.add(Settings.Global.SHOW_PROCESSES);
+            MOVED_TO_GLOBAL.add(Settings.Global.ALWAYS_FINISH_ACTIVITIES);
+        }
+
+        /** @hide */
+        public static void getMovedKeys(HashSet<String> outKeySet) {
+            outKeySet.addAll(MOVED_TO_GLOBAL);
+            outKeySet.addAll(MOVED_TO_SECURE_THEN_GLOBAL);
+        }
+
+        /** @hide */
+        public static void getNonLegacyMovedKeys(HashSet<String> outKeySet) {
+            outKeySet.addAll(MOVED_TO_GLOBAL);
+        }
+
         /**
          * Look up a name in the database.
          * @param resolver to access the database with
          * @param name to look up in the table
          * @return the corresponding value, or null if not present
          */
-        public synchronized static String getString(ContentResolver resolver, String name) {
+        public static String getString(ContentResolver resolver, String name) {
+            return getStringForUser(resolver, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static String getStringForUser(ContentResolver resolver, String name,
+                int userHandle) {
             if (MOVED_TO_SECURE.contains(name)) {
                 Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
                         + " to android.provider.Settings.Secure, returning read-only value.");
-                return Secure.getString(resolver, name);
+                return Secure.getStringForUser(resolver, name, userHandle);
             }
-            if (sNameValueCache == null) {
-                sNameValueCache = new NameValueCache(SYS_PROP_SETTING_VERSION, CONTENT_URI,
-                                                     CALL_METHOD_GET_SYSTEM);
+            if (MOVED_TO_GLOBAL.contains(name) || MOVED_TO_SECURE_THEN_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
+                        + " to android.provider.Settings.Global, returning read-only value.");
+                return Global.getStringForUser(resolver, name, userHandle);
             }
-            return sNameValueCache.getString(resolver, name);
+            return sNameValueCache.getStringForUser(resolver, name, userHandle);
         }
 
         /**
@@ -827,12 +962,23 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putString(ContentResolver resolver, String name, String value) {
+            return putStringForUser(resolver, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putStringForUser(ContentResolver resolver, String name, String value,
+                int userHandle) {
             if (MOVED_TO_SECURE.contains(name)) {
                 Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
                         + " to android.provider.Settings.Secure, value is unchanged.");
                 return false;
             }
-            return putString(resolver, CONTENT_URI, name, value);
+            if (MOVED_TO_GLOBAL.contains(name) || MOVED_TO_SECURE_THEN_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
+                        + " to android.provider.Settings.Global, value is unchanged.");
+                return false;
+            }
+            return sNameValueCache.putStringForUser(resolver, name, value, userHandle);
         }
 
         /**
@@ -846,6 +992,11 @@ public final class Settings {
                 Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
                     + " to android.provider.Settings.Secure, returning Secure URI.");
                 return Secure.getUriFor(Secure.CONTENT_URI, name);
+            }
+            if (MOVED_TO_GLOBAL.contains(name) || MOVED_TO_SECURE_THEN_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
+                        + " to android.provider.Settings.Global, returning read-only global URI.");
+                return Global.getUriFor(Global.CONTENT_URI, name);
             }
             return getUriFor(CONTENT_URI, name);
         }
@@ -865,7 +1016,12 @@ public final class Settings {
          * or not a valid integer.
          */
         public static int getInt(ContentResolver cr, String name, int def) {
-            String v = getString(cr, name);
+            return getIntForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static int getIntForUser(ContentResolver cr, String name, int def, int userHandle) {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return v != null ? Integer.parseInt(v) : def;
             } catch (NumberFormatException e) {
@@ -891,9 +1047,15 @@ public final class Settings {
          *
          * @return The setting's current value.
          */
-        public static int getInt(ContentResolver cr, String name)
+        public static int getInt(ContentResolver cr, String name) 
                 throws SettingNotFoundException {
-            String v = getString(cr, name);
+            return getIntForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static int getIntForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return Integer.parseInt(v);
             } catch (NumberFormatException e) {
@@ -915,7 +1077,13 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putInt(ContentResolver cr, String name, int value) {
-            return putString(cr, name, Integer.toString(value));
+            return putIntForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putIntForUser(ContentResolver cr, String name, int value,
+                int userHandle) {
+            return putStringForUser(cr, name, Integer.toString(value), userHandle);
         }
 
         /**
@@ -933,7 +1101,13 @@ public final class Settings {
          * or not a valid {@code long}.
          */
         public static long getLong(ContentResolver cr, String name, long def) {
-            String valString = getString(cr, name);
+            return getLongForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static long getLongForUser(ContentResolver cr, String name, long def,
+                int userHandle) {
+            String valString = getStringForUser(cr, name, userHandle);
             long value;
             try {
                 value = valString != null ? Long.parseLong(valString) : def;
@@ -962,7 +1136,13 @@ public final class Settings {
          */
         public static long getLong(ContentResolver cr, String name)
                 throws SettingNotFoundException {
-            String valString = getString(cr, name);
+            return getLongForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static long getLongForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String valString = getStringForUser(cr, name, userHandle);
             try {
                 return Long.parseLong(valString);
             } catch (NumberFormatException e) {
@@ -984,7 +1164,13 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putLong(ContentResolver cr, String name, long value) {
-            return putString(cr, name, Long.toString(value));
+            return putLongForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putLongForUser(ContentResolver cr, String name, long value,
+                int userHandle) {
+            return putStringForUser(cr, name, Long.toString(value), userHandle);
         }
 
         /**
@@ -1002,7 +1188,13 @@ public final class Settings {
          * or not a valid float.
          */
         public static float getFloat(ContentResolver cr, String name, float def) {
-            String v = getString(cr, name);
+            return getFloatForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static float getFloatForUser(ContentResolver cr, String name, float def,
+                int userHandle) {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return v != null ? Float.parseFloat(v) : def;
             } catch (NumberFormatException e) {
@@ -1030,7 +1222,13 @@ public final class Settings {
          */
         public static float getFloat(ContentResolver cr, String name)
                 throws SettingNotFoundException {
-            String v = getString(cr, name);
+            return getFloatForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static float getFloatForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String v = getStringForUser(cr, name, userHandle);
             if (v == null) {
                 throw new SettingNotFoundException(name);
             }
@@ -1055,7 +1253,13 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putFloat(ContentResolver cr, String name, float value) {
-            return putString(cr, name, Float.toString(value));
+            return putFloatForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putFloatForUser(ContentResolver cr, String name, float value,
+                int userHandle) {
+            return putStringForUser(cr, name, Float.toString(value), userHandle);
         }
 
         /**
@@ -1067,8 +1271,14 @@ public final class Settings {
          * @param outConfig Where to place the configuration settings.
          */
         public static void getConfiguration(ContentResolver cr, Configuration outConfig) {
-            outConfig.fontScale = Settings.System.getFloat(
-                cr, FONT_SCALE, outConfig.fontScale);
+            getConfigurationForUser(cr, outConfig, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static void getConfigurationForUser(ContentResolver cr, Configuration outConfig,
+                int userHandle) {
+            outConfig.fontScale = Settings.System.getFloatForUser(
+                cr, FONT_SCALE, outConfig.fontScale, userHandle);
             if (outConfig.fontScale < 0) {
                 outConfig.fontScale = 1;
             }
@@ -1091,7 +1301,13 @@ public final class Settings {
          * @return true if the values were set, false on database errors
          */
         public static boolean putConfiguration(ContentResolver cr, Configuration config) {
-            return Settings.System.putFloat(cr, FONT_SCALE, config.fontScale);
+            return putConfigurationForUser(cr, config, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putConfigurationForUser(ContentResolver cr, Configuration config,
+                int userHandle) {
+            return Settings.System.putFloatForUser(cr, FONT_SCALE, config.fontScale, userHandle);
         }
 
         /** @hide */
@@ -1108,22 +1324,10 @@ public final class Settings {
         }
 
         /**
-         * The content:// style URL for this table
+         * @deprecated Use {@link android.provider.Settings.Global#STAY_ON_WHILE_PLUGGED_IN} instead
          */
-        public static final Uri CONTENT_URI =
-            Uri.parse("content://" + AUTHORITY + "/system");
-
-        /**
-         * Whether we keep the device on while the device is plugged in.
-         * Supported values are:
-         * <ul>
-         * <li>{@code 0} to never stay on while plugged in</li>
-         * <li>{@link BatteryManager#BATTERY_PLUGGED_AC} to stay on for AC charger</li>
-         * <li>{@link BatteryManager#BATTERY_PLUGGED_USB} to stay on for USB charger</li>
-         * </ul>
-         * These values can be OR-ed together.
-         */
-        public static final String STAY_ON_WHILE_PLUGGED_IN = "stay_on_while_plugged_in";
+        @Deprecated
+        public static final String STAY_ON_WHILE_PLUGGED_IN = Global.STAY_ON_WHILE_PLUGGED_IN;
 
         /**
          * What happens when the user presses the end call button if they're not
@@ -1168,14 +1372,16 @@ public final class Settings {
         public static final int ADVANCED_SETTINGS_DEFAULT = 0;
 
         /**
-         * Whether Airplane Mode is on.
+         * @deprecated Use {@link android.provider.Settings.Global#AIRPLANE_MODE_ON} instead
          */
-        public static final String AIRPLANE_MODE_ON = "airplane_mode_on";
+        @Deprecated
+        public static final String AIRPLANE_MODE_ON = Global.AIRPLANE_MODE_ON;
 
         /**
-         * Constant for use in AIRPLANE_MODE_RADIOS to specify Bluetooth radio.
+         * @deprecated Use {@link android.provider.Settings.Global#RADIO_BLUETOOTH} instead
          */
-        public static final String RADIO_BLUETOOTH = "bluetooth";
+        @Deprecated
+        public static final String RADIO_BLUETOOTH = Global.RADIO_BLUETOOTH;
 
         /**
          * Constant for use in AIRPLANE_MODE_RADIOS to specify Wi-Fi radio.
@@ -1343,14 +1549,20 @@ public final class Settings {
 
         /**
          * Name of an application package to be debugged.
+         *
+         * @deprecated Use {@link Global#DEBUG_APP} instead
          */
-        public static final String DEBUG_APP = "debug_app";
+        @Deprecated
+        public static final String DEBUG_APP = Global.DEBUG_APP;
 
         /**
          * If 1, when launching DEBUG_APP it will wait for the debugger before
          * starting user code.  If 0, it will run normally.
+         *
+         * @deprecated Use {@link Global#WAIT_FOR_DEBUGGER} instead
          */
-        public static final String WAIT_FOR_DEBUGGER = "wait_for_debugger";
+        @Deprecated
+        public static final String WAIT_FOR_DEBUGGER = Global.WAIT_FOR_DEBUGGER;
 
         /**
          * Whether or not to dim the screen. 0=no  1=yes
@@ -1363,14 +1575,6 @@ public final class Settings {
         public static final String SCREEN_OFF_TIMEOUT = "screen_off_timeout";
 
         /**
-         * If 0, the compatibility mode is off for all applications.
-         * If 1, older applications run under compatibility mode.
-         * TODO: remove this settings before code freeze (bug/1907571)
-         * @hide
-         */
-        public static final String COMPATIBILITY_MODE = "compatibility_mode";
-
-        /**
          * The screen backlight brightness between 0 and 255.
          */
         public static final String SCREEN_BRIGHTNESS = "screen_brightness";
@@ -1381,6 +1585,13 @@ public final class Settings {
         public static final String SCREEN_BRIGHTNESS_MODE = "screen_brightness_mode";
 
         /**
+         * Adjustment to auto-brightness to make it generally more (>0.0 <1.0)
+         * or less (<0.0 >-1.0) bright.
+         * @hide
+         */
+        public static final String SCREEN_AUTO_BRIGHTNESS_ADJ = "screen_auto_brightness_adj";
+
+        /**
          * SCREEN_BRIGHTNESS_MODE value for manual mode.
          */
         public static final int SCREEN_BRIGHTNESS_MODE_MANUAL = 0;
@@ -1389,6 +1600,24 @@ public final class Settings {
          * SCREEN_BRIGHTNESS_MODE value for automatic mode.
          */
         public static final int SCREEN_BRIGHTNESS_MODE_AUTOMATIC = 1;
+
+        /**
+         * Custom automatic brightness light sensor levels.
+         * The value is a comma separated int array with length N.
+         * Example: "100,300,3000".
+         *
+         * @hide
+         */
+        public static final String AUTO_BRIGHTNESS_LUX = "auto_brightness_lux";
+
+        /**
+         * Custom automatic brightness display backlight brightness values.
+         * The value is a comma separated int array with length N+1.
+         * Example: "10,50,100,255".
+         *
+         * @hide
+         */
+        public static final String AUTO_BRIGHTNESS_BACKLIGHT = "auto_brightness_backlight";
 
         /**
          * Indicates that custom light sensor settings has changed.
@@ -1522,16 +1751,21 @@ public final class Settings {
 
         /**
          * Control whether the process CPU usage meter should be shown.
+         *
+         * @deprecated Use {@link Global#SHOW_PROCESSES} instead
          */
-        public static final String SHOW_PROCESSES = "show_processes";
+        @Deprecated
+        public static final String SHOW_PROCESSES = Global.SHOW_PROCESSES;
 
         /**
          * If 1, the activity manager will aggressively finish activities and
          * processes as soon as they are no longer needed.  If 0, the normal
          * extended lifetime is used.
+         *
+         * @deprecated Use {@link Global#ALWAYS_FINISH_ACTIVITIES} instead
          */
-        public static final String ALWAYS_FINISH_ACTIVITIES =
-                "always_finish_activities";
+        @Deprecated
+        public static final String ALWAYS_FINISH_ACTIVITIES = Global.ALWAYS_FINISH_ACTIVITIES;
 
         /**
          * Volume Overlay Mode. This is the style of the volume overlay panel.
@@ -1569,6 +1803,20 @@ public final class Settings {
          * changing this value will not change the vibrate. See AudioManager.
          */
         public static final String VIBRATE_ON = "vibrate_on";
+
+        /**
+         * If 1, redirects the system vibrator to all currently attached input devices
+         * that support vibration.  If there are no such input devices, then the system
+         * vibrator is used instead.
+         * If 0, does not register the system vibrator.
+         *
+         * This setting is mainly intended to provide a compatibility mechanism for
+         * applications that only know about the system vibrator and do not use the
+         * input device vibrator API.
+         *
+         * @hide
+         */
+        public static final String VIBRATE_INPUT_DEVICES = "vibrate_input_devices";
 
         /**
          * Ringer volume. This is used internally, changing this value will not
@@ -1795,14 +2043,30 @@ public final class Settings {
         /**
          * Scaling factor for normal window animations. Setting to 0 will disable window
          * animations.
+         *
+         * @deprecated Use {@link Global#WINDOW_ANIMATION_SCALE} instead
          */
-        public static final String WINDOW_ANIMATION_SCALE = "window_animation_scale";
+        @Deprecated
+        public static final String WINDOW_ANIMATION_SCALE = Global.WINDOW_ANIMATION_SCALE;
 
         /**
          * Scaling factor for activity transition animations. Setting to 0 will disable window
          * animations.
+         *
+         * @deprecated Use {@link Global#TRANSITION_ANIMATION_SCALE} instead
          */
-        public static final String TRANSITION_ANIMATION_SCALE = "transition_animation_scale";
+        @Deprecated
+        public static final String TRANSITION_ANIMATION_SCALE = Global.TRANSITION_ANIMATION_SCALE;
+
+        /**
+         * Scaling factor for Animator-based animations. This affects both the start delay and
+         * duration of all such animations. Setting to 0 will cause animations to end immediately.
+         * The default value is 1.
+         *
+         * @deprecated Use {@link Global#ANIMATOR_DURATION_SCALE} instead
+         */
+        @Deprecated
+        public static final String ANIMATOR_DURATION_SCALE = Global.ANIMATOR_DURATION_SCALE;
 
         /**
          * Scaling factor for normal window animations. Setting to 0 will disable window
@@ -1820,6 +2084,19 @@ public final class Settings {
         public static final String ACCELEROMETER_ROTATION = "accelerometer_rotation";
 
         /**
+         * Control the type of rotation which can be performed using the accelerometer
+         * if ACCELEROMETER_ROTATION is enabled.
+         * Value is a bitwise combination of
+         * 1 = 0 degrees (portrait)
+         * 2 = 90 degrees (left)
+         * 4 = 180 degrees (inverted portrait)
+         * 8 = 270 degrees (right)
+         * Setting to 0 is effectively orientation lock
+         * @hide
+         */
+        public static final String ACCELEROMETER_ROTATION_ANGLES = "accelerometer_rotation_angles";
+
+        /**
          * Default screen rotation when no other policy applies.
          * When {@link #ACCELEROMETER_ROTATION} is zero and no on-screen Activity expresses a
          * preference, this rotation value will be used. Must be one of the
@@ -1828,6 +2105,34 @@ public final class Settings {
          * @see Display#getRotation
          */
         public static final String USER_ROTATION = "user_rotation";
+
+        /**
+         * Control whether the rotation lock toggle in the System UI should be hidden.
+         * Typically this is done for accessibility purposes to make it harder for
+         * the user to accidentally toggle the rotation lock while the display rotation
+         * has been locked for accessibility.
+         *
+         * If 0, then rotation lock toggle is not hidden for accessibility (although it may be
+         * unavailable for other reasons).  If 1, then the rotation lock toggle is hidden.
+         *
+         * @hide
+         */
+        public static final String HIDE_ROTATION_LOCK_TOGGLE_FOR_ACCESSIBILITY =
+                "hide_rotation_lock_toggle_for_accessibility";
+
+        /**
+         * Whether the phone vibrates when it is ringing due to an incoming call. This will
+         * be used by Phone and Setting apps; it shouldn't affect other apps.
+         * The value is boolean (1 or 0).
+         *
+         * Note: this is not same as "vibrate on ring", which had been available until ICS.
+         * It was about AudioManager's setting and thus affected all the applications which
+         * relied on the setting, while this is purely about the vibration setting for incoming
+         * calls.
+         *
+         * @hide
+         */
+        public static final String VIBRATE_WHEN_RINGING = "vibrate_when_ringing";
 
         /**
          * Whether the audible DTMF tones are played by the dialer when dialing. The value is
@@ -1921,6 +2226,14 @@ public final class Settings {
         public static final String POINTER_LOCATION = "pointer_location";
 
         /**
+         * Show icon when stylus is used?
+         * 0 = no
+         * 1 = yes
+         * @hide
+         */
+        public static final String STYLUS_ICON_ENABLED = "stylus_icon_enabled";
+
+        /**
          * Show touch positions on screen?
          * 0 = no
          * 1 = yes
@@ -1955,6 +2268,18 @@ public final class Settings {
          * @hide
          */
         public static final String LOCKSCREEN_SOUNDS_ENABLED = "lockscreen_sounds_enabled";
+
+        /**
+         * Whether the lockscreen should be completely disabled.
+         * @hide
+         */
+        public static final String LOCKSCREEN_DISABLED = "lockscreen.disabled";
+
+        /**
+         * Stores values for custom lockscreen targets
+         * @hide
+         */
+        public static final String LOCKSCREEN_TARGETS = "lockscreen_targets";
 
         /**
          * Whether to enable lockscreen vibrate
@@ -1993,16 +2318,20 @@ public final class Settings {
         public static final String CAR_UNDOCK_SOUND = "car_undock_sound";
 
         /**
-         * URI for the "device locked" (keyguard shown) sound.
+         * @deprecated Use {@link android.provider.Settings.Global#LOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String LOCK_SOUND = "lock_sound";
+        @Deprecated
+        public static final String LOCK_SOUND = Global.LOCK_SOUND;
 
         /**
-         * URI for the "device unlocked" (keyguard dismissed) sound.
+         * @deprecated Use {@link android.provider.Settings.Global#UNLOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String UNLOCK_SOUND = "unlock_sound";
+        @Deprecated
+        public static final String UNLOCK_SOUND = Global.UNLOCK_SOUND;
 
         /**
          * Receive incoming SIP calls?
@@ -2040,6 +2369,12 @@ public final class Settings {
         public static final String SIP_ASK_ME_EACH_TIME = "SIP_ASK_ME_EACH_TIME";
 
         /**
+         * Torch state (flashlight)
+         * @hide
+         */
+        public static final String TORCH_STATE = "torch_state";
+
+        /**
          * Pointer speed setting.
          * This is an integer value in a range between -7 and +7, so there are 15 possible values.
          *   -7 = slowest
@@ -2050,10 +2385,358 @@ public final class Settings {
         public static final String POINTER_SPEED = "pointer_speed";
 
         /**
+         * Quick Settings Panel Tiles to Use
+         *
+         * @hide
+         */
+        public static final String QUICK_SETTINGS_TILES = "quick_settings_tiles";
+
+        /**
+         * Quick Settings Panel Dynamic Tiles
+         *
+         * @hide
+         */
+        public static final String QS_DYNAMIC_ALARM = "qs_dyanmic_alarm";
+
+        /**
+         * Quick Settings Panel Dynamic Tiles
+         *
+         * @hide
+         */
+        public static final String QS_DYNAMIC_BUGREPORT = "qs_dyanmic_bugreport";
+
+        /**
+         * Quick Settings Panel Dynamic Tiles
+         *
+         * @hide
+         */
+        public static final String QS_DYNAMIC_IME = "qs_dyanmic_ime";
+
+        /**
+         * Quick Settings Panel Dynamic Tiles
+         *
+         * @hide
+         */
+        public static final String QS_DYNAMIC_USBTETHER = "qs_dyanmic_usbtether";
+
+        /**
+         * Quick Settings Panel Dynamic Tiles
+         *
+         * @hide
+         */
+        public static final String QS_DYNAMIC_WIFI = "qs_dyanmic_wifi";
+
+        /**
+         * Quick Settings Quick Pulldown
+         *
+         * @hide
+         */
+        public static final String QS_QUICK_PULLDOWN = "qs_quick_pulldown";
+
+        /**
+         * Quick Settings Collapse Pane
+         *
+         * @hide
+         */
+        public static final String QS_COLLAPSE_PANEL = "qs_collapse_panel";
+
+        /**
+         * Use the Notification Power Widget? (Who wouldn't!)
+         *
+         * @hide
+         */
+        public static final String EXPANDED_VIEW_WIDGET = "expanded_view_widget";
+
+        /**
+         * Whether to hide the notification screen after clicking on a widget
+         * button
+         *
+         * @hide
+         */
+        public static final String EXPANDED_HIDE_ONCHANGE = "expanded_hide_onchange";
+
+        /**
+         * Hide scroll bar in power widget
+         *
+         * @hide
+         */
+        public static final String EXPANDED_HIDE_SCROLLBAR = "expanded_hide_scrollbar";
+
+        /**
+         * Haptic feedback in power widget
+         *
+         * @hide
+         */
+        public static final String EXPANDED_HAPTIC_FEEDBACK = "expanded_haptic_feedback";
+
+        /**
+         * Widget Buttons to Use
+         *
+         * @hide
+         */
+        public static final String WIDGET_BUTTONS = "expanded_widget_buttons";
+
+        /**
+         * Navigation controls to Use
+         *
+         * @hide
+         */
+        public static final String NAV_BUTTONS = "nav_buttons";
+
+        /**
+        * Notification Power Widget - Custom Brightness Mode
+        * @hide
+        */
+        public static final String EXPANDED_BRIGHTNESS_MODE = "expanded_brightness_mode";
+
+        /**
+        * Notification Power Widget - Custom Network Mode
+        * @hide
+        */
+        public static final String EXPANDED_NETWORK_MODE = "expanded_network_mode";
+
+        /**
+        * Notification Power Widget - Custom Screen Timeout
+        * @hide
+        */
+        public static final String EXPANDED_SCREENTIMEOUT_MODE = "expanded_screentimeout_mode";
+
+        /**
+        * Notification Power Widget - Custom Ring Mode
+        * @hide
+        */
+        public static final String EXPANDED_RING_MODE = "expanded_ring_mode";
+
+        /**
+        * Notification Power Widget - Custom Torch Mode
+        * @hide
+        */
+        public static final String EXPANDED_FLASH_MODE = "expanded_flash_mode";
+
+        /**
          * Whether to wake the screen with the trackball. The value is boolean (1 or 0).
          * @hide
          */
         public static final String TRACKBALL_WAKE_SCREEN = "trackball_wake_screen";
+
+        /**
+         * Sets the lockscreen background style
+         * @hide
+         */
+        public static final String LOCKSCREEN_BACKGROUND = "lockscreen_background";
+
+        /**
+         * Action for long-pressing back button on lock screen
+         * @hide
+         */
+        public static final String LOCKSCREEN_LONG_BACK_ACTION = "lockscreen_long_back_action";
+
+        /**
+         * Action for long-pressing home button on lock screen
+         * @hide
+         */
+        public static final String LOCKSCREEN_LONG_HOME_ACTION = "lockscreen_long_home_action";
+
+        /**
+         * Action for long-pressing menu button on lock screen
+         * @hide
+         */
+        public static final String LOCKSCREEN_LONG_MENU_ACTION = "lockscreen_long_menu_action";
+
+        /**
+         * Always show the battery status on the lockscreen
+         * @hide
+         */
+        public static final String LOCKSCREEN_ALWAYS_SHOW_BATTERY = "lockscreen_always_show_battery";
+
+        /**
+         * Whether to unlock the screen with the home key.  The value is boolean (1 or 0).
+         * @hide
+         */
+        public static final String HOME_UNLOCK_SCREEN = "home_unlock_screen";
+
+        /**
+         * Whether the lockscreen vibrate should be enabled.
+         * @hide
+         */
+        public static final String LOCKSCREEN_VIBRATE_ENABLED = "lockscreen.vibrate_enabled";
+
+        /**
+         * Show the pending notification counts as overlays on the status bar
+         * Whether to enable custom rebindings of the actions performed on
+         * certain key press events.
+         * @hide
+         */
+        public static final String HARDWARE_KEY_REBINDING = "hardware_key_rebinding";
+
+        /**
+         * Action to perform when the home key is long-pressed. (Default is 2)
+         * 0 - Nothing
+         * 1 - Menu
+         * 2 - App-switch
+         * 3 - Search
+         * 4 - Voice search
+         * 5 - In-app search
+         * @hide
+         */
+        public static final String KEY_HOME_LONG_PRESS_ACTION = "key_home_long_press_action";
+        /**
+         * Action to perform when the menu key is pressed. (Default is 1)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_MENU_ACTION = "key_menu_action";
+
+        /**
+         * Action to perform when the menu key is long-pressed.
+         * (Default is 0 on devices with a search key, 3 on devices without)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_MENU_LONG_PRESS_ACTION = "key_menu_long_press_action";
+
+        /**
+         * Action to perform when the assistant (search) key is pressed. (Default is 3)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_ASSIST_ACTION = "key_assist_action";
+
+        /**
+         * Weather to minimize lockscreen challenge on screen turned on
+         * @hide
+         */
+        public static final String LOCKSCREEN_MAXIMIZE_WIDGETS = "lockscreen_maximize_widgets";
+
+        /**
+         * Action to perform when the assistant (search) key is long-pressed. (Default is 4)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_ASSIST_LONG_PRESS_ACTION = "key_assist_long_press_action";
+
+        /**
+         * Action to perform when the app switch key is pressed. (Default is 2)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_APP_SWITCH_ACTION = "key_app_switch_action";
+
+        /**
+         * Action to perform when the app switch key is long-pressed. (Default is 0)
+         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
+         * @hide
+         */
+        public static final String KEY_APP_SWITCH_LONG_PRESS_ACTION = "key_app_switch_long_press_action";
+
+        /**
+         * Display style of the status bar battery information
+         * 0: Display the stock battery information
+         * 1: Display cm battery percentage implementation / dont show stock icon
+         * 2: Display cm circle battery implementation without percentage
+         * 3: Display cm circle battery implementation with percentage
+         * 4: Hide the battery information
+         * default: 0
+         * @hide
+         */
+        public static final String STATUS_BAR_BATTERY = "status_bar_battery";
+
+        /**
+         * Whether to show the clock in status bar
+         * of the stock battery icon
+         * 0: don't show the clock
+         * 1: show the clock
+         * default: 1
+         * @hide
+         */
+        public static final String STATUS_BAR_CLOCK = "status_bar_clock";
+
+        /**
+         * Whether to show the signal text or signal bars.
+         * default: 0
+         * 0: show signal bars
+         * 1: show signal text numbers
+         * 2: show signal text numbers w/small dBm appended
+         * @hide
+         */
+        public static final String STATUS_BAR_SIGNAL_TEXT = "status_bar_signal";
+
+        /**
+         * Whether to control brightness from status bar
+         *
+         * @hide
+         */
+        public static final String STATUS_BAR_BRIGHTNESS_CONTROL = "status_bar_brightness_control";
+
+        /**
+         * Whether to show the IME switcher in the status bar
+         * @hide
+         */
+        public static final String STATUS_BAR_IME_SWITCHER = "status_bar_ime_switcher";
+
+        /**
+         * Statusbar State
+         * @hide
+         */
+        public static final String EXPANDED_DESKTOP_STATE = "expanded_desktop_state";
+
+        /**
+         * Expanded desktop style (with status bar or without status bar)
+         * @hide
+         */
+        public static final String EXPANDED_DESKTOP_STYLE = "expanded_desktop_style";
+
+        /**
+         * Whether to use a separate delay for "slide to unlock" and security
+         * lock
+         * @hide
+         */
+        public static final String SCREEN_LOCK_SLIDE_DELAY_TOGGLE = "screen_lock_slide_delay_toggle";
+
+        /**
+         * How many ms to delay before enabling the "slide to unlock" screen
+         * lock when the screen goes off due to timeout
+         * @hide
+         */
+        public static final String SCREEN_LOCK_SLIDE_TIMEOUT_DELAY = "screen_lock_slide_timeout_delay";
+
+        /**
+         * How many ms to delay before enabling the "slide to unlock" screen
+         * lock when the screen is turned off by the user
+         * @hide
+         */
+        public static final String SCREEN_LOCK_SLIDE_SCREENOFF_DELAY = "screen_lock_slide_screenoff_delay";
+
+        /**
+         * Whether or not volume button music controls should be enabled to seek media tracks
+         * @hide
+         */
+        public static final String VOLBTN_MUSIC_CONTROLS = "volbtn_music_controls";
+
+        /**
+         * Show the pending notification counts as overlays on the status bar
+         * @hide
+         */
+        public static final String STATUS_BAR_NOTIF_COUNT = "status_bar_notif_count";
+
+        /**
+         * Whether to use the custom quick unlock screen control
+         * @hide
+         */
+        public static final String LOCKSCREEN_QUICK_UNLOCK_CONTROL = "lockscreen_quick_unlock_control";
+
+        /**
+         * Boolean value to link ringtone and notification volumes
+         * 
+         * @hide
+         */
+        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
+
+        /**
+         * Whether to unlock the menu key.  The value is boolean (1 or 0).
+         * @hide
+         */
+        public static final String MENU_UNLOCK_SCREEN = "menu_unlock_screen";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
@@ -2065,16 +2748,8 @@ public final class Settings {
          *
          * @hide
          */
-
-        /**
-         * Boolean value to link ringtone and notification volumes
-         * 
-         * @hide
-         */
-        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
-  
         public static final String[] SETTINGS_TO_BACKUP = {
-            STAY_ON_WHILE_PLUGGED_IN,
+            STAY_ON_WHILE_PLUGGED_IN,   // moved to global
             WIFI_USE_STATIC_IP,
             WIFI_STATIC_IP,
             WIFI_STATIC_GATEWAY,
@@ -2087,6 +2762,8 @@ public final class Settings {
             SCREEN_OFF_TIMEOUT,
             SCREEN_BRIGHTNESS,
             SCREEN_BRIGHTNESS_MODE,
+            SCREEN_AUTO_BRIGHTNESS_ADJ,
+            VIBRATE_INPUT_DEVICES,
             VIBRATE_ON,
             MODE_RINGER,
             MODE_RINGER_STREAMS_AFFECTED,
@@ -2138,11 +2815,11 @@ public final class Settings {
         // Settings moved to Settings.Secure
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#ADB_ENABLED}
+         * @deprecated Use {@link android.provider.Settings.Global#ADB_ENABLED}
          * instead
          */
         @Deprecated
-        public static final String ADB_ENABLED = Secure.ADB_ENABLED;
+        public static final String ADB_ENABLED = Global.ADB_ENABLED;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#ANDROID_ID} instead
@@ -2151,22 +2828,22 @@ public final class Settings {
         public static final String ANDROID_ID = Secure.ANDROID_ID;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#BLUETOOTH_ON} instead
+         * @deprecated Use {@link android.provider.Settings.Global#BLUETOOTH_ON} instead
          */
         @Deprecated
-        public static final String BLUETOOTH_ON = Secure.BLUETOOTH_ON;
+        public static final String BLUETOOTH_ON = Global.BLUETOOTH_ON;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#DATA_ROAMING} instead
+         * @deprecated Use {@link android.provider.Settings.Global#DATA_ROAMING} instead
          */
         @Deprecated
-        public static final String DATA_ROAMING = Secure.DATA_ROAMING;
+        public static final String DATA_ROAMING = Global.DATA_ROAMING;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#DEVICE_PROVISIONED} instead
          */
         @Deprecated
-        public static final String DEVICE_PROVISIONED = Secure.DEVICE_PROVISIONED;
+        public static final String DEVICE_PROVISIONED = Global.DEVICE_PROVISIONED;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#HTTP_PROXY} instead
@@ -2178,7 +2855,7 @@ public final class Settings {
          * @deprecated Use {@link android.provider.Settings.Secure#INSTALL_NON_MARKET_APPS} instead
          */
         @Deprecated
-        public static final String INSTALL_NON_MARKET_APPS = Secure.INSTALL_NON_MARKET_APPS;
+        public static final String INSTALL_NON_MARKET_APPS = Global.INSTALL_NON_MARKET_APPS;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#LOCATION_PROVIDERS_ALLOWED}
@@ -2228,10 +2905,10 @@ public final class Settings {
         public static final String SETTINGS_CLASSNAME = Secure.SETTINGS_CLASSNAME;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#USB_MASS_STORAGE_ENABLED} instead
+         * @deprecated Use {@link android.provider.Settings.Global#USB_MASS_STORAGE_ENABLED} instead
          */
         @Deprecated
-        public static final String USB_MASS_STORAGE_ENABLED = Secure.USB_MASS_STORAGE_ENABLED;
+        public static final String USB_MASS_STORAGE_ENABLED = Global.USB_MASS_STORAGE_ENABLED;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#USE_GOOGLE_MAIL} instead
@@ -2402,8 +3079,72 @@ public final class Settings {
     public static final class Secure extends NameValueTable {
         public static final String SYS_PROP_SETTING_VERSION = "sys.settings_secure_version";
 
+        /**
+         * The content:// style URL for this table
+         */
+        public static final Uri CONTENT_URI =
+            Uri.parse("content://" + AUTHORITY + "/secure");
+
         // Populated lazily, guarded by class object:
-        private static NameValueCache sNameValueCache = null;
+        private static NameValueCache sNameValueCache = new NameValueCache(
+                SYS_PROP_SETTING_VERSION,
+                CONTENT_URI,
+                CALL_METHOD_GET_SECURE,
+                CALL_METHOD_PUT_SECURE);
+
+        private static ILockSettings sLockSettings = null;
+
+        private static boolean sIsSystemProcess;
+        private static final HashSet<String> MOVED_TO_LOCK_SETTINGS;
+        private static final HashSet<String> MOVED_TO_GLOBAL;
+        static {
+            MOVED_TO_LOCK_SETTINGS = new HashSet<String>(3);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_ENABLED);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_VISIBLE);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_SHOW_ERROR_PATH);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_DOTS_VISIBLE);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
+
+            MOVED_TO_GLOBAL = new HashSet<String>();
+            MOVED_TO_GLOBAL.add(Settings.Global.ADB_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.ASSISTED_GPS_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.BLUETOOTH_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.DATA_ROAMING);
+            MOVED_TO_GLOBAL.add(Settings.Global.DEVICE_PROVISIONED);
+            MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_DENSITY_FORCED);
+            MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_SIZE_FORCED);
+            MOVED_TO_GLOBAL.add(Settings.Global.INSTALL_NON_MARKET_APPS);
+            MOVED_TO_GLOBAL.add(Settings.Global.MOBILE_DATA);
+            MOVED_TO_GLOBAL.add(Settings.Global.USB_MASS_STORAGE_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.WEB_AUTOFILL_QUERY_URL);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SAVED_STATE);
+            MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_ENABLE);
+            MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_TIMEOUT);
+            MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_DEFAULT_RESPONSE);
+            MOVED_TO_GLOBAL.add(Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.GPRS_REGISTER_CHECK_PERIOD_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.WTF_IS_FATAL);
+            MOVED_TO_GLOBAL.add(Settings.Global.BATTERY_DISCHARGE_DURATION_THRESHOLD);
+            MOVED_TO_GLOBAL.add(Settings.Global.BATTERY_DISCHARGE_THRESHOLD);
+            MOVED_TO_GLOBAL.add(Settings.Global.SEND_ACTION_APP_ERROR);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_AGE_SECONDS);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_MAX_FILES);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_QUOTA_KB);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_QUOTA_PERCENT);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_RESERVE_PERCENT);
+            MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_TAG_PREFIX);
+            MOVED_TO_GLOBAL.add(Settings.Global.ERROR_LOGCAT_PREFIX);
+            MOVED_TO_GLOBAL.add(Settings.Global.SYNC_MAX_RETRY_DELAY_IN_SECONDS);
+            MOVED_TO_GLOBAL.add(Settings.Global.DEFAULT_INSTALL_LOCATION);
+            MOVED_TO_GLOBAL.add(Settings.Global.READ_EXTERNAL_STORAGE_ENFORCED_DEFAULT);
+            MOVED_TO_GLOBAL.add(Settings.Global.PREFERRED_NETWORK_MODE);
+        }
+
+        /** @hide */
+        public static void getMovedKeys(HashSet<String> outKeySet) {
+            outKeySet.addAll(MOVED_TO_GLOBAL);
+        }
 
         /**
          * Look up a name in the database.
@@ -2411,12 +3152,37 @@ public final class Settings {
          * @param name to look up in the table
          * @return the corresponding value, or null if not present
          */
-        public synchronized static String getString(ContentResolver resolver, String name) {
-            if (sNameValueCache == null) {
-                sNameValueCache = new NameValueCache(SYS_PROP_SETTING_VERSION, CONTENT_URI,
-                                                     CALL_METHOD_GET_SECURE);
+        public static String getString(ContentResolver resolver, String name) {
+            return getStringForUser(resolver, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static String getStringForUser(ContentResolver resolver, String name,
+                int userHandle) {
+            if (MOVED_TO_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.Secure"
+                        + " to android.provider.Settings.Global.");
+                return Global.getStringForUser(resolver, name, userHandle);
             }
-            return sNameValueCache.getString(resolver, name);
+
+            if (MOVED_TO_LOCK_SETTINGS.contains(name)) {
+                synchronized (Secure.class) {
+                    if (sLockSettings == null) {
+                        sLockSettings = ILockSettings.Stub.asInterface(
+                                (IBinder) ServiceManager.getService("lock_settings"));
+                        sIsSystemProcess = Process.myUid() == Process.SYSTEM_UID;
+                    }
+                }
+                if (sLockSettings != null && !sIsSystemProcess) {
+                    try {
+                        return sLockSettings.getString(name, "0", userHandle);
+                    } catch (RemoteException re) {
+                        // Fall through
+                    }
+                }
+            }
+
+            return sNameValueCache.getStringForUser(resolver, name, userHandle);
         }
 
         /**
@@ -2426,9 +3192,19 @@ public final class Settings {
          * @param value to associate with the name
          * @return true if the value was set, false on database errors
          */
-        public static boolean putString(ContentResolver resolver,
-                String name, String value) {
-            return putString(resolver, CONTENT_URI, name, value);
+        public static boolean putString(ContentResolver resolver, String name, String value) {
+            return putStringForUser(resolver, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putStringForUser(ContentResolver resolver, String name, String value,
+                int userHandle) {
+            if (MOVED_TO_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.System"
+                        + " to android.provider.Settings.Global");
+                return Global.putStringForUser(resolver, name, value, userHandle);
+            }
+            return sNameValueCache.putStringForUser(resolver, name, value, userHandle);
         }
 
         /**
@@ -2438,6 +3214,11 @@ public final class Settings {
          * @return the corresponding content URI, or null if not present
          */
         public static Uri getUriFor(String name) {
+            if (MOVED_TO_GLOBAL.contains(name)) {
+                Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.Secure"
+                        + " to android.provider.Settings.Global, returning global URI.");
+                return Global.getUriFor(Global.CONTENT_URI, name);
+            }
             return getUriFor(CONTENT_URI, name);
         }
 
@@ -2456,7 +3237,12 @@ public final class Settings {
          * or not a valid integer.
          */
         public static int getInt(ContentResolver cr, String name, int def) {
-            String v = getString(cr, name);
+            return getIntForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static int getIntForUser(ContentResolver cr, String name, int def, int userHandle) {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return v != null ? Integer.parseInt(v) : def;
             } catch (NumberFormatException e) {
@@ -2484,7 +3270,13 @@ public final class Settings {
          */
         public static int getInt(ContentResolver cr, String name)
                 throws SettingNotFoundException {
-            String v = getString(cr, name);
+            return getIntForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static int getIntForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return Integer.parseInt(v);
             } catch (NumberFormatException e) {
@@ -2506,7 +3298,13 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putInt(ContentResolver cr, String name, int value) {
-            return putString(cr, name, Integer.toString(value));
+            return putIntForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putIntForUser(ContentResolver cr, String name, int value,
+                int userHandle) {
+            return putStringForUser(cr, name, Integer.toString(value), userHandle);
         }
 
         /**
@@ -2524,7 +3322,13 @@ public final class Settings {
          * or not a valid {@code long}.
          */
         public static long getLong(ContentResolver cr, String name, long def) {
-            String valString = getString(cr, name);
+            return getLongForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static long getLongForUser(ContentResolver cr, String name, long def,
+                int userHandle) {
+            String valString = getStringForUser(cr, name, userHandle);
             long value;
             try {
                 value = valString != null ? Long.parseLong(valString) : def;
@@ -2553,7 +3357,13 @@ public final class Settings {
          */
         public static long getLong(ContentResolver cr, String name)
                 throws SettingNotFoundException {
-            String valString = getString(cr, name);
+            return getLongForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static long getLongForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String valString = getStringForUser(cr, name, userHandle);
             try {
                 return Long.parseLong(valString);
             } catch (NumberFormatException e) {
@@ -2575,7 +3385,13 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putLong(ContentResolver cr, String name, long value) {
-            return putString(cr, name, Long.toString(value));
+            return putLongForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putLongForUser(ContentResolver cr, String name, long value,
+                int userHandle) {
+            return putStringForUser(cr, name, Long.toString(value), userHandle);
         }
 
         /**
@@ -2593,7 +3409,13 @@ public final class Settings {
          * or not a valid float.
          */
         public static float getFloat(ContentResolver cr, String name, float def) {
-            String v = getString(cr, name);
+            return getFloatForUser(cr, name, def, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static float getFloatForUser(ContentResolver cr, String name, float def,
+                int userHandle) {
+            String v = getStringForUser(cr, name, userHandle);
             try {
                 return v != null ? Float.parseFloat(v) : def;
             } catch (NumberFormatException e) {
@@ -2621,7 +3443,13 @@ public final class Settings {
          */
         public static float getFloat(ContentResolver cr, String name)
                 throws SettingNotFoundException {
-            String v = getString(cr, name);
+            return getFloatForUser(cr, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static float getFloatForUser(ContentResolver cr, String name, int userHandle)
+                throws SettingNotFoundException {
+            String v = getStringForUser(cr, name, userHandle);
             if (v == null) {
                 throw new SettingNotFoundException(name);
             }
@@ -2646,19 +3474,27 @@ public final class Settings {
          * @return true if the value was set, false on database errors
          */
         public static boolean putFloat(ContentResolver cr, String name, float value) {
-            return putString(cr, name, Float.toString(value));
+            return putFloatForUser(cr, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putFloatForUser(ContentResolver cr, String name, float value,
+                int userHandle) {
+            return putStringForUser(cr, name, Float.toString(value), userHandle);
         }
 
         /**
-         * The content:// style URL for this table
+         * When the user has enable the option to have a "bug report" command
+         * in the power menu.
+         * @hide
          */
-        public static final Uri CONTENT_URI =
-            Uri.parse("content://" + AUTHORITY + "/secure");
+        public static final String BUGREPORT_IN_POWER_MENU = "bugreport_in_power_menu";
 
         /**
-         * Whether ADB is enabled.
+         * @deprecated Use {@link android.provider.Settings.Global#ADB_ENABLED} instead
          */
-        public static final String ADB_ENABLED = "adb_enabled";
+        @Deprecated
+        public static final String ADB_ENABLED = Global.ADB_ENABLED;
 
         /**
          * The TCP/IP port to run ADB on, or -1 for USB
@@ -2683,10 +3519,10 @@ public final class Settings {
         public static final String ANDROID_ID = "android_id";
 
         /**
-         * Whether bluetooth is enabled/disabled
-         * 0=disabled. 1=enabled.
+         * @deprecated Use {@link android.provider.Settings.Global#BLUETOOTH_ON} instead
          */
-        public static final String BLUETOOTH_ON = "bluetooth_on";
+        @Deprecated
+        public static final String BLUETOOTH_ON = Global.BLUETOOTH_ON;
 
         /**
          * Get the key that retrieves a bluetooth headset's priority.
@@ -2713,9 +3549,10 @@ public final class Settings {
         }
 
         /**
-         * Whether or not data roaming is enabled. (0 = false, 1 = true)
+         * @deprecated Use {@link android.provider.Settings.Global#DATA_ROAMING} instead
          */
-        public static final String DATA_ROAMING = "data_roaming";
+        @Deprecated
+        public static final String DATA_ROAMING = Global.DATA_ROAMING;
 
         /**
          * Setting to record the input method used by default, holding the ID
@@ -2745,9 +3582,16 @@ public final class Settings {
                 "input_method_selector_visibility";
 
         /**
-         * Whether the device has been provisioned (0 = false, 1 = true)
+         * @deprecated Use {@link android.provider.Settings.Global#DEVICE_PROVISIONED} instead
          */
-        public static final String DEVICE_PROVISIONED = "device_provisioned";
+        @Deprecated
+        public static final String DEVICE_PROVISIONED = Global.DEVICE_PROVISIONED;
+
+        /**
+         * Whether the current user has been set up via setup wizard (0 = false, 1 = true)
+         * @hide
+         */
+        public static final String USER_SETUP_COMPLETE = "user_setup_complete";
 
         /**
          * List of input methods that are currently enabled.  This is a string
@@ -2806,18 +3650,22 @@ public final class Settings {
         public static final String DEFAULT_DNS_SERVER = "default_dns_server";
 
         /**
-         * Whether the package installer should allow installation of apps downloaded from
-         * sources other than Google Play.
-         *
-         * 1 = allow installing from other sources
-         * 0 = only allow installing from Google Play
+         * @deprecated Use {@link android.provider.Settings.Global@INSTALL_NON_MARKET_APP} instead
          */
-        public static final String INSTALL_NON_MARKET_APPS = "install_non_market_apps";
+        @Deprecated
+        public static final String INSTALL_NON_MARKET_APPS = Global.INSTALL_NON_MARKET_APPS;
 
         /**
          * Comma-separated list of location providers that activities may access.
          */
         public static final String LOCATION_PROVIDERS_ALLOWED = "location_providers_allowed";
+
+        /**
+         * A flag containing settings used for biometric weak
+         * @hide
+         */
+        public static final String LOCK_BIOMETRIC_WEAK_FLAGS =
+                "lock_biometric_weak_flags";
 
         /**
          * Whether autolock is enabled (0 = false, 1 = true)
@@ -2830,10 +3678,28 @@ public final class Settings {
         public static final String LOCK_PATTERN_VISIBLE = "lock_pattern_visible_pattern";
 
         /**
-         * Whether lock pattern will vibrate as user enters (0 = false, 1 = true)
+         * Whether lock pattern will vibrate as user enters (0 = false, 1 =
+         * true)
+         *
+         * @deprecated Starting in {@link VERSION_CODES#JELLY_BEAN_MR1} the
+         *             lockscreen uses
+         *             {@link Settings.System#HAPTIC_FEEDBACK_ENABLED}.
          */
-        public static final String LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED =
-            "lock_pattern_tactile_feedback_enabled";
+        @Deprecated
+        public static final String
+                LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED = "lock_pattern_tactile_feedback_enabled";
+
+        /**
+         * Whether lock pattern will show dots (0 = false, 1 = true)
+         * @hide
+         */
+        public static final String LOCK_DOTS_VISIBLE = "lock_pattern_dotsvisible";
+
+        /**
+         * Whether lockscreen error pattern is visible (0 = false, 1 = true)
+         * @hide
+         */
+        public static final String LOCK_SHOW_ERROR_PATH = "lock_pattern_show_error_path";
 
         /**
          * This preference allows the device to be locked given time after screen goes off,
@@ -2842,12 +3708,25 @@ public final class Settings {
          */
         public static final String LOCK_SCREEN_LOCK_AFTER_TIMEOUT = "lock_screen_lock_after_timeout";
 
-
         /**
          * This preference contains the string that shows for owner info on LockScren.
          * @hide
          */
         public static final String LOCK_SCREEN_OWNER_INFO = "lock_screen_owner_info";
+
+        /**
+         * Ids of the user-selected appwidgets on the lockscreen (comma-delimited).
+         * @hide
+         */
+        public static final String LOCK_SCREEN_APPWIDGET_IDS =
+            "lock_screen_appwidget_ids";
+
+        /**
+         * Id of the appwidget shown on the lock screen when appwidgets are disabled.
+         * @hide
+         */
+        public static final String LOCK_SCREEN_FALLBACK_APPWIDGET_ID =
+            "lock_screen_fallback_appwidget_id";
 
         /**
          * This preference enables showing the owner info on LockScren.
@@ -2857,17 +3736,19 @@ public final class Settings {
             "lock_screen_owner_info_enabled";
 
         /**
-         * The saved value for WindowManagerService.setForcedDisplaySize().
-         * Two integers separated by a comma.  If unset, then use the real display size.
+         * Whether the unsecure widget screen will be shown before a secure
+         * lock screen
          * @hide
          */
-        public static final String DISPLAY_SIZE_FORCED = "display_size_forced";
+        public static final String LOCK_BEFORE_UNLOCK =
+            "lock_before_unlock";
 
         /**
-         * Whether assisted GPS should be enabled or not.
+         * Determines the width and height of the LockPatternView widget
          * @hide
          */
-        public static final String ASSISTED_GPS_ENABLED = "assisted_gps_enabled";
+        public static final String LOCK_PATTERN_SIZE =
+            "lock_pattern_size";
 
         /**
          * The Logging ID (a unique 64-bit value) as a hex string.
@@ -2947,15 +3828,23 @@ public final class Settings {
         public static final String SETTINGS_CLASSNAME = "settings_classname";
 
         /**
-         * USB Mass Storage Enabled
+         * @deprecated Use {@link android.provider.Settings.Global#USB_MASS_STORAGE_ENABLED} instead
          */
-        public static final String USB_MASS_STORAGE_ENABLED = "usb_mass_storage_enabled";
+        @Deprecated
+        public static final String USB_MASS_STORAGE_ENABLED = Global.USB_MASS_STORAGE_ENABLED;
 
         /**
          * If this setting is set (to anything), then all references
          * to Gmail on the device must change to Google Mail.
          */
         public static final String USE_GOOGLE_MAIL = "use_google_mail";
+
+        /**
+         * Whether Wifi display is enabled/disabled
+         * 0=disabled. 1=enabled.
+         * @hide
+         */
+        public static final String WIFI_DISPLAY_ON = "wifi_display_on";
 
         /**
          * If accessibility is enabled.
@@ -2972,6 +3861,15 @@ public final class Settings {
          */
         public static final String ENABLED_ACCESSIBILITY_SERVICES =
             "enabled_accessibility_services";
+
+        /**
+         * List of the accessibility services to which the user has granted
+         * permission to put the device into touch exploration mode.
+         *
+         * @hide
+         */
+        public static final String TOUCH_EXPLORATION_GRANTED_ACCESSIBILITY_SERVICES =
+            "touch_exploration_granted_accessibility_services";
 
         /**
          * Whether to speak passwords while in accessibility mode.
@@ -2993,6 +3891,22 @@ public final class Settings {
          */
         public static final String ACCESSIBILITY_SCRIPT_INJECTION =
             "accessibility_script_injection";
+
+        /**
+         * The URL for the injected JavaScript based screen-reader used
+         * for providing accessibility of content in WebView.
+         * <p>
+         *   Note: The JavaScript based screen-reader is served by the
+         *   Google infrastructure and enable users with disabilities to
+         *   efficiently navigate in and explore web content.
+         * </p>
+         * <p>
+         *   This property represents a string value.
+         * </p>
+         * @hide
+         */
+        public static final String ACCESSIBILITY_SCREEN_READER_URL =
+            "accessibility_script_injection_url";
 
         /**
          * Key bindings for navigation in built-in accessibility support for web content.
@@ -3031,6 +3945,46 @@ public final class Settings {
          */
         public static final String ACCESSIBILITY_WEB_CONTENT_KEY_BINDINGS =
             "accessibility_web_content_key_bindings";
+
+        /**
+         * Setting that specifies whether the display magnification is enabled.
+         * Display magnifications allows the user to zoom in the display content
+         * and is targeted to low vision users. The current magnification scale
+         * is controlled by {@link #ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE}.
+         *
+         * @hide
+         */
+        public static final String ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED =
+                "accessibility_display_magnification_enabled";
+
+        /**
+         * Setting that specifies what the display magnification scale is.
+         * Display magnifications allows the user to zoom in the display
+         * content and is targeted to low vision users. Whether a display
+         * magnification is performed is controlled by
+         * {@link #ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED}
+         *
+         * @hide
+         */
+        public static final String ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE =
+                "accessibility_display_magnification_scale";
+
+        /**
+         * Setting that specifies whether the display magnification should be
+         * automatically updated. If this fearture is enabled the system will
+         * exit magnification mode or pan the viewport when a context change
+         * occurs. For example, on staring a new activity or rotating the screen,
+         * the system may zoom out so the user can see the new context he is in.
+         * Another example is on showing a window that is not visible in the
+         * magnified viewport the system may pan the viewport to make the window
+         * the has popped up so the user knows that the context has changed.
+         * Whether a screen magnification is performed is controlled by
+         * {@link #ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED}
+         *
+         * @hide
+         */
+        public static final String ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE =
+                "accessibility_display_magnification_auto_update";
 
         /**
          * The timout for considering a press to be a long press in milliseconds.
@@ -3158,15 +4112,6 @@ public final class Settings {
          * Whether the Wi-Fi should be on.  Only the Wi-Fi service should touch this.
          */
         public static final String WIFI_ON = "wifi_on";
-
-        /**
-         * Used to save the Wifi_ON state prior to tethering.
-         * This state will be checked to restore Wifi after
-         * the user turns off tethering.
-         *
-         * @hide
-         */
-        public static final String WIFI_SAVED_STATE = "wifi_saved_state";
 
         /**
          * AP SSID
@@ -3401,13 +4346,6 @@ public final class Settings {
          */
         public static final String ALLOWED_GEOLOCATION_ORIGINS
                 = "allowed_geolocation_origins";
-
-        /**
-         * Whether mobile data connections are allowed by the user.  See
-         * ConnectivityManager for more info.
-         * @hide
-         */
-        public static final String MOBILE_DATA = "mobile_data";
 
         /**
          * The CDMA roaming mode 0 = Home Networks, CDMA default
@@ -3657,76 +4595,23 @@ public final class Settings {
         public static final String REBOOT_WINDOW = "reboot_window";
 
         /**
-         * Threshold values for the duration and level of a discharge cycle, under
-         * which we log discharge cycle info.
-         * @hide
-         */
-        public static final String BATTERY_DISCHARGE_DURATION_THRESHOLD =
-                "battery_discharge_duration_threshold";
-        /** @hide */
-        public static final String BATTERY_DISCHARGE_THRESHOLD = "battery_discharge_threshold";
-
-        /**
-         * Flag for allowing ActivityManagerService to send ACTION_APP_ERROR intents
-         * on application crashes and ANRs. If this is disabled, the crash/ANR dialog
-         * will never display the "Report" button.
-         * Type: int ( 0 = disallow, 1 = allow )
-         * @hide
-         */
-        public static final String SEND_ACTION_APP_ERROR = "send_action_app_error";
-
-        /**
-         * Nonzero causes Log.wtf() to crash.
-         * @hide
-         */
-        public static final String WTF_IS_FATAL = "wtf_is_fatal";
-
-        /**
-         * Maximum age of entries kept by {@link com.android.internal.os.IDropBoxManagerService}.
-         * @hide
-         */
-        public static final String DROPBOX_AGE_SECONDS =
-                "dropbox_age_seconds";
-        /**
-         * Maximum number of entry files which {@link com.android.internal.os.IDropBoxManagerService} will keep around.
-         * @hide
-         */
-        public static final String DROPBOX_MAX_FILES =
-                "dropbox_max_files";
-        /**
-         * Maximum amount of disk space used by {@link com.android.internal.os.IDropBoxManagerService} no matter what.
-         * @hide
-         */
-        public static final String DROPBOX_QUOTA_KB =
-                "dropbox_quota_kb";
-        /**
-         * Percent of free disk (excluding reserve) which {@link com.android.internal.os.IDropBoxManagerService} will use.
-         * @hide
-         */
-        public static final String DROPBOX_QUOTA_PERCENT =
-                "dropbox_quota_percent";
-        /**
-         * Percent of total disk which {@link com.android.internal.os.IDropBoxManagerService} will never dip into.
-         * @hide
-         */
-        public static final String DROPBOX_RESERVE_PERCENT =
-                "dropbox_reserve_percent";
-        /**
-         * Prefix for per-tag dropbox disable/enable settings.
-         * @hide
-         */
-        public static final String DROPBOX_TAG_PREFIX =
-                "dropbox:";
-        /**
-         * Lines of logcat to include with system crash/ANR/etc. reports,
-         * as a prefix of the dropbox tag of the report type.
-         * For example, "logcat_for_system_server_anr" controls the lines
-         * of logcat captured with system server ANR reports.  0 to disable.
-         * @hide
-         */
-        public static final String ERROR_LOGCAT_PREFIX =
-                "logcat_for_";
-
+        * Overlay display devices setting.
+        * The associated value is a specially formatted string that describes the
+        * size and density of simulated secondary display devices.
+        * <p>
+        * Format: {width}x{height}/{dpi};...
+        * </p><p>
+        * Example:
+        * <ul>
+        * <li><code>1280x720/213</code>: make one overlay that is 1280x720 at 213dpi.</li>
+        * <li><code>1920x1080/320;1280x720/213</code>: make two overlays, the first
+        * at 1080p and the second at 720p.</li>
+        * <li>If the value is empty, then no overlay display devices are created.</li>
+        * </ul></p>
+        *
+        * @hide
+        */
+       public static final String OVERLAY_DISPLAY_DEVICES = "overlay_display_devices";
 
         /**
          * Screen timeout in milliseconds corresponding to the
@@ -3862,32 +4747,6 @@ public final class Settings {
                 "pdp_watchdog_max_pdp_reset_fail_count";
 
         /**
-         * The number of milliseconds to delay when checking for data stalls during
-         * non-aggressive detection. (screen is turned off.)
-         * @hide
-         */
-        public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
-                "data_stall_alarm_non_aggressive_delay_in_ms";
-
-        /**
-         * The number of milliseconds to delay when checking for data stalls during
-         * aggressive detection. (screen on or suspected data stall)
-         * @hide
-         */
-        public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
-                "data_stall_alarm_aggressive_delay_in_ms";
-
-        /**
-         * The interval in milliseconds at which to check gprs registration
-         * after the first registration mismatch of gprs and voice service,
-         * to detect possible data network registration problems.
-         *
-         * @hide
-         */
-        public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
-                "gprs_register_check_period_ms";
-
-        /**
          * The length of time in milli-seconds that automatic small adjustments to
          * SystemClock are ignored if NITZ_UPDATE_DIFF is not exceeded.
          * @hide
@@ -3901,14 +4760,6 @@ public final class Settings {
          * @hide
          */
         public static final String NITZ_UPDATE_DIFF = "nitz_update_diff";
-
-        /**
-         * The maximum reconnect delay for short network outages or when the network is suspended
-         * due to phone use.
-         * @hide
-         */
-        public static final String SYNC_MAX_RETRY_DELAY_IN_SECONDS =
-                "sync_max_retry_delay_in_seconds";
 
         /**
          * The interval in milliseconds at which to check the number of SMS sent
@@ -4082,6 +4933,12 @@ public final class Settings {
         public static final String KILL_APP_LONGPRESS_BACK = "kill_app_longpress_back";
 
         /**
+         * Whether to include options in power menu for rebooting into recovery or bootloader
+         * @hide
+         */
+        public static final String ADVANCED_REBOOT = "advanced_reboot";
+
+        /**
          * The {@link ComponentName} string of the service to be used as the voice recognition
          * service.
          *
@@ -4145,6 +5002,36 @@ public final class Settings {
                 INCALL_POWER_BUTTON_BEHAVIOR_SCREEN_OFF;
 
         /**
+         * What happens when the user presses the Home button when the
+         * phone is ringing.<br/>
+         * <b>Values:</b><br/>
+         * 1 - Nothing happens. (Default behavior)<br/>
+         * 2 - The Home button answer the current call.<br/>
+         *
+         * @hide
+         */
+        public static final String RING_HOME_BUTTON_BEHAVIOR = "ring_home_button_behavior";
+
+        /**
+         * RING_HOME_BUTTON_BEHAVIOR value for "do nothing".
+         * @hide
+         */
+        public static final int RING_HOME_BUTTON_BEHAVIOR_DO_NOTHING = 0x1;
+
+        /**
+         * RING_HOME_BUTTON_BEHAVIOR value for "answer".
+         * @hide
+         */
+        public static final int RING_HOME_BUTTON_BEHAVIOR_ANSWER = 0x2;
+
+        /**
+         * RING_HOME_BUTTON_BEHAVIOR default value.
+         * @hide
+         */
+        public static final int RING_HOME_BUTTON_BEHAVIOR_DEFAULT =
+                RING_HOME_BUTTON_BEHAVIOR_DO_NOTHING;
+
+        /**
          * The current night mode that has been selected by the user.  Owned
          * and controlled by UiModeManagerService.  Constants are as per
          * UiModeManager.
@@ -4153,19 +5040,45 @@ public final class Settings {
         public static final String UI_NIGHT_MODE = "ui_night_mode";
 
         /**
+         * Whether screensavers are enabled.
+         * @hide
+         */
+        public static final String SCREENSAVER_ENABLED = "screensaver_enabled";
+
+        /**
+         * The user's chosen screensaver components.
+         *
+         * These will be launched by the PhoneWindowManager after a timeout when not on
+         * battery, or upon dock insertion (if SCREENSAVER_ACTIVATE_ON_DOCK is set to 1).
+         * @hide
+         */
+        public static final String SCREENSAVER_COMPONENTS = "screensaver_components";
+
+        /**
+         * If screensavers are enabled, whether the screensaver should be automatically launched
+         * when the device is inserted into a (desk) dock.
+         * @hide
+         */
+        public static final String SCREENSAVER_ACTIVATE_ON_DOCK = "screensaver_activate_on_dock";
+
+        /**
+         * If screensavers are enabled, whether the screensaver should be automatically launched
+         * when the screen times out when not on battery.
+         * @hide
+         */
+        public static final String SCREENSAVER_ACTIVATE_ON_SLEEP = "screensaver_activate_on_sleep";
+
+        /**
+         * If screensavers are enabled, the default screensaver component.
+         * @hide
+         */
+        public static final String SCREENSAVER_DEFAULT_COMPONENT = "screensaver_default_component";
+
+        /**
          * Let user pick default install location.
          * @hide
          */
         public static final String SET_INSTALL_LOCATION = "set_install_location";
-
-        /**
-         * Default install location value.
-         * 0 = auto, let system decide
-         * 1 = internal
-         * 2 = sdcard
-         * @hide
-         */
-        public static final String DEFAULT_INSTALL_LOCATION = "default_install_location";
 
         /**
          * The bandwidth throttle polling freqency in seconds
@@ -4289,16 +5202,6 @@ public final class Settings {
         /** Timeout in milliseconds to wait for NTP server. {@hide} */
         public static final String NTP_TIMEOUT = "ntp_timeout";
 
-        /** Autofill server address (Used in WebView/browser). {@hide} */
-        public static final String WEB_AUTOFILL_QUERY_URL =
-            "web_autofill_query_url";
-
-        /** Whether package verification is enabled. {@hide} */
-        public static final String PACKAGE_VERIFIER_ENABLE = "verifier_enable";
-
-        /** Timeout for package verification. {@hide} */
-        public static final String PACKAGE_VERIFIER_TIMEOUT = "verifier_timeout";
-
         /**
          * Duration in milliseconds before pre-authorized URIs for the contacts
          * provider should expire.
@@ -4317,14 +5220,19 @@ public final class Settings {
          * @hide
          */
         public static final String[] SETTINGS_TO_BACKUP = {
+            BUGREPORT_IN_POWER_MENU,
             ADB_ENABLED,
             ALLOW_MOCK_LOCATION,
             PARENTAL_CONTROL_ENABLED,
             PARENTAL_CONTROL_REDIRECT_URL,
-            USB_MASS_STORAGE_ENABLED,
+            USB_MASS_STORAGE_ENABLED,                           // moved to global
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED,
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE,
+            ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE,
             ACCESSIBILITY_SCRIPT_INJECTION,
             BACKUP_AUTO_RESTORE,
             ENABLED_ACCESSIBILITY_SERVICES,
+            TOUCH_EXPLORATION_GRANTED_ACCESSIBILITY_SERVICES,
             TOUCH_EXPLORATION_ENABLED,
             ACCESSIBILITY_ENABLED,
             ACCESSIBILITY_SPEAK_PASSWORD,
@@ -4345,7 +5253,8 @@ public final class Settings {
             MOUNT_UMS_NOTIFY_ENABLED,
             UI_NIGHT_MODE,
             LOCK_SCREEN_OWNER_INFO,
-            LOCK_SCREEN_OWNER_INFO_ENABLED
+            LOCK_SCREEN_OWNER_INFO_ENABLED,
+            ADVANCED_REBOOT
         };
 
         /**
@@ -4355,7 +5264,20 @@ public final class Settings {
          * @return true if the provider is enabled
          */
         public static final boolean isLocationProviderEnabled(ContentResolver cr, String provider) {
-            String allowedProviders = Settings.Secure.getString(cr, LOCATION_PROVIDERS_ALLOWED);
+            return isLocationProviderEnabledForUser(cr, provider, UserHandle.myUserId());
+        }
+
+        /**
+         * Helper method for determining if a location provider is enabled.
+         * @param cr the content resolver to use
+         * @param provider the location provider to query
+         * @param userId the userId to query
+         * @return true if the provider is enabled
+         * @hide
+         */
+        public static final boolean isLocationProviderEnabledForUser(ContentResolver cr, String provider, int userId) {
+            String allowedProviders = Settings.Secure.getStringForUser(cr,
+                    LOCATION_PROVIDERS_ALLOWED, userId);
             return TextUtils.delimitedStringContains(allowedProviders, ',', provider);
         }
 
@@ -4367,6 +5289,19 @@ public final class Settings {
          */
         public static final void setLocationProviderEnabled(ContentResolver cr,
                 String provider, boolean enabled) {
+            setLocationProviderEnabledForUser(cr, provider, enabled, UserHandle.myUserId());
+        }
+
+        /**
+         * Thread-safe method for enabling or disabling a single location provider.
+         * @param cr the content resolver to use
+         * @param provider the location provider to enable or disable
+         * @param enabled true if the provider should be enabled
+         * @param userId the userId for which to enable/disable providers
+         * @hide
+         */
+        public static final void setLocationProviderEnabledForUser(ContentResolver cr,
+                String provider, boolean enabled, int userId) {
             // to ensure thread safety, we write the provider name with a '+' or '-'
             // and let the SettingsProvider handle it rather than reading and modifying
             // the list of enabled providers.
@@ -4375,7 +5310,676 @@ public final class Settings {
             } else {
                 provider = "-" + provider;
             }
-            putString(cr, Settings.Secure.LOCATION_PROVIDERS_ALLOWED, provider);
+            putStringForUser(cr, Settings.Secure.LOCATION_PROVIDERS_ALLOWED, provider,
+                    userId);
+        }
+    }
+
+     /**
+     * Global system settings, containing preferences that always apply identically
+     * to all defined users.  Applications can read these but are not allowed to write;
+     * like the "Secure" settings, these are for preferences that the user must
+     * explicitly modify through the system UI or specialized APIs for those values.
+     */
+    public static final class Global extends NameValueTable {
+        public static final String SYS_PROP_SETTING_VERSION = "sys.settings_global_version";
+
+        /**
+         * The content:// style URL for global secure settings items.  Not public.
+         */
+        public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY + "/global");
+
+        /**
+         * Setting whether the global gesture for enabling accessibility is enabled.
+         * If this gesture is enabled the user will be able to perfrom it to enable
+         * the accessibility state without visiting the settings app.
+         * @hide
+         */
+        public static final String ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED =
+                "enable_accessibility_global_gesture_enabled";
+
+        /**
+         * Whether Airplane Mode is on.
+         */
+        public static final String AIRPLANE_MODE_ON = "airplane_mode_on";
+
+        /**
+         * Constant for use in AIRPLANE_MODE_RADIOS to specify Bluetooth radio.
+         */
+        public static final String RADIO_BLUETOOTH = "bluetooth";
+
+        /**
+         * URI for the "device locked" (keyguard shown) sound.
+         * @hide
+         */
+        public static final String LOCK_SOUND = "lock_sound";
+
+        /**
+         * URI for the "device unlocked" sound.
+         * @hide
+         */
+        public static final String UNLOCK_SOUND = "unlock_sound";
+
+        /**
+         * URI for the "wireless charging started" sound.
+         * @hide
+         */
+        public static final String WIRELESS_CHARGING_STARTED_SOUND =
+                "wireless_charging_started_sound";
+
+        /**
+         * Whether we keep the device on while the device is plugged in.
+         * Supported values are:
+         * <ul>
+         * <li>{@code 0} to never stay on while plugged in</li>
+         * <li>{@link BatteryManager#BATTERY_PLUGGED_AC} to stay on for AC charger</li>
+         * <li>{@link BatteryManager#BATTERY_PLUGGED_USB} to stay on for USB charger</li>
+         * <li>{@link BatteryManager#BATTERY_PLUGGED_WIRELESS} to stay on for wireless charger</li>
+         * </ul>
+         * These values can be OR-ed together.
+         */
+        public static final String STAY_ON_WHILE_PLUGGED_IN = "stay_on_while_plugged_in";
+
+        /**
+         * Whether ADB is enabled.
+         */
+        public static final String ADB_ENABLED = "adb_enabled";
+
+        /**
+         * Whether assisted GPS should be enabled or not.
+         * @hide
+         */
+        public static final String ASSISTED_GPS_ENABLED = "assisted_gps_enabled";
+
+        /**
+         * Whether bluetooth is enabled/disabled
+         * 0=disabled. 1=enabled.
+         */
+        public static final String BLUETOOTH_ON = "bluetooth_on";
+
+        /**
+         * Whether or not data roaming is enabled. (0 = false, 1 = true)
+         */
+        public static final String DATA_ROAMING = "data_roaming";
+
+        /**
+         * Whether the device has been provisioned (0 = false, 1 = true)
+         */
+        public static final String DEVICE_PROVISIONED = "device_provisioned";
+
+        /**
+         * The saved value for WindowManagerService.setForcedDisplayDensity().
+         * One integer in dpi.  If unset, then use the real display density.
+         * @hide
+         */
+        public static final String DISPLAY_DENSITY_FORCED = "display_density_forced";
+
+        /**
+         * The saved value for WindowManagerService.setForcedDisplaySize().
+         * Two integers separated by a comma.  If unset, then use the real display size.
+         * @hide
+         */
+        public static final String DISPLAY_SIZE_FORCED = "display_size_forced";
+
+        /**
+         * Whether the package installer should allow installation of apps downloaded from
+         * sources other than Google Play.
+         *
+         * 1 = allow installing from other sources
+         * 0 = only allow installing from Google Play
+         */
+        public static final String INSTALL_NON_MARKET_APPS = "install_non_market_apps";
+
+        /**
+         * Whether mobile data connections are allowed by the user.  See
+         * ConnectivityManager for more info.
+         * @hide
+         */
+        public static final String MOBILE_DATA = "mobile_data";
+
+        /**
+         * USB Mass Storage Enabled
+         */
+        public static final String USB_MASS_STORAGE_ENABLED = "usb_mass_storage_enabled";
+
+        /** Autofill server address (Used in WebView/browser).
+         * {@hide} */
+        public static final String WEB_AUTOFILL_QUERY_URL = "web_autofill_query_url";
+
+        /**
+         * Whether the package manager should send package verification broadcasts for verifiers to
+         * review apps prior to installation.
+         * 1 = request apps to be verified prior to installation, if a verifier exists.
+         * 0 = do not verify apps before installation
+         * @hide
+         */
+        public static final String PACKAGE_VERIFIER_ENABLE = "package_verifier_enable";
+
+        /** Timeout for package verification.
+         * @hide */
+        public static final String PACKAGE_VERIFIER_TIMEOUT = "verifier_timeout";
+
+        /** Default response code for package verification.
+         * @hide */
+        public static final String PACKAGE_VERIFIER_DEFAULT_RESPONSE = "verifier_default_response";
+
+        /**
+         * Run package verificaiton on apps installed through ADB/ADT/USB
+         * 1 = perform package verification on ADB installs (default)
+         * 0 = bypass package verification on ADB installs
+         * @hide
+         */
+        public static final String PACKAGE_VERIFIER_INCLUDE_ADB = "verifier_verify_adb_installs";
+
+        /**
+         * Used to save the Wifi_ON state prior to tethering.
+         * This state will be checked to restore Wifi after
+         * the user turns off tethering.
+         *
+         * @hide
+         */
+        public static final String WIFI_SAVED_STATE = "wifi_saved_state";
+
+        /**
+        * The number of milliseconds to delay when checking for data stalls during
+        * non-aggressive detection. (screen is turned off.)
+        * @hide
+        */
+       public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
+               "data_stall_alarm_non_aggressive_delay_in_ms";
+
+       /**
+        * The number of milliseconds to delay when checking for data stalls during
+        * aggressive detection. (screen on or suspected data stall)
+        * @hide
+        */
+       public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
+               "data_stall_alarm_aggressive_delay_in_ms";
+
+       /**
+        * The interval in milliseconds at which to check gprs registration
+        * after the first registration mismatch of gprs and voice service,
+        * to detect possible data network registration problems.
+        *
+        * @hide
+        */
+       public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
+               "gprs_register_check_period_ms";
+
+        /**
+         * Nonzero causes Log.wtf() to crash.
+         * @hide
+         */
+        public static final String WTF_IS_FATAL = "wtf_is_fatal";
+
+        /**
+        * Overlay display devices setting.
+        * The associated value is a specially formatted string that describes the
+        * size and density of simulated secondary display devices.
+        * <p>
+        * Format: {width}x{height}/{dpi};...
+        * </p><p>
+        * Example:
+        * <ul>
+        * <li><code>1280x720/213</code>: make one overlay that is 1280x720 at 213dpi.</li>
+        * <li><code>1920x1080/320;1280x720/213</code>: make two overlays, the first
+        * at 1080p and the second at 720p.</li>
+        * <li>If the value is empty, then no overlay display devices are created.</li>
+        * </ul></p>
+        *
+        * @hide
+        */
+       public static final String OVERLAY_DISPLAY_DEVICES = "overlay_display_devices";
+
+        /**
+         * Threshold values for the duration and level of a discharge cycle,
+         * under which we log discharge cycle info.
+         *
+         * @hide
+         */
+        public static final String
+                BATTERY_DISCHARGE_DURATION_THRESHOLD = "battery_discharge_duration_threshold";
+
+        /** @hide */
+        public static final String BATTERY_DISCHARGE_THRESHOLD = "battery_discharge_threshold";
+
+        /**
+         * Flag for allowing ActivityManagerService to send ACTION_APP_ERROR
+         * intents on application crashes and ANRs. If this is disabled, the
+         * crash/ANR dialog will never display the "Report" button.
+         * <p>
+         * Type: int (0 = disallow, 1 = allow)
+         *
+         * @hide
+         */
+        public static final String SEND_ACTION_APP_ERROR = "send_action_app_error";
+
+        /**
+         * Maximum age of entries kept by {@link DropBoxManager}.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_AGE_SECONDS = "dropbox_age_seconds";
+
+        /**
+         * Maximum number of entry files which {@link DropBoxManager} will keep
+         * around.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_MAX_FILES = "dropbox_max_files";
+
+        /**
+         * Maximum amount of disk space used by {@link DropBoxManager} no matter
+         * what.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_QUOTA_KB = "dropbox_quota_kb";
+
+        /**
+         * Percent of free disk (excluding reserve) which {@link DropBoxManager}
+         * will use.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_QUOTA_PERCENT = "dropbox_quota_percent";
+
+        /**
+         * Percent of total disk which {@link DropBoxManager} will never dip
+         * into.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_RESERVE_PERCENT = "dropbox_reserve_percent";
+
+        /**
+         * Prefix for per-tag dropbox disable/enable settings.
+         *
+         * @hide
+         */
+        public static final String DROPBOX_TAG_PREFIX = "dropbox:";
+
+        /**
+         * Lines of logcat to include with system crash/ANR/etc. reports, as a
+         * prefix of the dropbox tag of the report type. For example,
+         * "logcat_for_system_server_anr" controls the lines of logcat captured
+         * with system server ANR reports. 0 to disable.
+         *
+         * @hide
+         */
+        public static final String ERROR_LOGCAT_PREFIX = "logcat_for_";
+
+        /**
+         * The maximum reconnect delay for short network outages or when the
+         * network is suspended due to phone use.
+         *
+         * @hide
+         */
+        public static final String
+                SYNC_MAX_RETRY_DELAY_IN_SECONDS = "sync_max_retry_delay_in_seconds";
+
+        /**
+         * Default install location value.
+         * 0 = auto, let system decide
+         * 1 = internal
+         * 2 = sdcard
+         * @hide
+         */
+        public static final String DEFAULT_INSTALL_LOCATION = "default_install_location";
+
+        /** {@hide} */
+        public static final String
+                READ_EXTERNAL_STORAGE_ENFORCED_DEFAULT = "read_external_storage_enforced_default";
+
+        /**
+         * Scaling factor for normal window animations. Setting to 0 will
+         * disable window animations.
+         */
+        public static final String WINDOW_ANIMATION_SCALE = "window_animation_scale";
+
+        /**
+         * Scaling factor for activity transition animations. Setting to 0 will
+         * disable window animations.
+         */
+        public static final String TRANSITION_ANIMATION_SCALE = "transition_animation_scale";
+
+        /**
+         * Scaling factor for Animator-based animations. This affects both the
+         * start delay and duration of all such animations. Setting to 0 will
+         * cause animations to end immediately. The default value is 1.
+         */
+        public static final String ANIMATOR_DURATION_SCALE = "animator_duration_scale";
+
+        /**
+         * If 0, the compatibility mode is off for all applications.
+         * If 1, older applications run under compatibility mode.
+         * TODO: remove this settings before code freeze (bug/1907571)
+         * @hide
+         */
+        public static final String COMPATIBILITY_MODE = "compatibility_mode";
+
+        /**
+         * The preferred network mode   7 = Global
+         *                              6 = EvDo only
+         *                              5 = CDMA w/o EvDo
+         *                              4 = CDMA / EvDo auto
+         *                              3 = GSM / WCDMA auto
+         *                              2 = WCDMA only
+         *                              1 = GSM only
+         *                              0 = GSM / WCDMA preferred
+         * @hide
+         */
+        public static final String PREFERRED_NETWORK_MODE =
+                "preferred_network_mode";
+
+         /**
+         * Name of an application package to be debugged.
+         */
+        public static final String DEBUG_APP = "debug_app";
+
+        /**
+         * If 1, when launching DEBUG_APP it will wait for the debugger before
+         * starting user code.  If 0, it will run normally.
+         */
+        public static final String WAIT_FOR_DEBUGGER = "wait_for_debugger";
+
+        /**
+         * Control whether the process CPU usage meter should be shown.
+         */
+        public static final String SHOW_PROCESSES = "show_processes";
+
+        /**
+         * If 1, the activity manager will aggressively finish activities and
+         * processes as soon as they are no longer needed.  If 0, the normal
+         * extended lifetime is used.
+         */
+        public static final String ALWAYS_FINISH_ACTIVITIES =
+                "always_finish_activities";
+
+        /**
+         * Settings to backup. This is here so that it's in the same place as the settings
+         * keys and easy to update.
+         *
+         * These keys may be mentioned in the SETTINGS_TO_BACKUP arrays in System
+         * and Secure as well.  This is because those tables drive both backup and
+         * restore, and restore needs to properly whitelist keys that used to live
+         * in those namespaces.  The keys will only actually be backed up / restored
+         * if they are also mentioned in this table (Global.SETTINGS_TO_BACKUP).
+         *
+         * NOTE: Settings are backed up and restored in the order they appear
+         *       in this array. If you have one setting depending on another,
+         *       make sure that they are ordered appropriately.
+         *
+         * @hide
+         */
+        public static final String[] SETTINGS_TO_BACKUP = {
+            STAY_ON_WHILE_PLUGGED_IN,
+            USB_MASS_STORAGE_ENABLED,
+            ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED
+        };
+
+        // Populated lazily, guarded by class object:
+        private static NameValueCache sNameValueCache = new NameValueCache(
+                    SYS_PROP_SETTING_VERSION,
+                    CONTENT_URI,
+                    CALL_METHOD_GET_GLOBAL,
+                    CALL_METHOD_PUT_GLOBAL);
+
+        /**
+         * Look up a name in the database.
+         * @param resolver to access the database with
+         * @param name to look up in the table
+         * @return the corresponding value, or null if not present
+         */
+        public static String getString(ContentResolver resolver, String name) {
+            return getStringForUser(resolver, name, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static String getStringForUser(ContentResolver resolver, String name,
+                int userHandle) {
+            return sNameValueCache.getStringForUser(resolver, name, userHandle);
+        }
+
+        /**
+         * Store a name/value pair into the database.
+         * @param resolver to access the database with
+         * @param name to store
+         * @param value to associate with the name
+         * @return true if the value was set, false on database errors
+         */
+        public static boolean putString(ContentResolver resolver,
+                String name, String value) {
+            return putStringForUser(resolver, name, value, UserHandle.myUserId());
+        }
+
+        /** @hide */
+        public static boolean putStringForUser(ContentResolver resolver,
+                String name, String value, int userHandle) {
+            if (LOCAL_LOGV) {
+                Log.v(TAG, "Global.putString(name=" + name + ", value=" + value
+                        + " for " + userHandle);
+            }
+            return sNameValueCache.putStringForUser(resolver, name, value, userHandle);
+        }
+
+        /**
+         * Construct the content URI for a particular name/value pair,
+         * useful for monitoring changes with a ContentObserver.
+         * @param name to look up in the table
+         * @return the corresponding content URI, or null if not present
+         */
+        public static Uri getUriFor(String name) {
+            return getUriFor(CONTENT_URI, name);
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as an integer.  Note that internally setting values are always
+         * stored as strings; this function converts the string to an integer
+         * for you.  The default value will be returned if the setting is
+         * not defined or not an integer.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         * @param def Value to return if the setting is not defined.
+         *
+         * @return The setting's current value, or 'def' if it is not defined
+         * or not a valid integer.
+         */
+        public static int getInt(ContentResolver cr, String name, int def) {
+            String v = getString(cr, name);
+            try {
+                return v != null ? Integer.parseInt(v) : def;
+            } catch (NumberFormatException e) {
+                return def;
+            }
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as an integer.  Note that internally setting values are always
+         * stored as strings; this function converts the string to an integer
+         * for you.
+         * <p>
+         * This version does not take a default value.  If the setting has not
+         * been set, or the string value is not a number,
+         * it throws {@link SettingNotFoundException}.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         *
+         * @throws SettingNotFoundException Thrown if a setting by the given
+         * name can't be found or the setting value is not an integer.
+         *
+         * @return The setting's current value.
+         */
+        public static int getInt(ContentResolver cr, String name)
+                throws SettingNotFoundException {
+            String v = getString(cr, name);
+            try {
+                return Integer.parseInt(v);
+            } catch (NumberFormatException e) {
+                throw new SettingNotFoundException(name);
+            }
+        }
+
+        /**
+         * Convenience function for updating a single settings value as an
+         * integer. This will either create a new entry in the table if the
+         * given name does not exist, or modify the value of the existing row
+         * with that name.  Note that internally setting values are always
+         * stored as strings, so this function converts the given value to a
+         * string before storing it.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to modify.
+         * @param value The new value for the setting.
+         * @return true if the value was set, false on database errors
+         */
+        public static boolean putInt(ContentResolver cr, String name, int value) {
+            return putString(cr, name, Integer.toString(value));
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as a {@code long}.  Note that internally setting values are always
+         * stored as strings; this function converts the string to a {@code long}
+         * for you.  The default value will be returned if the setting is
+         * not defined or not a {@code long}.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         * @param def Value to return if the setting is not defined.
+         *
+         * @return The setting's current value, or 'def' if it is not defined
+         * or not a valid {@code long}.
+         */
+        public static long getLong(ContentResolver cr, String name, long def) {
+            String valString = getString(cr, name);
+            long value;
+            try {
+                value = valString != null ? Long.parseLong(valString) : def;
+            } catch (NumberFormatException e) {
+                value = def;
+            }
+            return value;
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as a {@code long}.  Note that internally setting values are always
+         * stored as strings; this function converts the string to a {@code long}
+         * for you.
+         * <p>
+         * This version does not take a default value.  If the setting has not
+         * been set, or the string value is not a number,
+         * it throws {@link SettingNotFoundException}.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         *
+         * @return The setting's current value.
+         * @throws SettingNotFoundException Thrown if a setting by the given
+         * name can't be found or the setting value is not an integer.
+         */
+        public static long getLong(ContentResolver cr, String name)
+                throws SettingNotFoundException {
+            String valString = getString(cr, name);
+            try {
+                return Long.parseLong(valString);
+            } catch (NumberFormatException e) {
+                throw new SettingNotFoundException(name);
+            }
+        }
+
+        /**
+         * Convenience function for updating a secure settings value as a long
+         * integer. This will either create a new entry in the table if the
+         * given name does not exist, or modify the value of the existing row
+         * with that name.  Note that internally setting values are always
+         * stored as strings, so this function converts the given value to a
+         * string before storing it.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to modify.
+         * @param value The new value for the setting.
+         * @return true if the value was set, false on database errors
+         */
+        public static boolean putLong(ContentResolver cr, String name, long value) {
+            return putString(cr, name, Long.toString(value));
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as a floating point number.  Note that internally setting values are
+         * always stored as strings; this function converts the string to an
+         * float for you. The default value will be returned if the setting
+         * is not defined or not a valid float.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         * @param def Value to return if the setting is not defined.
+         *
+         * @return The setting's current value, or 'def' if it is not defined
+         * or not a valid float.
+         */
+        public static float getFloat(ContentResolver cr, String name, float def) {
+            String v = getString(cr, name);
+            try {
+                return v != null ? Float.parseFloat(v) : def;
+            } catch (NumberFormatException e) {
+                return def;
+            }
+        }
+
+        /**
+         * Convenience function for retrieving a single secure settings value
+         * as a float.  Note that internally setting values are always
+         * stored as strings; this function converts the string to a float
+         * for you.
+         * <p>
+         * This version does not take a default value.  If the setting has not
+         * been set, or the string value is not a number,
+         * it throws {@link SettingNotFoundException}.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to retrieve.
+         *
+         * @throws SettingNotFoundException Thrown if a setting by the given
+         * name can't be found or the setting value is not a float.
+         *
+         * @return The setting's current value.
+         */
+        public static float getFloat(ContentResolver cr, String name)
+                throws SettingNotFoundException {
+            String v = getString(cr, name);
+            if (v == null) {
+                throw new SettingNotFoundException(name);
+            }
+            try {
+                return Float.parseFloat(v);
+            } catch (NumberFormatException e) {
+                throw new SettingNotFoundException(name);
+            }
+        }
+
+        /**
+         * Convenience function for updating a single settings value as a
+         * floating point number. This will either create a new entry in the
+         * table if the given name does not exist, or modify the value of the
+         * existing row with that name.  Note that internally setting values
+         * are always stored as strings, so this function converts the given
+         * value to a string before storing it.
+         *
+         * @param cr The ContentResolver to access.
+         * @param name The name of the setting to modify.
+         * @param value The new value for the setting.
+         * @return true if the value was set, false on database errors
+         */
+        public static boolean putFloat(ContentResolver cr, String name, float value) {
+            return putString(cr, name, Float.toString(value));
         }
     }
 

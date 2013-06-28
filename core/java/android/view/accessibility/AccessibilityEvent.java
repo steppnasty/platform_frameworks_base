@@ -538,6 +538,46 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public static final int TYPE_VIEW_TEXT_SELECTION_CHANGED = 0x00002000;
 
     /**
+     * Represents the event of an application making an announcement.
+     */
+    public static final int TYPE_ANNOUNCEMENT = 0x00004000;
+
+    /**
+     * Represents the event of gaining accessibility focus.
+     */
+    public static final int TYPE_VIEW_ACCESSIBILITY_FOCUSED = 0x00008000;
+
+    /**
+     * Represents the event of clearing accessibility focus.
+     */
+    public static final int TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED = 0x00010000;
+
+    /**
+     * Represents the event of traversing the text of a view at a given movement granularity.
+     */
+    public static final int TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY = 0x00020000;
+
+    /**
+     * Represents the event of beginning gesture detection.
+     */
+    public static final int TYPE_GESTURE_DETECTION_START = 0x00040000;
+
+    /**
+     * Represents the event of ending gesture detection.
+     */
+    public static final int TYPE_GESTURE_DETECTION_END = 0x00080000;
+
+    /**
+     * Represents the event of the user starting to touch the screen.
+     */
+    public static final int TYPE_TOUCH_INTERACTION_START = 0x00100000;
+
+    /**
+     * Represents the event of the user ending to touch the screen.
+     */
+    public static final int TYPE_TOUCH_INTERACTION_END = 0x00200000;
+
+    /**
      * Mask for {@link AccessibilityEvent} all types.
      *
      * @see #TYPE_VIEW_CLICKED
@@ -554,6 +594,7 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
      * @see #TYPE_WINDOW_CONTENT_CHANGED
      * @see #TYPE_VIEW_SCROLLED
      * @see #TYPE_VIEW_TEXT_SELECTION_CHANGED
+     * @see #TYPE_ANNOUNCEMENT
      */
     public static final int TYPES_ALL_MASK = 0xFFFFFFFF;
 
@@ -567,6 +608,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     private int mEventType;
     private CharSequence mPackageName;
     private long mEventTime;
+    int mMovementGranularity;
+    int mAction;
 
     private final ArrayList<AccessibilityRecord> mRecords = new ArrayList<AccessibilityRecord>();
 
@@ -698,6 +741,48 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public void setPackageName(CharSequence packageName) {
         enforceNotSealed();
         mPackageName = packageName;
+    }
+
+    /**
+     * Sets the movement granularity that was traversed.
+     *
+     * @param granularity The granularity.
+     *
+     * @throws IllegalStateException If called from an AccessibilityService.
+     */
+    public void setMovementGranularity(int granularity) {
+        enforceNotSealed();
+        mMovementGranularity = granularity;
+    }
+
+    /**
+     * Gets the movement granularity that was traversed.
+     *
+     * @return The granularity.
+     */
+    public int getMovementGranularity() {
+        return mMovementGranularity;
+    }
+
+    /**
+     * Sets the performed action that triggered this event.
+     *
+     * @param action The action.
+     *
+     * @throws IllegalStateException If called from an AccessibilityService.
+     */
+    public void setAction(int action) {
+        enforceNotSealed();
+        mAction = action;
+    }
+
+    /**
+     * Gets the performed action that triggered this event.
+     *
+     * @return The action.
+     */
+    public int getAction() {
+        return mAction;
     }
 
     /**
@@ -984,6 +1069,14 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
                 return "TYPE_VIEW_TEXT_SELECTION_CHANGED";
             case TYPE_VIEW_SCROLLED:
                 return "TYPE_VIEW_SCROLLED";
+            case TYPE_ANNOUNCEMENT:
+                return "TYPE_ANNOUNCEMENT";
+            case TYPE_VIEW_ACCESSIBILITY_FOCUSED:
+                return "TYPE_VIEW_ACCESSIBILITY_FOCUSED";
+            case TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED:
+                return "TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED";
+            case TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY:
+                return "TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY";
             default:
                 return null;
         }

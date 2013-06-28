@@ -16,9 +16,29 @@
 
 package android.os;
 
+import com.google.android.collect.Maps;
+
+import java.util.HashMap;
+
 /** @hide */
-public class SystemService
-{
+public class SystemService {
+
+    private static HashMap<String, State> sStates = Maps.newHashMap();
+
+    /**
+     * State of a known {@code init} service.
+     */
+    public enum State {
+        RUNNING("running"),
+        STOPPING("stopping"),
+        STOPPED("stopped"),
+        RESTARTING("restarting");
+
+        State(String state) {
+            sStates.put(state, this);
+        }
+    }
+
         /** Request that the init daemon start a named service. */
     public static void start(String name) {
         SystemProperties.set("ctl.start", name);
@@ -32,5 +52,25 @@ public class SystemService
     /** Request that the init daemon restart a named service. */
     public static void restart(String name) {
         SystemProperties.set("ctl.restart", name);
+    }
+
+    /**
+     * Return current state of given service.
+     */
+    public static State getState(String service) {
+        final String rawState = SystemProperties.get("init.svc." + service);
+        final State state = sStates.get(rawState);
+        if (state != null) {
+            return state;
+        } else {
+            return State.STOPPED;
+        }
+    }
+
+    /**
+     * Check if given service is {@link State#RUNNING}.
+     */
+    public static boolean isRunning(String service) {
+        return State.RUNNING.equals(getState(service));
     }
 }

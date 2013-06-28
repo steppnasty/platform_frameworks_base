@@ -119,6 +119,24 @@ public class LayoutTransition {
     public static final int DISAPPEARING = 3;
 
     /**
+     * A flag indicating the animation that runs on those items that are changing
+     * due to a layout change not caused by items being added to or removed
+     * from the container. This transition type is not enabled by default; it can be
+     * enabled via {@link #enableTransitionType(int)}.
+     */
+    public static final int CHANGING = 4;
+
+    /**
+     * Private bit fields used to set the collection of enabled transition types for
+     * mTransitionTypes.
+     */
+    private static final int FLAG_APPEARING             = 0x01;
+    private static final int FLAG_DISAPPEARING          = 0x02;
+    private static final int FLAG_CHANGE_APPEARING      = 0x04;
+    private static final int FLAG_CHANGE_DISAPPEARING   = 0x08;
+    private static final int FLAG_CHANGING              = 0x10;
+
+    /**
      * These variables hold the animations that are currently used to run the transition effects.
      * These animations are set to defaults, but can be changed to custom animations by
      * calls to setAnimator().
@@ -212,6 +230,14 @@ public class LayoutTransition {
     private long staggerDelay;
 
     /**
+     * These are the types of transition animations that the LayoutTransition is reacting
+     * to. By default, appearing/disappearing and the change animations related to them are
+     * enabled (not CHANGING).
+     */
+    private int mTransitionTypes = FLAG_CHANGE_APPEARING | FLAG_CHANGE_DISAPPEARING |
+            FLAG_APPEARING | FLAG_DISAPPEARING;
+
+    /**
      * The set of listeners that should be notified when APPEARING/DISAPPEARING transitions
      * start and end.
      */
@@ -277,6 +303,64 @@ public class LayoutTransition {
         mChangingDisappearingDuration = duration;
         mAppearingDuration = duration;
         mDisappearingDuration = duration;
+    }
+
+    /**
+     * Enables the specified transitionType for this LayoutTransition object.
+     * By default, a LayoutTransition listens for changes in children being
+     * added/remove/hidden/shown in the container, and runs the animations associated with
+     * those events. That is, all transition types besides {@link #CHANGING} are enabled by default.
+     * You can also enable {@link #CHANGING} animations by calling this method with the
+     * {@link #CHANGING} transitionType.
+     *
+     * @param transitionType One of {@link #CHANGE_APPEARING}, {@link #CHANGE_DISAPPEARING},
+     * {@link #CHANGING}, {@link #APPEARING}, or {@link #DISAPPEARING}.
+     */
+    public void enableTransitionType(int transitionType) {
+        switch (transitionType) {
+            case APPEARING:
+                mTransitionTypes |= FLAG_APPEARING;
+                break;
+            case DISAPPEARING:
+                mTransitionTypes |= FLAG_DISAPPEARING;
+                break;
+            case CHANGE_APPEARING:
+                mTransitionTypes |= FLAG_CHANGE_APPEARING;
+                break;
+            case CHANGE_DISAPPEARING:
+                mTransitionTypes |= FLAG_CHANGE_DISAPPEARING;
+                break;
+            case CHANGING:
+                mTransitionTypes |= FLAG_CHANGING;
+                break;
+        }
+    }
+
+    /**
+     * Disables the specified transitionType for this LayoutTransition object.
+     * By default, all transition types except {@link #CHANGING} are enabled.
+     *
+     * @param transitionType One of {@link #CHANGE_APPEARING}, {@link #CHANGE_DISAPPEARING},
+     * {@link #CHANGING}, {@link #APPEARING}, or {@link #DISAPPEARING}.
+     */
+    public void disableTransitionType(int transitionType) {
+        switch (transitionType) {
+            case APPEARING:
+                mTransitionTypes &= ~FLAG_APPEARING;
+                break;
+            case DISAPPEARING:
+                mTransitionTypes &= ~FLAG_DISAPPEARING;
+                break;
+            case CHANGE_APPEARING:
+                mTransitionTypes &= ~FLAG_CHANGE_APPEARING;
+                break;
+            case CHANGE_DISAPPEARING:
+                mTransitionTypes &= ~FLAG_CHANGE_DISAPPEARING;
+                break;
+            case CHANGING:
+                mTransitionTypes &= ~FLAG_CHANGING;
+                break;
+        }
     }
 
     /**
@@ -1017,6 +1101,31 @@ public class LayoutTransition {
     }
 
     /**
+     * This method is called by ViewGroup when there is a call to layout() on the container
+     * with this LayoutTransition. If the CHANGING transition is enabled and if there is no other
+     * transition currently running on the container, then this call runs a CHANGING transition.
+     * The transition does not start immediately; it just sets up the mechanism to run if any
+     * of the children of the container change their layout parameters (similar to
+     * the CHANGE_APPEARING and CHANGE_DISAPPEARING transitions).
+     *
+     * @param parent The ViewGroup whose layout() method has been called.
+     *
+     * @hide
+     */
+    public void layoutChange(ViewGroup parent) {
+        if (parent.getWindowVisibility() != View.VISIBLE) {
+            return;
+        }
+        if ((mTransitionTypes & FLAG_CHANGING) == FLAG_CHANGING  && !isRunning()) {
+            // This method is called for all calls to layout() in the container, including
+            // those caused by add/remove/hide/show events, which will already have set up
+            // transition animations. Avoid setting up CHANGING animations in this case; only
+            // do so when there is not a transition already running on the container.
+            runChangeTransition(parent, null, CHANGING);
+        }
+    }
+
+    /**
      * This method is called by ViewGroup when a child view is about to be added to the
      * container. This callback starts the process of a transition; we grab the starting
      * values, listen for changes to all of the children of the container, and start appropriate
@@ -1024,19 +1133,40 @@ public class LayoutTransition {
      *
      * @param parent The ViewGroup to which the View is being added.
      * @param child The View being added to the ViewGroup.
+     * @param changesLayout Whether the removal will cause changes in the layout of other views
+     * in the container. INVISIBLE views becoming VISIBLE will not cause changes and thus will not
+     * affect CHANGE_APPEARING or CHANGE_DISAPPEARING animations.
      */
-    public void addChild(ViewGroup parent, View child) {
-        // Want disappearing animations to finish up before proceeding
-        cancel(DISAPPEARING);
-        // Also, cancel changing animations so that we start fresh ones from current locations
-        cancel(CHANGE_APPEARING);
-        if (mListeners != null) {
-            for (TransitionListener listener : mListeners) {
+    private void addChild(ViewGroup parent, View child, boolean changesLayout) {
+        if (parent.getWindowVisibility() != View.VISIBLE) {
+            return;
+        }
+        if ((mTransitionTypes & FLAG_APPEARING) == FLAG_APPEARING) {
+            // Want disappearing animations to finish up before proceeding
+            cancel(DISAPPEARING);
+        }
+        if (changesLayout && (mTransitionTypes & FLAG_CHANGE_APPEARING) == FLAG_CHANGE_APPEARING) {
+            // Also, cancel changing animations so that we start fresh ones from current locations
+            cancel(CHANGE_APPEARING);
+            cancel(CHANGING);
+        }
+        if (hasListeners() && (mTransitionTypes & FLAG_APPEARING) == FLAG_APPEARING) {
+            ArrayList<TransitionListener> listeners =
+                    (ArrayList<TransitionListener>) mListeners.clone();
+            for (TransitionListener listener : listeners) {
                 listener.startTransition(this, parent, child, APPEARING);
             }
         }
-        runChangeTransition(parent, child, APPEARING);
-        runAppearingTransition(parent, child);
+        if (changesLayout && (mTransitionTypes & FLAG_CHANGE_APPEARING) == FLAG_CHANGE_APPEARING) {
+            runChangeTransition(parent, child, APPEARING);
+        }
+        if ((mTransitionTypes & FLAG_APPEARING) == FLAG_APPEARING) {
+            runAppearingTransition(parent, child);
+        }
+    }
+
+    private boolean hasListeners() {
+        return mListeners != null && mListeners.size() > 0;
     }
 
     /**
@@ -1048,8 +1178,73 @@ public class LayoutTransition {
      * @param parent The ViewGroup to which the View is being added.
      * @param child The View being added to the ViewGroup.
      */
+    public void addChild(ViewGroup parent, View child) {
+        addChild(parent, child, true);
+    }
+
+    /**
+     * @deprecated Use {@link #showChild(android.view.ViewGroup, android.view.View, int)}.
+     */
+    @Deprecated
     public void showChild(ViewGroup parent, View child) {
-        addChild(parent, child);
+        addChild(parent, child, true);
+    }
+
+    /**
+     * This method is called by ViewGroup when a child view is about to be made visible in the
+     * container. This callback starts the process of a transition; we grab the starting
+     * values, listen for changes to all of the children of the container, and start appropriate
+     * animations.
+     *
+     * @param parent The ViewGroup in which the View is being made visible.
+     * @param child The View being made visible.
+     * @param oldVisibility The previous visibility value of the child View, either
+     * {@link View#GONE} or {@link View#INVISIBLE}.
+     */
+    public void showChild(ViewGroup parent, View child, int oldVisibility) {
+        addChild(parent, child, oldVisibility == View.GONE);
+    }
+
+    /**
+     * This method is called by ViewGroup when a child view is about to be removed from the
+     * container. This callback starts the process of a transition; we grab the starting
+     * values, listen for changes to all of the children of the container, and start appropriate
+     * animations.
+     *
+     * @param parent The ViewGroup from which the View is being removed.
+     * @param child The View being removed from the ViewGroup.
+     * @param changesLayout Whether the removal will cause changes in the layout of other views
+     * in the container. Views becoming INVISIBLE will not cause changes and thus will not
+     * affect CHANGE_APPEARING or CHANGE_DISAPPEARING animations.
+     */
+    private void removeChild(ViewGroup parent, View child, boolean changesLayout) {
+        if (parent.getWindowVisibility() != View.VISIBLE) {
+            return;
+        }
+        if ((mTransitionTypes & FLAG_DISAPPEARING) == FLAG_DISAPPEARING) {
+            // Want appearing animations to finish up before proceeding
+            cancel(APPEARING);
+        }
+        if (changesLayout &&
+                (mTransitionTypes & FLAG_CHANGE_DISAPPEARING) == FLAG_CHANGE_DISAPPEARING) {
+            // Also, cancel changing animations so that we start fresh ones from current locations
+            cancel(CHANGE_DISAPPEARING);
+            cancel(CHANGING);
+        }
+        if (hasListeners() && (mTransitionTypes & FLAG_DISAPPEARING) == FLAG_DISAPPEARING) {
+            ArrayList<TransitionListener> listeners = (ArrayList<TransitionListener>) mListeners
+                    .clone();
+            for (TransitionListener listener : listeners) {
+                listener.startTransition(this, parent, child, DISAPPEARING);
+            }
+        }
+        if (changesLayout &&
+                (mTransitionTypes & FLAG_CHANGE_DISAPPEARING) == FLAG_CHANGE_DISAPPEARING) {
+            runChangeTransition(parent, child, DISAPPEARING);
+        }
+        if ((mTransitionTypes & FLAG_DISAPPEARING) == FLAG_DISAPPEARING) {
+            runDisappearingTransition(parent, child);
+        }
     }
 
     /**
@@ -1062,30 +1257,30 @@ public class LayoutTransition {
      * @param child The View being removed from the ViewGroup.
      */
     public void removeChild(ViewGroup parent, View child) {
-        // Want appearing animations to finish up before proceeding
-        cancel(APPEARING);
-        // Also, cancel changing animations so that we start fresh ones from current locations
-        cancel(CHANGE_DISAPPEARING);
-        if (mListeners != null) {
-            for (TransitionListener listener : mListeners) {
-                listener.startTransition(this, parent, child, DISAPPEARING);
-            }
-        }
-        runChangeTransition(parent, child, DISAPPEARING);
-        runDisappearingTransition(parent, child);
+        removeChild(parent, child, true);
     }
 
     /**
-     * This method is called by ViewGroup when a child view is about to be removed from the
+     * @deprecated Use {@link #hideChild(android.view.ViewGroup, android.view.View, int)}.
+     */
+    @Deprecated
+    public void hideChild(ViewGroup parent, View child) {
+        removeChild(parent, child, true);
+    }
+
+    /**
+     * This method is called by ViewGroup when a child view is about to be hidden in
      * container. This callback starts the process of a transition; we grab the starting
      * values, listen for changes to all of the children of the container, and start appropriate
      * animations.
      *
-     * @param parent The ViewGroup from which the View is being removed.
-     * @param child The View being removed from the ViewGroup.
+     * @param parent The parent ViewGroup of the View being hidden.
+     * @param child The View being hidden.
+     * @param newVisibility The new visibility value of the child View, either
+     * {@link View#GONE} or {@link View#INVISIBLE}.
      */
-    public void hideChild(ViewGroup parent, View child) {
-        removeChild(parent, child);
+    public void hideChild(ViewGroup parent, View child, int newVisibility) {
+        removeChild(parent, child, newVisibility == View.GONE);
     }
 
     /**

@@ -21,9 +21,11 @@ import com.android.internal.net.DomainNameValidator;
 
 import org.apache.harmony.security.provider.cert.X509CertImpl;
 import org.apache.harmony.xnet.provider.jsse.SSLParametersImpl;
+import org.apache.harmony.xnet.provider.jsse.TrustManagerImpl;
 
 import java.io.IOException;
 
+import java.security.KeyManagementException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
@@ -45,7 +47,7 @@ import javax.net.ssl.X509TrustManager;
  * 
  * {@hide}
  */
-class CertificateChainValidator {
+public class CertificateChainValidator {
 
     /**
      * The singleton instance of the certificate chain validator
@@ -131,6 +133,21 @@ class CertificateChainValidator {
     }
 
     /**
+     * Handles updates to credential storage.
+     */
+    public static void handleTrustStorageUpdate() {
+
+        try {
+            X509TrustManager x509TrustManager = SSLParametersImpl.getDefaultTrustManager();
+            if( x509TrustManager instanceof TrustManagerImpl ) {
+                TrustManagerImpl trustManager = (TrustManagerImpl) x509TrustManager;
+                trustManager.handleTrustStorageUpdate();
+            }
+        } catch (KeyManagementException ignored) {
+        }
+    }
+
+    /**
      * Common code of doHandshakeAndValidateServerCertificates and verifyServerCertificates.
      * Calls DomainNamevalidator to verify the domain, and TrustManager to verify the certs.
      * @param chain the cert chain in X509 cert format.
@@ -155,9 +172,15 @@ class CertificateChainValidator {
         }
 
         try {
-            SSLParametersImpl.getDefaultTrustManager().checkServerTrusted(chain, authType);
+            X509TrustManager x509TrustManager = SSLParametersImpl.getDefaultTrustManager();
+            if (x509TrustManager instanceof TrustManagerImpl) {
+                TrustManagerImpl trustManager = (TrustManagerImpl) x509TrustManager;
+                trustManager.checkServerTrusted(chain, authType, domain);
+            } else {
+                x509TrustManager.checkServerTrusted(chain, authType);
+            }
             return null;  // No errors.
-        } catch (CertificateException e) {
+        } catch (GeneralSecurityException e) {
             if (HttpLog.LOGV) {
                 HttpLog.v("failed to validate the certificate chain, error: " +
                     e.getMessage());

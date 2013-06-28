@@ -67,15 +67,12 @@ class HTML5Audio extends Handler
 
     private String mUrl;
     private boolean mAskToPlay = false;
+    private boolean mLoopEnabled = false;
+    private boolean mProcessingOnEnd = false;
     private Context mContext;
-    // The handler for WebCore thread messages;
-    private Handler mWebCoreHandler;
 
     // Timer thread -> UI thread
     private static final int TIMEUPDATE = 100;
-
-    // AudioManager callback thread -> Webcore thread
-    private static final int AUDIOFOCUS_CHANGED = 200;
 
     private static final String COOKIE = "Cookie";
     private static final String HIDE_URL_LOGS = "x-hide-urls-from-log";
@@ -97,7 +94,7 @@ class HTML5Audio extends Handler
     private class IsPrivateBrowsingEnabledGetter {
         private boolean mIsReady;
         private boolean mIsPrivateBrowsingEnabled;
-        IsPrivateBrowsingEnabledGetter(Looper uiThreadLooper, final WebView webView) {
+        IsPrivateBrowsingEnabledGetter(Looper uiThreadLooper, final WebViewClassic webView) {
             new Handler(uiThreadLooper).post(new Runnable() {
                 @Override
                 public void run() {
@@ -147,9 +144,14 @@ class HTML5Audio extends Handler
 
     // MediaPlayer.OnCompletionListener;
     public void onCompletion(MediaPlayer mp) {
-        resetMediaPlayer();
-        mState = IDLE;
+        mState = COMPLETE;
+        mProcessingOnEnd = true;
         nativeOnEnded(mNativePointer);
+        mProcessingOnEnd = false;
+        if (mLoopEnabled == true) {
+            nativeOnRequestPlay(mNativePointer);
+            mLoopEnabled = false;
+        }
     }
 
     // MediaPlayer.OnErrorListener
@@ -186,11 +188,10 @@ class HTML5Audio extends Handler
     public HTML5Audio(WebViewCore webViewCore, int nativePtr) {
         // Save the native ptr
         mNativePointer = nativePtr;
-        createWebCoreHandler();
         resetMediaPlayer();
         mContext = webViewCore.getContext();
         mIsPrivateBrowsingEnabledGetter = new IsPrivateBrowsingEnabledGetter(
-                webViewCore.getContext().getMainLooper(), webViewCore.getWebView());
+                webViewCore.getContext().getMainLooper(), webViewCore.getWebViewClassic());
     }
 
     private void resetMediaPlayer() {
@@ -239,7 +240,8 @@ class HTML5Audio extends Handler
         }
     }
 
-    private void handleAudioFocusChange(int focusChange) {
+    @Override
+    public void onAudioFocusChange(int focusChange) {
         switch (focusChange) {
         case AudioManager.AUDIOFOCUS_GAIN:
             // resume playback
@@ -252,10 +254,10 @@ class HTML5Audio extends Handler
             break;
 
         case AudioManager.AUDIOFOCUS_LOSS:
-            // Lost focus for an unbounded amount of time: pause playback.
+            // Lost focus for an unbounded amount of time: stop playback.
             if (mState != ERROR && mMediaPlayer.isPlaying()) {
-                pause();
-                nativeOnPaused(mNativePointer);
+                mMediaPlayer.stop();
+                mState = STOPPED;
             }
             break;
 
@@ -268,28 +270,16 @@ class HTML5Audio extends Handler
         }
     }
 
-    private void createWebCoreHandler() {
-        mWebCoreHandler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-                switch (msg.what) {
-                    case AUDIOFOCUS_CHANGED:
-                        handleAudioFocusChange(msg.arg1);
-                        break;
-                }
-            }
-        };
-    }
-
-    @Override
-    public void onAudioFocusChange(int focusChange) {
-        Message msg = Message.obtain(mWebCoreHandler, AUDIOFOCUS_CHANGED);
-        msg.arg1 = focusChange;
-        mWebCoreHandler.sendMessage(msg);
-    }
 
     private void play() {
-        if ((mState >= ERROR && mState < PREPARED) && mUrl != null) {
+        if (mState == COMPLETE && mLoopEnabled == true) {
+            // Play it again, Sam
+            mMediaPlayer.start();
+            mState = STARTED;
+            return;
+        }
+
+        if (((mState >= ERROR && mState < PREPARED)) && mUrl != null) {
             resetMediaPlayer();
             setDataSource(mUrl);
             mAskToPlay = true;
@@ -318,14 +308,11 @@ class HTML5Audio extends Handler
     }
 
     private void seek(int msec) {
+        if (mProcessingOnEnd == true && mState == COMPLETE && msec == 0) {
+            mLoopEnabled = true;
+        }
         if (mState >= PREPARED) {
             mMediaPlayer.seekTo(msec);
-        }
-    }
-
-    private void setVolume(float volume) {
-        if (mState >= PREPARED) {
-            mMediaPlayer.setVolume(volume, volume);
         }
     }
 
@@ -350,7 +337,7 @@ class HTML5Audio extends Handler
 
     private native void nativeOnBuffering(int percent, int nativePointer);
     private native void nativeOnEnded(int nativePointer);
-    private native void nativeOnPaused(int nativePointer);
+    private native void nativeOnRequestPlay(int nativePointer);
     private native void nativeOnPrepared(int duration, int width, int height, int nativePointer);
     private native void nativeOnTimeupdate(int position, int nativePointer);
 

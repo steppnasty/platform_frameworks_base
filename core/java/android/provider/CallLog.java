@@ -58,6 +58,20 @@ public class CallLog {
                 Uri.parse("content://call_log/calls/filter");
 
         /**
+         * Query parameter used to limit the number of call logs returned.
+         * <p>
+         * TYPE: integer
+         */
+        public static final String LIMIT_PARAM_KEY = "limit";
+
+        /**
+         * Query parameter used to specify the starting record to return.
+         * <p>
+         * TYPE: integer
+         */
+        public static final String OFFSET_PARAM_KEY = "offset";
+
+        /**
          * An optional URI parameter which instructs the provider to allow the operation to be
          * applied to voicemail records as well.
          * <p>

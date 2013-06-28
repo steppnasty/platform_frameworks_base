@@ -726,16 +726,16 @@ final class BluetoothAdapterStateMachine extends StateMachine {
 
     private void persistSwitchSetting(boolean setOn) {
         long origCallerIdentityToken = Binder.clearCallingIdentity();
-        Settings.Secure.putInt(mContext.getContentResolver(),
-                               Settings.Secure.BLUETOOTH_ON,
+        Settings.Global.putInt(mContext.getContentResolver(),
+                               Settings.Global.BLUETOOTH_ON,
                                setOn ? 1 : 0);
         Binder.restoreCallingIdentity(origCallerIdentityToken);
     }
 
     private boolean getBluetoothPersistedSetting() {
         ContentResolver contentResolver = mContext.getContentResolver();
-        return (Settings.Secure.getInt(contentResolver,
-                                       Settings.Secure.BLUETOOTH_ON, 0) > 0);
+        return (Settings.Global.getInt(contentResolver,
+                                       Settings.Global.BLUETOOTH_ON, 0) > 0);
     }
 
     private void broadcastState(int newState) {

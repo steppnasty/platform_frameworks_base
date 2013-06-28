@@ -15,7 +15,7 @@
  */
 package com.android.internal.widget;
 
-import com.android.internal.R;
+import com.android.internal.view.ActionBarPolicy;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
@@ -23,8 +23,9 @@ import android.animation.TimeInterpolator;
 import android.app.ActionBar;
 import android.content.Context;
 import android.content.res.Configuration;
-import android.content.res.TypedArray;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.text.TextUtils.TruncateAt;
 import android.view.Gravity;
 import android.view.View;
@@ -39,13 +40,14 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /**
  * This widget implements the dynamic action bar tab behavior that can change
  * across different configurations or circumstances.
  */
 public class ScrollingTabContainerView extends HorizontalScrollView
-        implements AdapterView.OnItemSelectedListener {
+        implements AdapterView.OnItemClickListener {
     private static final String TAG = "ScrollingTabContainerView";
     Runnable mTabSelector;
     private TabClickListener mTabClickListener;
@@ -55,6 +57,7 @@ public class ScrollingTabContainerView extends HorizontalScrollView
     private boolean mAllowCollapse;
 
     int mMaxTabWidth;
+    int mStackedTabMaxWidth;
     private int mContentHeight;
     private int mSelectedTabIndex;
 
@@ -69,10 +72,9 @@ public class ScrollingTabContainerView extends HorizontalScrollView
         super(context);
         setHorizontalScrollBarEnabled(false);
 
-        TypedArray a = getContext().obtainStyledAttributes(null, R.styleable.ActionBar,
-                com.android.internal.R.attr.actionBarStyle, 0);
-        setContentHeight(a.getLayoutDimension(R.styleable.ActionBar_height, 0));
-        a.recycle();
+        ActionBarPolicy abp = ActionBarPolicy.get(context);
+        setContentHeight(abp.getTabContainerHeight());
+        mStackedTabMaxWidth = abp.getStackedTabMaxWidth();
 
         mTabLayout = createTabLayout();
         addView(mTabLayout, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -93,6 +95,7 @@ public class ScrollingTabContainerView extends HorizontalScrollView
             } else {
                 mMaxTabWidth = MeasureSpec.getSize(widthMeasureSpec) / 2;
             }
+            mMaxTabWidth = Math.min(mMaxTabWidth, mStackedTabMaxWidth);
         } else {
             mMaxTabWidth = -1;
         }
@@ -187,6 +190,7 @@ public class ScrollingTabContainerView extends HorizontalScrollView
         final LinearLayout tabLayout = new LinearLayout(getContext(), null,
                 com.android.internal.R.attr.actionBarTabBarStyle);
         tabLayout.setMeasureWithLargestChildEnabled(true);
+        tabLayout.setGravity(Gravity.CENTER);
         tabLayout.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
         return tabLayout;
@@ -197,7 +201,7 @@ public class ScrollingTabContainerView extends HorizontalScrollView
                 com.android.internal.R.attr.actionDropDownStyle);
         spinner.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        spinner.setOnItemSelectedListener(this);
+        spinner.setOnItemClickListenerInt(this);
         return spinner;
     }
 
@@ -205,12 +209,11 @@ public class ScrollingTabContainerView extends HorizontalScrollView
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
 
+        ActionBarPolicy abp = ActionBarPolicy.get(getContext());
         // Action bar can change size on configuration changes.
         // Reread the desired height from the theme-specified style.
-        TypedArray a = getContext().obtainStyledAttributes(null, R.styleable.ActionBar,
-                com.android.internal.R.attr.actionBarStyle, 0);
-        setContentHeight(a.getLayoutDimension(R.styleable.ActionBar_height, 0));
-        a.recycle();
+        setContentHeight(abp.getTabContainerHeight());
+        mStackedTabMaxWidth = abp.getStackedTabMaxWidth();
     }
 
     public void animateToVisibility(int visibility) {
@@ -347,16 +350,12 @@ public class ScrollingTabContainerView extends HorizontalScrollView
     }
 
     @Override
-    public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         TabView tabView = (TabView) view;
         tabView.getTab().select();
     }
 
-    @Override
-    public void onNothingSelected(AdapterView<?> parent) {
-    }
-
-    private class TabView extends LinearLayout {
+    private class TabView extends LinearLayout implements OnLongClickListener {
         private ActionBar.Tab mTab;
         private TextView mTextView;
         private ImageView mIconView;
@@ -367,7 +366,7 @@ public class ScrollingTabContainerView extends HorizontalScrollView
             mTab = tab;
 
             if (forList) {
-                setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
             }
 
             update();
@@ -430,7 +429,8 @@ public class ScrollingTabContainerView extends HorizontalScrollView
                     mIconView.setImageDrawable(null);
                 }
 
-                if (text != null) {
+                final boolean hasText = !TextUtils.isEmpty(text);
+                if (hasText) {
                     if (mTextView == null) {
                         TextView textView = new TextView(getContext(), null,
                                 com.android.internal.R.attr.actionBarTabTextStyle);
@@ -452,7 +452,33 @@ public class ScrollingTabContainerView extends HorizontalScrollView
                 if (mIconView != null) {
                     mIconView.setContentDescription(tab.getContentDescription());
                 }
+
+                if (!hasText && !TextUtils.isEmpty(tab.getContentDescription())) {
+                    setOnLongClickListener(this);
+                } else {
+                    setOnLongClickListener(null);
+                    setLongClickable(false);
+                }
             }
+        }
+
+        public boolean onLongClick(View v) {
+            final int[] screenPos = new int[2];
+            getLocationOnScreen(screenPos);
+
+            final Context context = getContext();
+            final int width = getWidth();
+            final int height = getHeight();
+            final int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+
+            Toast cheatSheet = Toast.makeText(context, mTab.getContentDescription(),
+                    Toast.LENGTH_SHORT);
+            // Show under the tab
+            cheatSheet.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL,
+                    (screenPos[0] + width / 2) - screenWidth / 2, height);
+
+            cheatSheet.show();
+            return true;
         }
 
         public ActionBar.Tab getTab() {

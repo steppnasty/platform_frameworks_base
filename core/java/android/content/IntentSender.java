@@ -27,6 +27,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.UserHandle;
 import android.util.AndroidException;
 
 
@@ -114,7 +115,7 @@ public class IntentSender implements Parcelable {
             mHandler = handler;
         }
         public void performReceive(Intent intent, int resultCode,
-                String data, Bundle extras, boolean serialized, boolean sticky) {
+                String data, Bundle extras, boolean serialized, boolean sticky, int sendingUser) {
             mIntent = intent;
             mResultCode = resultCode;
             mResultData = data;
@@ -216,6 +217,28 @@ public class IntentSender implements Parcelable {
         try {
             return ActivityManagerNative.getDefault()
                 .getPackageForIntentSender(mTarget);
+        } catch (RemoteException e) {
+            // Should never happen.
+            return null;
+        }
+    }
+
+    /**
+     * Return the user handle of the application that created this
+     * PendingIntent, that is the user under which you will actually be
+     * sending the Intent.  The returned UserHandle is supplied by the system, so
+     * that an application can not spoof its user.  See
+     * {@link android.os.Process#myUserHandle() Process.myUserHandle()} for
+     * more explanation of user handles.
+     *
+     * @return The user handle of the PendingIntent, or null if there is
+     * none associated with it.
+     */
+    public UserHandle getCreatorUserHandle() {
+        try {
+            int uid = ActivityManagerNative.getDefault()
+                .getUidForIntentSender(mTarget);
+            return uid > 0 ? new UserHandle(UserHandle.getUserId(uid)) : null;
         } catch (RemoteException e) {
             // Should never happen.
             return null;

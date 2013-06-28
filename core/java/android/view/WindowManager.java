@@ -49,6 +49,19 @@ public interface WindowManager extends ViewManager {
     }
 
     /**
+     * Exception that is thrown when calling {@link #addView} to a secondary display that cannot
+     * be found. See {@link android.app.Presentation} for more information on secondary displays.
+     */
+    public static class InvalidDisplayException extends RuntimeException {
+        public InvalidDisplayException() {
+        }
+
+        public InvalidDisplayException(String name) {
+            super(name);
+        }
+    }
+
+    /**
      * Use this method to get the default Display object.
      * 
      * @return default Display object
@@ -64,14 +77,6 @@ public interface WindowManager extends ViewManager {
      * @param view The view to be removed.
      */
     public void removeViewImmediate(View view);
-    
-    /**
-     * Return true if this window manager is configured to request hardware
-     * accelerated windows.  This does <em>not</em> guarantee that they will
-     * actually be accelerated, since that depends on the device supporting them.
-     * @hide
-     */
-    public boolean isHardwareAccelerated();
     
     public static class LayoutParams extends ViewGroup.LayoutParams
             implements Parcelable {
@@ -162,6 +167,7 @@ public interface WindowManager extends ViewManager {
             @ViewDebug.IntToString(from = TYPE_APPLICATION_MEDIA, to = "TYPE_APPLICATION_MEDIA"),
             @ViewDebug.IntToString(from = TYPE_APPLICATION_SUB_PANEL, to = "TYPE_APPLICATION_SUB_PANEL"),
             @ViewDebug.IntToString(from = TYPE_APPLICATION_ATTACHED_DIALOG, to = "TYPE_APPLICATION_ATTACHED_DIALOG"),
+            @ViewDebug.IntToString(from = TYPE_APPLICATION_MEDIA_OVERLAY, to = "TYPE_APPLICATION_MEDIA_OVERLAY"),
             @ViewDebug.IntToString(from = TYPE_STATUS_BAR, to = "TYPE_STATUS_BAR"),
             @ViewDebug.IntToString(from = TYPE_SEARCH_BAR, to = "TYPE_SEARCH_BAR"),
             @ViewDebug.IntToString(from = TYPE_PHONE, to = "TYPE_PHONE"),
@@ -170,8 +176,6 @@ public interface WindowManager extends ViewManager {
             @ViewDebug.IntToString(from = TYPE_TOAST, to = "TYPE_TOAST"),
             @ViewDebug.IntToString(from = TYPE_SYSTEM_OVERLAY, to = "TYPE_SYSTEM_OVERLAY"),
             @ViewDebug.IntToString(from = TYPE_PRIORITY_PHONE, to = "TYPE_PRIORITY_PHONE"),
-            @ViewDebug.IntToString(from = TYPE_STATUS_BAR_PANEL, to = "TYPE_STATUS_BAR_PANEL"),
-            @ViewDebug.IntToString(from = TYPE_STATUS_BAR_SUB_PANEL, to = "TYPE_STATUS_BAR_SUB_PANEL"),
             @ViewDebug.IntToString(from = TYPE_SYSTEM_DIALOG, to = "TYPE_SYSTEM_DIALOG"),
             @ViewDebug.IntToString(from = TYPE_KEYGUARD_DIALOG, to = "TYPE_KEYGUARD_DIALOG"),
             @ViewDebug.IntToString(from = TYPE_SYSTEM_ERROR, to = "TYPE_SYSTEM_ERROR"),
@@ -185,7 +189,12 @@ public interface WindowManager extends ViewManager {
             @ViewDebug.IntToString(from = TYPE_POINTER, to = "TYPE_POINTER"),
             @ViewDebug.IntToString(from = TYPE_NAVIGATION_BAR, to = "TYPE_NAVIGATION_BAR"),
             @ViewDebug.IntToString(from = TYPE_VOLUME_OVERLAY, to = "TYPE_VOLUME_OVERLAY"),
-            @ViewDebug.IntToString(from = TYPE_BOOT_PROGRESS, to = "TYPE_BOOT_PROGRESS")
+            @ViewDebug.IntToString(from = TYPE_BOOT_PROGRESS, to = "TYPE_BOOT_PROGRESS"),
+            @ViewDebug.IntToString(from = TYPE_HIDDEN_NAV_CONSUMER, to = "TYPE_HIDDEN_NAV_CONSUMER"),
+            @ViewDebug.IntToString(from = TYPE_DREAM, to = "TYPE_DREAM"),
+            @ViewDebug.IntToString(from = TYPE_NAVIGATION_BAR_PANEL, to = "TYPE_NAVIGATION_BAR_PANEL"),
+            @ViewDebug.IntToString(from = TYPE_DISPLAY_OVERLAY, to = "TYPE_DISPLAY_OVERLAY"),
+            @ViewDebug.IntToString(from = TYPE_MAGNIFICATION_OVERLAY, to = "TYPE_MAGNIFICATION_OVERLAY")
         })
         public int type;
     
@@ -213,7 +222,7 @@ public interface WindowManager extends ViewManager {
          * this is used by the system to display something until the
          * application can show its own windows.
          */
-        public static final int TYPE_APPLICATION_STARTING = 3;
+        public static final int TYPE_APPLICATION_STARTING = 3;       
     
         /**
          * End of types of application windows.
@@ -421,6 +430,50 @@ public interface WindowManager extends ViewManager {
          * @hide
          */
         public static final int TYPE_HIDDEN_NAV_CONSUMER = FIRST_SYSTEM_WINDOW+22;
+
+        /**
+         * Window type: Dreams (screen saver) window, just above keyguard.
+         * In multiuser systems shows only on the owning user's window.
+         * @hide
+         */
+        public static final int TYPE_DREAM = FIRST_SYSTEM_WINDOW+23;
+
+        /**
+         * Window type: Navigation bar panel (when navigation bar is distinct from status bar)
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_NAVIGATION_BAR_PANEL = FIRST_SYSTEM_WINDOW+24;
+
+        /**
+         * Window type: Behind the universe of the real windows.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_UNIVERSE_BACKGROUND = FIRST_SYSTEM_WINDOW+25;
+
+        /**
+         * Window type: Display overlay window.  Used to simulate secondary display devices.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_DISPLAY_OVERLAY = FIRST_SYSTEM_WINDOW+26;
+
+        /**
+         * Window type: Magnification overlay window. Used to highlight the magnified
+         * portion of a display when accessibility magnification is enabled.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_MAGNIFICATION_OVERLAY = FIRST_SYSTEM_WINDOW+27;
+
+        /**
+         * Window type: Recents. Same layer as {@link #TYPE_SYSTEM_DIALOG} but only appears on
+         * one user's screen.
+         * In multiuser systems shows on all users' windows.
+         * @hide
+         */
+        public static final int TYPE_RECENTS_OVERLAY = FIRST_SYSTEM_WINDOW+28;
 
         /**
          * End of types of system windows.
@@ -791,10 +844,10 @@ public interface WindowManager extends ViewManager {
          * hardware accelerated.  This is used for the starting preview windows
          * in the system process, which don't need to have the overhead of
          * hardware acceleration (they are just a static rendering), but should
-         * be rendered as much to match the actual window of the app even if it
+         * be rendered as such to match the actual window of the app even if it
          * is hardware accelerated.
          * Even if the window isn't hardware accelerated, still do its rendering
-         * as if it is.
+         * as if it was.
          * Like {@link #FLAG_HARDWARE_ACCELERATED} except for trusted system windows
          * that need hardware acceleration (e.g. LockScreen), where hardware acceleration
          * is generally disabled. This flag must be specified in addition to 
@@ -807,7 +860,7 @@ public interface WindowManager extends ViewManager {
 
         /**
          * In the system process, we globally do not use hardware acceleration
-         * because there are many threads doing UI there and they an conflict.
+         * because there are many threads doing UI there and they conflict.
          * If certain parts of the UI that really do want to use hardware
          * acceleration, this flag can be set to force it.  This is basically
          * for the lock screen.  Anyone else using it, you are probably wrong.
@@ -818,7 +871,7 @@ public interface WindowManager extends ViewManager {
 
         /**
          * By default, wallpapers are sent new offsets when the wallpaper is scrolled. Wallpapers
-         * may elect to skp these notifications if they are no doing anything productive with
+         * may elect to skip these notifications if they are no doing anything productive with
          * them (they do not affect the wallpaper scrolling operation) by calling
          * {@link
          * android.service.wallpaper.WallpaperService.Engine#setOffsetNotificationsEnabled(boolean)}.
@@ -836,6 +889,21 @@ public interface WindowManager extends ViewManager {
          * @hide
          */
         public static final int PRIVATE_FLAG_SET_NEEDS_MENU_KEY = 0x00000008;
+
+        /** In a multiuser system if this flag is set and the owner is a system process then this
+         * window will appear on all user screens. This overrides the default behavior of window
+         * types that normally only appear on the owning user's screen. Refer to each window type
+         * to determine its default behavior.
+         *
+         * {@hide} */
+        public static final int PRIVATE_FLAG_SHOW_FOR_ALL_USERS = 0x00000010;
+
+        /**
+         * Special flag for the volume overlay: force the window manager out of "hide nav bar"
+         * mode while the window is on screen.
+         *
+         * {@hide} */
+        public static final int PRIVATE_FLAG_FORCE_SHOW_NAV_BAR = 0x00000020;
 
         /**
          * Control flags that are private to the platform.
@@ -1134,13 +1202,41 @@ public interface WindowManager extends ViewManager {
         public static final int INPUT_FEATURE_NO_INPUT_CHANNEL = 0x00000002;
 
         /**
+         * When this window has focus, does not call user activity for all input events so
+         * the application will have to do it itself.  Should only be used by
+         * the keyguard and phone app.
+         * <p>
+         * Should only be used by the keyguard and phone app.
+         * </p>
+         *
+         * @hide
+         */
+        public static final int INPUT_FEATURE_DISABLE_USER_ACTIVITY = 0x00000004;
+
+        /**
          * Control special features of the input subsystem.
          *
          * @see #INPUT_FEATURE_DISABLE_TOUCH_PAD_GESTURES
          * @see #INPUT_FEATURE_NO_INPUT_CHANNEL
+         * @see #INPUT_FEATURE_DISABLE_USER_ACTIVITY
          * @hide
          */
         public int inputFeatures;
+
+        /**
+         * Sets the number of milliseconds before the user activity timeout occurs
+         * when this window has focus.  A value of -1 uses the standard timeout.
+         * A value of 0 uses the minimum support display timeout.
+         * <p>
+         * This property can only be used to reduce the user specified display timeout;
+         * it can never make the timeout longer than it normally would be.
+         * </p><p>
+         * Should only be used by the keyguard and phone app.
+         * </p>
+         *
+         * @hide
+         */
+        public long userActivityTimeout = -1;
 
         public LayoutParams() {
             super(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
@@ -1226,6 +1322,7 @@ public interface WindowManager extends ViewManager {
             out.writeInt(subtreeSystemUiVisibility);
             out.writeInt(hasSystemUiListeners ? 1 : 0);
             out.writeInt(inputFeatures);
+            out.writeLong(userActivityTimeout);
         }
         
         public static final Parcelable.Creator<LayoutParams> CREATOR
@@ -1266,6 +1363,7 @@ public interface WindowManager extends ViewManager {
             subtreeSystemUiVisibility = in.readInt();
             hasSystemUiListeners = in.readInt() != 0;
             inputFeatures = in.readInt();
+            userActivityTimeout = in.readLong();
         }
     
         @SuppressWarnings({"PointlessBitwiseExpression"})
@@ -1291,6 +1389,8 @@ public interface WindowManager extends ViewManager {
         public static final int INPUT_FEATURES_CHANGED = 1<<15;
         /** {@hide} */
         public static final int PRIVATE_FLAGS_CHANGED = 1<<16;
+        /** {@hide} */
+        public static final int USER_ACTIVITY_TIMEOUT_CHANGED = 1<<17;
         /** {@hide} */
         public static final int EVERYTHING_CHANGED = 0xffffffff;
 
@@ -1413,6 +1513,11 @@ public interface WindowManager extends ViewManager {
                 changes |= INPUT_FEATURES_CHANGED;
             }
 
+            if (userActivityTimeout != o.userActivityTimeout) {
+                userActivityTimeout = o.userActivityTimeout;
+                changes |= USER_ACTIVITY_TIMEOUT_CHANGED;
+            }
+
             return changes;
         }
     
@@ -1504,6 +1609,9 @@ public interface WindowManager extends ViewManager {
             }
             if (inputFeatures != 0) {
                 sb.append(" if=0x").append(Integer.toHexString(inputFeatures));
+            }
+            if (userActivityTimeout >= 0) {
+                sb.append(" userActivityTimeout=").append(userActivityTimeout);
             }
             sb.append('}');
             return sb.toString();

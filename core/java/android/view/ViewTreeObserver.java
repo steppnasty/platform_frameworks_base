@@ -39,6 +39,9 @@ public final class ViewTreeObserver {
     private CopyOnWriteArrayList<OnScrollChangedListener> mOnScrollChangedListeners;
     private ArrayList<OnPreDrawListener> mOnPreDrawListeners;
 
+    // These listeners cannot be mutated during dispatch
+    private ArrayList<OnDrawListener> mOnDrawListeners;
+
     private boolean mAlive = true;
 
     /**
@@ -87,6 +90,27 @@ public final class ViewTreeObserver {
          * @see android.view.View#onDraw
          */
         public boolean onPreDraw();
+    }
+
+    /**
+     * Interface definition for a callback to be invoked when the view tree is about to be drawn.
+     */
+    public interface OnDrawListener {
+        /**
+         * <p>Callback method to be invoked when the view tree is about to be drawn. At this point,
+         * views cannot be modified in any way.</p>
+         * 
+         * <p>Unlike with {@link OnPreDrawListener}, this method cannot be used to cancel the
+         * current drawing pass.</p>
+         * 
+         * <p>An {@link OnDrawListener} listener <strong>cannot be added or removed</strong>
+         * from this method.</p>
+         *
+         * @see android.view.View#onMeasure
+         * @see android.view.View#onLayout
+         * @see android.view.View#onDraw
+         */
+        public void onDraw();
     }
 
     /**
@@ -349,10 +373,26 @@ public final class ViewTreeObserver {
      * @param victim The callback to remove
      *
      * @throws IllegalStateException If {@link #isAlive()} returns false
+     * 
+     * @deprecated Use #removeOnGlobalLayoutListener instead
      *
      * @see #addOnGlobalLayoutListener(OnGlobalLayoutListener)
      */
+    @Deprecated
     public void removeGlobalOnLayoutListener(OnGlobalLayoutListener victim) {
+        removeOnGlobalLayoutListener(victim);
+    }
+
+    /**
+     * Remove a previously installed global layout callback
+     *
+     * @param victim The callback to remove
+     *
+     * @throws IllegalStateException If {@link #isAlive()} returns false
+     * 
+     * @see #addOnGlobalLayoutListener(OnGlobalLayoutListener)
+     */
+    public void removeOnGlobalLayoutListener(OnGlobalLayoutListener victim) {
         checkIsAlive();
         if (mOnGlobalLayoutListeners == null) {
             return;
@@ -591,6 +631,19 @@ public final class ViewTreeObserver {
             }
         }
         return cancelDraw;
+    }
+
+    /**
+     * Notifies registered listeners that the drawing pass is about to start.
+     */
+    public final void dispatchOnDraw() {
+        if (mOnDrawListeners != null) {
+            final ArrayList<OnDrawListener> listeners = mOnDrawListeners;
+            int numListeners = listeners.size();
+            for (int i = 0; i < numListeners; ++i) {
+                listeners.get(i).onDraw();
+            }
+        }
     }
 
     /**

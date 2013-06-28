@@ -19,6 +19,7 @@ package android.view.animation;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.RectF;
+import android.os.Handler;
 import android.os.SystemProperties;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -207,6 +208,11 @@ public abstract class Animation implements Cloneable {
 
     private final CloseGuard guard = CloseGuard.get();
 
+    private Handler mListenerHandler;
+    private Runnable mOnStart;
+    private Runnable mOnRepeat;
+    private Runnable mOnEnd;
+
     /**
      * Creates a new animation with a duration of 0ms, the default interpolator, with
      * fillBefore set to true and fillAfter set to false
@@ -338,6 +344,38 @@ public abstract class Animation implements Cloneable {
     public void initialize(int width, int height, int parentWidth, int parentHeight) {
         reset();
         mInitialized = true;
+    }
+
+    /**
+     * Sets the handler used to invoke listeners.
+     * 
+     * @hide
+     */
+    public void setListenerHandler(Handler handler) {
+        if (mListenerHandler == null) {
+            mOnStart = new Runnable() {
+                public void run() {
+                    if (mListener != null) {
+                        mListener.onAnimationStart(Animation.this);
+                    }
+                }
+            };
+            mOnRepeat = new Runnable() {
+                public void run() {
+                    if (mListener != null) {
+                        mListener.onAnimationRepeat(Animation.this);
+                    }
+                }
+            };
+            mOnEnd = new Runnable() {
+                public void run() {
+                    if (mListener != null) {
+                        mListener.onAnimationEnd(Animation.this);
+                    }
+                }
+            };
+        }
+        mListenerHandler = handler;
     }
 
     /**

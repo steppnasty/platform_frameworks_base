@@ -21,6 +21,7 @@ import android.database.DataSetObserver;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -30,6 +31,8 @@ import android.view.View.MeasureSpec;
 import android.view.View.OnTouchListener;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+
+import java.util.Locale;
 
 /**
  * A ListPopupWindow anchors itself to a host view and displays a
@@ -91,6 +94,8 @@ public class ListPopupWindow {
     private Rect mTempRect = new Rect();
 
     private boolean mModal;
+
+    private int mLayoutDirection;
 
     /**
      * The provided prompt view should appear above list content.
@@ -193,6 +198,9 @@ public class ListPopupWindow {
         mContext = context;
         mPopup = new PopupWindow(context, attrs, defStyleAttr, defStyleRes);
         mPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
+        // Set the default layout direction to match the default locale one
+        final Locale locale = mContext.getResources().getConfiguration().locale;
+        mLayoutDirection = TextUtils.getLayoutDirectionFromLocale(locale);
     }
 
     /**
@@ -1017,7 +1025,7 @@ public class ListPopupWindow {
 
             View hintView = mPromptView;
             if (hintView != null) {
-                // if an hint has been specified, we accomodate more space for it and
+                // if a hint has been specified, we accomodate more space for it and
                 // add a text view in the drop down menu, at the bottom of the list
                 LinearLayout hintContainer = new LinearLayout(context);
                 hintContainer.setOrientation(LinearLayout.VERTICAL);
@@ -1080,6 +1088,8 @@ public class ListPopupWindow {
             if (!mDropDownVerticalOffsetSet) {
                 mDropDownVerticalOffset = -mTempRect.top;
             }
+        } else {
+            mTempRect.setEmpty();
         }
 
         // Max height available on the screen for a popup.
@@ -1092,7 +1102,25 @@ public class ListPopupWindow {
             return maxHeight + padding;
         }
 
-        final int listContent = mDropDownList.measureHeightOfChildren(MeasureSpec.UNSPECIFIED,
+        final int childWidthSpec;
+        switch (mDropDownWidth) {
+            case ViewGroup.LayoutParams.WRAP_CONTENT:
+                childWidthSpec = MeasureSpec.makeMeasureSpec(
+                        mContext.getResources().getDisplayMetrics().widthPixels -
+                        (mTempRect.left + mTempRect.right),
+                        MeasureSpec.AT_MOST);
+                break;
+            case ViewGroup.LayoutParams.MATCH_PARENT:
+                childWidthSpec = MeasureSpec.makeMeasureSpec(
+                        mContext.getResources().getDisplayMetrics().widthPixels -
+                        (mTempRect.left + mTempRect.right),
+                        MeasureSpec.EXACTLY);
+                break;
+            default:
+                childWidthSpec = MeasureSpec.makeMeasureSpec(mDropDownWidth, MeasureSpec.EXACTLY);
+                break;
+        }
+        final int listContent = mDropDownList.measureHeightOfChildren(childWidthSpec,
                 0, ListView.NO_POSITION, maxHeight - otherHeights, -1);
         // add padding only if the list has items in it, that way we don't show
         // the popup if it is not needed

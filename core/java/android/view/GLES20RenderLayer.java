@@ -18,6 +18,7 @@ package android.view;
 
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 
 /**
  * An OpenGL ES 2.0 implementation of {@link HardwareLayer}. This
@@ -53,20 +54,32 @@ class GLES20RenderLayer extends GLES20Layer {
     }
 
     @Override
-    void resize(int width, int height) {
-        if (!isValid() || width <= 0 || height <= 0) return;
+    boolean resize(int width, int height) {
+        if (!isValid() || width <= 0 || height <= 0) return false;
 
         mWidth = width;
         mHeight = height;
-        
+
         if (width != mLayerWidth || height != mLayerHeight) {
             int[] layerInfo = new int[2];
 
-            GLES20Canvas.nResizeLayer(mLayer, width, height, layerInfo);
-
-            mLayerWidth = layerInfo[0];
-            mLayerHeight = layerInfo[1];
+            if (GLES20Canvas.nResizeLayer(mLayer, width, height, layerInfo)) {
+                mLayerWidth = layerInfo[0];
+                mLayerHeight = layerInfo[1];
+            } else {
+                // Failure: not enough GPU resources for requested size
+                mLayer = 0;
+                mLayerWidth = 0;
+                mLayerHeight = 0;
+            }
         }
+        return isValid();
+    }
+
+    @Override
+    void setOpaque(boolean isOpaque) {
+        mOpaque = isOpaque;
+        GLES20Canvas.nSetOpaqueLayer(mLayer, isOpaque);
     }
 
     @Override
@@ -94,5 +107,12 @@ class GLES20RenderLayer extends GLES20Layer {
      */
     @Override
     void setTransform(Matrix matrix) {
+    }
+
+    @Override
+    void redrawLater(DisplayList displayList, Rect dirtyRect) {
+        GLES20Canvas.nUpdateRenderLayer(mLayer, mCanvas.getRenderer(),
+                ((GLES20DisplayList) displayList).getNativeDisplayList(),
+                dirtyRect.left, dirtyRect.top, dirtyRect.right, dirtyRect.bottom);
     }
 }

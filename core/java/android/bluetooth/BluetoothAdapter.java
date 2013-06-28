@@ -343,7 +343,7 @@ public final class BluetoothAdapter {
     public static final int STATE_DISCONNECTING = 3;
 
     /** @hide */
-    public static final String BLUETOOTH_SERVICE = "bluetooth";
+    public static final String BLUETOOTH_MANAGER_SERVICE = "bluetooth_manager";
 
     private static final int ADDRESS_LENGTH = 17;
 
@@ -367,7 +367,7 @@ public final class BluetoothAdapter {
      */
     public static synchronized BluetoothAdapter getDefaultAdapter() {
         if (sAdapter == null) {
-            IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_SERVICE);
+            IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE);
             if (b != null) {
                 IBluetooth service = IBluetooth.Stub.asInterface(b);
                 sAdapter = new BluetoothAdapter(service);

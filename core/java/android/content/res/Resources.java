@@ -90,7 +90,8 @@ public class Resources {
             = new SparseArray<ColorStateList>();
     private static final LongSparseArray<Drawable.ConstantState> sPreloadedColorDrawables
             = new LongSparseArray<Drawable.ConstantState>();
-    private static boolean mPreloaded;
+    private static boolean sPreloaded;
+    private static int sPreloadedDensity;
 
     /*package*/ final TypedValue mTmpValue = new TypedValue();
     /*package*/ final Configuration mTmpConfig = new Configuration();
@@ -1439,8 +1440,12 @@ public class Resources {
             int configChanges = 0xfffffff;
             if (config != null) {
                 mTmpConfig.setTo(config);
+                int density = config.densityDpi;
+                if (density == Configuration.DENSITY_DPI_UNDEFINED) {
+                    density = mMetrics.noncompatDensityDpi;
+                }
                 if (mCompatibilityInfo != null) {
-                    mCompatibilityInfo.applyToConfiguration(mTmpConfig);
+                    mCompatibilityInfo.applyToConfiguration(density, mTmpConfig);
                 }
                 if (mTmpConfig.locale == null) {
                     mTmpConfig.locale = Locale.getDefault();
@@ -1861,11 +1866,14 @@ public class Resources {
      */
     public final void startPreloading() {
         synchronized (mSync) {
-            if (mPreloaded) {
+            if (sPreloaded) {
                 throw new IllegalStateException("Resources already preloaded");
             }
-            mPreloaded = true;
+            sPreloaded = true;
             mPreloading = true;
+            sPreloadedDensity = DisplayMetrics.DENSITY_DEVICE;
+            mConfiguration.densityDpi = sPreloadedDensity;
+            updateConfiguration(null, null);
         }
     }
     
@@ -1897,24 +1905,27 @@ public class Resources {
             }
         }
 
-        final long key = (((long) value.assetCookie) << 32) | value.data;
         boolean isColorDrawable = false;
         if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
                 value.type <= TypedValue.TYPE_LAST_COLOR_INT) {
             isColorDrawable = true;
         }
+        final long key = isColorDrawable ? value.data :
+                (((long) value.assetCookie) << 32) | value.data;
         Drawable dr = getCachedDrawable(isColorDrawable ? mColorDrawableCache : mDrawableCache, key);
 
         if (dr != null) {
             return dr;
         }
 
-        Drawable.ConstantState cs = isColorDrawable ? sPreloadedColorDrawables.get(key) : sPreloadedDrawables.get(key);
+        Drawable.ConstantState cs = isColorDrawable
+                ? sPreloadedColorDrawables.get(key)
+                : (sPreloadedDensity == mConfiguration.densityDpi
+                        ? sPreloadedDrawables.get(key) : null);
         if (cs != null) {
             dr = cs.newDrawable(this);
         } else {
-            if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
-                    value.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+            if (isColorDrawable) {
                 dr = new ColorDrawable(value.data);
             }
 

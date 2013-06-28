@@ -30,6 +30,7 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.os.IBinder;
+import android.os.ICancellationSignal;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.Parcelable;
@@ -108,8 +109,11 @@ abstract public class ContentProviderNative extends Binder implements IContentPr
                     String sortOrder = data.readString();
                     IContentObserver observer = IContentObserver.Stub.asInterface(
                             data.readStrongBinder());
+                    ICancellationSignal cancellationSignal = ICancellationSignal.Stub.asInterface(
+                            data.readStrongBinder());
 
-                    Cursor cursor = query(url, projection, selection, selectionArgs, sortOrder);
+                    Cursor cursor = query(url, projection, selection, selectionArgs, sortOrder,
+                            cancellationSignal);
                     if (cursor != null) {
                         CursorToBulkCursorAdaptor adaptor = new CursorToBulkCursorAdaptor(
                                 cursor, observer, getProviderName());
@@ -295,6 +299,16 @@ abstract public class ContentProviderNative extends Binder implements IContentPr
                     }
                     return true;
                 }
+
+                case CREATE_CANCELATION_SIGNAL_TRANSACTION:
+                {
+                    data.enforceInterface(IContentProvider.descriptor);
+
+                    ICancellationSignal cancellationSignal = createCancellationSignal();
+                    reply.writeNoException();
+                    reply.writeStrongBinder(cancellationSignal.asBinder());
+                    return true;
+                }
             }
         } catch (Exception e) {
             DatabaseUtils.writeExceptionToParcel(reply, e);
@@ -324,7 +338,8 @@ final class ContentProviderProxy implements IContentProvider
     }
 
     public Cursor query(Uri url, String[] projection, String selection,
-            String[] selectionArgs, String sortOrder) throws RemoteException {
+            String[] selectionArgs, String sortOrder, ICancellationSignal cancellationSignal)
+                    throws RemoteException {
         BulkCursorToCursorAdaptor adaptor = new BulkCursorToCursorAdaptor();
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
@@ -352,6 +367,7 @@ final class ContentProviderProxy implements IContentProvider
             }
             data.writeString(sortOrder);
             data.writeStrongBinder(adaptor.getObserver().asBinder());
+            data.writeStrongBinder(cancellationSignal != null ? cancellationSignal.asBinder() : null);
 
             mRemote.transact(IContentProvider.QUERY_TRANSACTION, data, reply, 0);
 
@@ -614,6 +630,25 @@ final class ContentProviderProxy implements IContentProvider
             AssetFileDescriptor fd = has != 0
                     ? AssetFileDescriptor.CREATOR.createFromParcel(reply) : null;
             return fd;
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    public ICancellationSignal createCancellationSignal() throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken(IContentProvider.descriptor);
+
+            mRemote.transact(IContentProvider.CREATE_CANCELATION_SIGNAL_TRANSACTION,
+                    data, reply, 0);
+
+            DatabaseUtils.readExceptionFromParcel(reply);
+            ICancellationSignal cancellationSignal = ICancellationSignal.Stub.asInterface(
+                    reply.readStrongBinder());
+            return cancellationSignal;
         } finally {
             data.recycle();
             reply.recycle();

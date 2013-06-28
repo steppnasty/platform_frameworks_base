@@ -142,22 +142,6 @@ public class CheckedTextView extends TextView implements Checkable {
         resolvePadding();
     }
 
-    /**
-     * @hide
-     */
-    @Override
-    protected void resolvePadding() {
-        super.resolvePadding();
-        int newPadding = (mCheckMarkDrawable != null) ?
-                mCheckMarkWidth + mBasePadding : mBasePadding;
-        mNeedRequestlayout |= (mPaddingRight != newPadding);
-        mPaddingRight = newPadding;
-        if (mNeedRequestlayout) {
-            requestLayout();
-            mNeedRequestlayout = false;
-        }
-    }
-    
     @Override
     public void setPadding(int left, int top, int right, int bottom) {
         super.setPadding(left, top, right, bottom);

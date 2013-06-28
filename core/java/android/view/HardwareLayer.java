@@ -19,6 +19,8 @@ package android.view;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Rect;
 
 /**
  * A hardware layer can be used to render graphics operations into a hardware
@@ -35,6 +37,7 @@ abstract class HardwareLayer {
     
     int mWidth;
     int mHeight;
+    DisplayList mDisplayList;
 
     boolean mOpaque;
 
@@ -60,6 +63,14 @@ abstract class HardwareLayer {
     }
 
     /**
+     * Update the paint used when drawing this layer.
+     *
+     * @param paint The paint used when the layer is drawn into the destination canvas.
+     * @see View#setLayerPaint(android.graphics.Paint)
+     */
+    void setLayerPaint(Paint paint) {}
+
+    /**
      * Returns the minimum width of the layer.
      * 
      * @return The minimum desired width of the hardware layer 
@@ -78,6 +89,24 @@ abstract class HardwareLayer {
     }
 
     /**
+     * Returns the DisplayList for the layer.
+     *
+     * @return The DisplayList of the hardware layer
+     */
+    DisplayList getDisplayList() {
+        return mDisplayList;
+    }
+
+    /**
+     * Sets the DisplayList for the layer.
+     *
+     * @param displayList The new DisplayList for this layer
+     */
+    void setDisplayList(DisplayList displayList) {
+        mDisplayList = displayList;
+    }
+
+    /**
      * Returns whether or not this layer is opaque.
      * 
      * @return True if the layer is opaque, false otherwise
@@ -85,6 +114,13 @@ abstract class HardwareLayer {
     boolean isOpaque() {
         return mOpaque;
     }
+
+    /**
+     * Sets whether or not this layer should be considered opaque.
+     * 
+     * @param isOpaque True if the layer is opaque, false otherwise
+     */
+    abstract void setOpaque(boolean isOpaque);
 
     /**
      * Indicates whether this layer can be rendered.
@@ -99,8 +135,9 @@ abstract class HardwareLayer {
      * 
      * @param width The new desired minimum width for this layer
      * @param height The new desired minimum height for this layer
+     * @return True if the resulting layer is valid, false otherwise
      */
-    abstract void resize(int width, int height);
+    abstract boolean resize(int width, int height);
 
     /**
      * Returns a hardware canvas that can be used to render onto
@@ -158,4 +195,13 @@ abstract class HardwareLayer {
      * @param matrix The transform to apply to the layer.
      */
     abstract void setTransform(Matrix matrix);
+
+    /**
+     * Specifies the display list to use to refresh the layer.
+     *
+     * @param displayList The display list containing the drawing commands to
+     *                    execute in this layer
+     * @param dirtyRect The dirty region of the layer that needs to be redrawn
+     */
+    abstract void redrawLater(DisplayList displayList, Rect dirtyRect);
 }

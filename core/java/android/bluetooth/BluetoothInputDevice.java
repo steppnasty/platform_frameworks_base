@@ -101,7 +101,7 @@ public final class BluetoothInputDevice implements BluetoothProfile {
      *
      */
     /*package*/ BluetoothInputDevice(Context mContext, ServiceListener l) {
-        IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_SERVICE);
+        IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE);
         mServiceListener = l;
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         if (b != null) {

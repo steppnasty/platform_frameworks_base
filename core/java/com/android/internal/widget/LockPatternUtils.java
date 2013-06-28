@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (C) 2012 The CyanogenMod Project (Calendar)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,52 +17,52 @@
 
 package com.android.internal.widget;
 
-import com.android.internal.R;
-import com.android.internal.telephony.ITelephony;
-import com.google.android.collect.Lists;
-
+import android.app.ActivityManagerNative;
 import android.app.admin.DevicePolicyManager;
+import android.appwidget.AppWidgetManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.FileObserver;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.UserHandle;
 import android.os.storage.IMountService;
+import android.provider.CalendarContract;
 import android.provider.Settings;
 import android.security.KeyStore;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.text.format.DateFormat;
+import android.text.format.Time;
 import android.util.Log;
+import android.view.IWindowManager;
 import android.view.View;
 import android.widget.Button;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import com.android.internal.R;
+import com.android.internal.telephony.ITelephony;
+import com.google.android.collect.Lists;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.util.Arrays;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.TimeZone;
 
 /**
  * Utilities for the lock pattern and its settings.
  */
 public class LockPatternUtils {
 
-    private static final String OPTION_ENABLE_FACELOCK = "enable_facelock";
-
     private static final String TAG = "LockPatternUtils";
-
-    private static final String SYSTEM_DIRECTORY = "/system/";
-    private static final String LOCK_PATTERN_FILE = "gesture.key";
-    private static final String LOCK_PASSWORD_FILE = "password.key";
 
     /**
      * The maximum number of incorrect attempts before the user is prevented
@@ -99,20 +100,51 @@ public class LockPatternUtils {
     public static final int MIN_LOCK_PATTERN_SIZE = 4;
 
     /**
+     * The default size of the pattern lockscreen. Ex: 3x3
+     */
+    public static final byte PATTERN_SIZE_DEFAULT = 3;
+
+    /**
      * The minimum number of dots the user must include in a wrong pattern
      * attempt for it to be counted against the counts that affect
      * {@link #FAILED_ATTEMPTS_BEFORE_TIMEOUT} and {@link #FAILED_ATTEMPTS_BEFORE_RESET}
      */
     public static final int MIN_PATTERN_REGISTER_FAIL = MIN_LOCK_PATTERN_SIZE;
 
-    private final static String LOCKOUT_PERMANENT_KEY = "lockscreen.lockedoutpermanently";
-    private final static String LOCKOUT_ATTEMPT_DEADLINE = "lockscreen.lockoutattemptdeadline";
-    private final static String PATTERN_EVER_CHOSEN_KEY = "lockscreen.patterneverchosen";
+    /**
+     * Tells the keyguard to show the user switcher when the keyguard is created.
+     */
+    public static final String KEYGUARD_SHOW_USER_SWITCHER = "showuserswitcher";
+
+    /**
+     * Tells the keyguard to show the security challenge when the keyguard is created.
+     */
+    public static final String KEYGUARD_SHOW_SECURITY_CHALLENGE = "showsecuritychallenge";
+
+    /**
+     * Tells the keyguard to show the widget with the specified id when the keyguard is created.
+     */
+    public static final String KEYGUARD_SHOW_APPWIDGET = "showappwidget";
+
+    /**
+     * The bit in LOCK_BIOMETRIC_WEAK_FLAGS to be used to indicate whether liveliness should
+     * be used
+     */
+    public static final int FLAG_BIOMETRIC_WEAK_LIVELINESS = 0x1;
+
+    /**
+     * Pseudo-appwidget id we use to represent the default clock status widget
+     */
+    public static final int ID_DEFAULT_STATUS_WIDGET = -2;
+
+    protected final static String LOCKOUT_PERMANENT_KEY = "lockscreen.lockedoutpermanently";
+    protected final static String LOCKOUT_ATTEMPT_DEADLINE = "lockscreen.lockoutattemptdeadline";
+    protected final static String PATTERN_EVER_CHOSEN_KEY = "lockscreen.patterneverchosen";
     public final static String PASSWORD_TYPE_KEY = "lockscreen.password_type";
     public static final String PASSWORD_TYPE_ALTERNATE_KEY = "lockscreen.password_type_alternate";
-    private final static String LOCK_PASSWORD_SALT_KEY = "lockscreen.password_salt";
-    private final static String DISABLE_LOCKSCREEN_KEY = "lockscreen.disabled";
-    private final static String LOCKSCREEN_OPTIONS = "lockscreen.options";
+    protected final static String LOCK_PASSWORD_SALT_KEY = "lockscreen.password_salt";
+    protected final static String DISABLE_LOCKSCREEN_KEY = "lockscreen.disabled";
+    protected final static String LOCKSCREEN_OPTIONS = "lockscreen.options";
     public final static String LOCKSCREEN_BIOMETRIC_WEAK_FALLBACK
             = "lockscreen.biometric_weak_fallback";
     public final static String BIOMETRIC_WEAK_EVER_CHOSEN_KEY
@@ -120,35 +152,15 @@ public class LockPatternUtils {
     public final static String LOCKSCREEN_POWER_BUTTON_INSTANTLY_LOCKS
             = "lockscreen.power_button_instantly_locks";
 
-    private final static String PASSWORD_HISTORY_KEY = "lockscreen.passwordhistory";
+    protected final static String PASSWORD_HISTORY_KEY = "lockscreen.passwordhistory";
 
     private final Context mContext;
     private final ContentResolver mContentResolver;
     private DevicePolicyManager mDevicePolicyManager;
-    private static String sLockPatternFilename;
-    private static String sLockPasswordFilename;
+    private ILockSettings mLockSettingsService;
 
-    private static final AtomicBoolean sHaveNonZeroPatternFile = new AtomicBoolean(false);
-    private static final AtomicBoolean sHaveNonZeroPasswordFile = new AtomicBoolean(false);
-
-    private static FileObserver sPasswordObserver;
-
-    private static class PasswordFileObserver extends FileObserver {
-        public PasswordFileObserver(String path, int mask) {
-            super(path, mask);
-        }
-
-        @Override
-        public void onEvent(int event, String path) {
-            if (LOCK_PATTERN_FILE.equals(path)) {
-                Log.d(TAG, "lock pattern file changed");
-                sHaveNonZeroPatternFile.set(new File(sLockPatternFilename).length() > 0);
-            } else if (LOCK_PASSWORD_FILE.equals(path)) {
-                Log.d(TAG, "lock password file changed");
-                sHaveNonZeroPasswordFile.set(new File(sLockPasswordFilename).length() > 0);
-            }
-        }
-    }
+    // The current user is set by KeyguardViewMediator and shared by all LockPatternUtils.
+    private static volatile int sCurrentUserId = UserHandle.USER_NULL;
 
     public DevicePolicyManager getDevicePolicyManager() {
         if (mDevicePolicyManager == null) {
@@ -161,80 +173,115 @@ public class LockPatternUtils {
         }
         return mDevicePolicyManager;
     }
+
     /**
      * @param contentResolver Used to look up and save settings.
      */
     public LockPatternUtils(Context context) {
         mContext = context;
         mContentResolver = context.getContentResolver();
+    }
 
-        // Initialize the location of gesture & PIN lock files
-        if (sLockPatternFilename == null) {
-            String dataSystemDirectory =
-                    android.os.Environment.getDataDirectory().getAbsolutePath() +
-                    SYSTEM_DIRECTORY;
-            sLockPatternFilename =  dataSystemDirectory + LOCK_PATTERN_FILE;
-            sLockPasswordFilename = dataSystemDirectory + LOCK_PASSWORD_FILE;
-            sHaveNonZeroPatternFile.set(new File(sLockPatternFilename).length() > 0);
-            sHaveNonZeroPasswordFile.set(new File(sLockPasswordFilename).length() > 0);
-            int fileObserverMask = FileObserver.CLOSE_WRITE | FileObserver.DELETE |
-                    FileObserver.MOVED_TO | FileObserver.CREATE;
-            sPasswordObserver = new PasswordFileObserver(dataSystemDirectory, fileObserverMask);
-            sPasswordObserver.startWatching();
+    private ILockSettings getLockSettings() {
+        if (mLockSettingsService == null) {
+            mLockSettingsService = ILockSettings.Stub.asInterface(
+                (IBinder) ServiceManager.getService("lock_settings"));
         }
+        return mLockSettingsService;
     }
 
     public int getRequestedMinimumPasswordLength() {
-        return getDevicePolicyManager().getPasswordMinimumLength(null);
+        return getDevicePolicyManager().getPasswordMinimumLength(null, getCurrentOrCallingUserId());
     }
-
 
     /**
      * Gets the device policy password mode. If the mode is non-specific, returns
      * MODE_PATTERN which allows the user to choose anything.
      */
     public int getRequestedPasswordQuality() {
-        return getDevicePolicyManager().getPasswordQuality(null);
+        return getDevicePolicyManager().getPasswordQuality(null, getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordHistoryLength() {
-        return getDevicePolicyManager().getPasswordHistoryLength(null);
+        return getDevicePolicyManager().getPasswordHistoryLength(null, getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumLetters() {
-        return getDevicePolicyManager().getPasswordMinimumLetters(null);
+        return getDevicePolicyManager().getPasswordMinimumLetters(null,
+                getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumUpperCase() {
-        return getDevicePolicyManager().getPasswordMinimumUpperCase(null);
+        return getDevicePolicyManager().getPasswordMinimumUpperCase(null,
+                getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumLowerCase() {
-        return getDevicePolicyManager().getPasswordMinimumLowerCase(null);
+        return getDevicePolicyManager().getPasswordMinimumLowerCase(null,
+                getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumNumeric() {
-        return getDevicePolicyManager().getPasswordMinimumNumeric(null);
+        return getDevicePolicyManager().getPasswordMinimumNumeric(null,
+                getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumSymbols() {
-        return getDevicePolicyManager().getPasswordMinimumSymbols(null);
+        return getDevicePolicyManager().getPasswordMinimumSymbols(null,
+                getCurrentOrCallingUserId());
     }
 
     public int getRequestedPasswordMinimumNonLetter() {
-        return getDevicePolicyManager().getPasswordMinimumNonLetter(null);
+        return getDevicePolicyManager().getPasswordMinimumNonLetter(null,
+                getCurrentOrCallingUserId());
     }
+
     /**
      * Returns the actual password mode, as set by keyguard after updating the password.
      *
      * @return
      */
     public void reportFailedPasswordAttempt() {
-        getDevicePolicyManager().reportFailedPasswordAttempt();
+        getDevicePolicyManager().reportFailedPasswordAttempt(getCurrentOrCallingUserId());
     }
 
     public void reportSuccessfulPasswordAttempt() {
-        getDevicePolicyManager().reportSuccessfulPasswordAttempt();
+        getDevicePolicyManager().reportSuccessfulPasswordAttempt(getCurrentOrCallingUserId());
+    }
+
+    public void setCurrentUser(int userId) {
+        sCurrentUserId = userId;
+    }
+
+    public int getCurrentUser() {
+        if (sCurrentUserId != UserHandle.USER_NULL) {
+            // Someone is regularly updating using setCurrentUser() use that value.
+            return sCurrentUserId;
+        }
+        try {
+            return ActivityManagerNative.getDefault().getCurrentUser().id;
+        } catch (RemoteException re) {
+            return UserHandle.USER_OWNER;
+        }
+    }
+
+    public void removeUser(int userId) {
+        try {
+            getLockSettings().removeUser(userId);
+        } catch (RemoteException re) {
+            Log.e(TAG, "Couldn't remove lock settings for user " + userId);
+        }
+    }
+
+    private int getCurrentOrCallingUserId() {
+        int callingUid = Binder.getCallingUid();
+        if (callingUid == android.os.Process.SYSTEM_UID) {
+            // TODO: This is a little inefficient. See if all users of this are able to
+            // handle USER_CURRENT and pass that instead.
+            return getCurrentUser();
+        } else {
+            return UserHandle.getUserId(callingUid);
+        }
     }
 
     /**
@@ -244,20 +291,14 @@ public class LockPatternUtils {
      * @return Whether the pattern matches the stored one.
      */
     public boolean checkPattern(List<LockPatternView.Cell> pattern) {
+        final int userId = getCurrentOrCallingUserId();
         try {
-            // Read all the bytes from the file
-            RandomAccessFile raf = new RandomAccessFile(sLockPatternFilename, "r");
-            final byte[] stored = new byte[(int) raf.length()];
-            int got = raf.read(stored, 0, stored.length);
-            raf.close();
-            if (got <= 0) {
-                return true;
+            final boolean matched = getLockSettings().checkPattern(patternToHash(pattern), userId);
+            if (matched && (userId == UserHandle.USER_OWNER)) {
+                KeyStore.getInstance().password(patternToString(pattern));
             }
-            // Compare the hash from the file with the entered pattern's hash
-            return Arrays.equals(stored, LockPatternUtils.patternToHash(pattern));
-        } catch (FileNotFoundException fnfe) {
-            return true;
-        } catch (IOException ioe) {
+            return matched;
+        } catch (RemoteException re) {
             return true;
         }
     }
@@ -269,20 +310,15 @@ public class LockPatternUtils {
      * @return Whether the password matches the stored one.
      */
     public boolean checkPassword(String password) {
+        final int userId = getCurrentOrCallingUserId();
         try {
-            // Read all the bytes from the file
-            RandomAccessFile raf = new RandomAccessFile(sLockPasswordFilename, "r");
-            final byte[] stored = new byte[(int) raf.length()];
-            int got = raf.read(stored, 0, stored.length);
-            raf.close();
-            if (got <= 0) {
-                return true;
+            final boolean matched = getLockSettings().checkPassword(passwordToHash(password),
+                    userId);
+            if (matched && (userId == UserHandle.USER_OWNER)) {
+                KeyStore.getInstance().password(password);
             }
-            // Compare the hash from the file with the entered password's hash
-            return Arrays.equals(stored, passwordToHash(password));
-        } catch (FileNotFoundException fnfe) {
-            return true;
-        } catch (IOException ioe) {
+            return matched;
+        } catch (RemoteException re) {
             return true;
         }
     }
@@ -319,7 +355,11 @@ public class LockPatternUtils {
      * @return Whether a saved pattern exists.
      */
     public boolean savedPatternExists() {
-        return sHaveNonZeroPatternFile.get();
+        try {
+            return getLockSettings().havePattern(getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            return false;
+        }
     }
 
     /**
@@ -327,7 +367,11 @@ public class LockPatternUtils {
      * @return Whether a saved pattern exists.
      */
     public boolean savedPasswordExists() {
-        return sHaveNonZeroPasswordFile.get();
+        try {
+            return getLockSettings().havePassword(getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            return false;
+        }
     }
 
     /**
@@ -404,7 +448,7 @@ public class LockPatternUtils {
         saveLockPassword(null, DevicePolicyManager.PASSWORD_QUALITY_SOMETHING);
         setLockPatternEnabled(false);
         saveLockPattern(null);
-        setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_SOMETHING);
+        setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED);
         setLong(PASSWORD_TYPE_ALTERNATE_KEY, DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED);
     }
 
@@ -432,10 +476,9 @@ public class LockPatternUtils {
      * Calls back SetupFaceLock to delete the temporary gallery file
      */
     public void deleteTempGallery() {
-        Intent intent = new Intent().setClassName("com.android.facelock",
-                "com.android.facelock.SetupFaceLock");
+        Intent intent = new Intent().setAction("com.android.facelock.DELETE_GALLERY");
         intent.putExtra("deleteTempGallery", true);
-        mContext.startActivity(intent);
+        mContext.sendBroadcast(intent);
     }
 
     /**
@@ -443,10 +486,9 @@ public class LockPatternUtils {
     */
     void deleteGallery() {
         if(usingBiometricWeak()) {
-            Intent intent = new Intent().setClassName("com.android.facelock",
-                    "com.android.facelock.SetupFaceLock");
+            Intent intent = new Intent().setAction("com.android.facelock.DELETE_GALLERY");
             intent.putExtra("deleteGallery", true);
-            mContext.startActivity(intent);
+            mContext.sendBroadcast(intent);
         }
     }
 
@@ -465,17 +507,9 @@ public class LockPatternUtils {
      */
     public void saveLockPattern(List<LockPatternView.Cell> pattern, boolean isFallback) {
         // Compute the hash
-        final byte[] hash = LockPatternUtils.patternToHash(pattern);
+        final byte[] hash = patternToHash(pattern);
         try {
-            // Write the hash to file
-            RandomAccessFile raf = new RandomAccessFile(sLockPatternFilename, "rw");
-            // Truncate the file if pattern is null, to clear the lock
-            if (pattern == null) {
-                raf.setLength(0);
-            } else {
-                raf.write(hash, 0, hash.length);
-            }
-            raf.close();
+            getLockSettings().setLockPattern(hash, getCurrentOrCallingUserId());
             DevicePolicyManager dpm = getDevicePolicyManager();
             KeyStore keyStore = KeyStore.getInstance();
             if (pattern != null) {
@@ -485,29 +519,24 @@ public class LockPatternUtils {
                     deleteGallery();
                     setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_SOMETHING);
                     dpm.setActivePasswordState(DevicePolicyManager.PASSWORD_QUALITY_SOMETHING,
-                            pattern.size(), 0, 0, 0, 0, 0, 0);
+                            pattern.size(), 0, 0, 0, 0, 0, 0, getCurrentOrCallingUserId());
                 } else {
                     setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_BIOMETRIC_WEAK);
                     setLong(PASSWORD_TYPE_ALTERNATE_KEY,
                             DevicePolicyManager.PASSWORD_QUALITY_SOMETHING);
                     finishBiometricWeak();
                     dpm.setActivePasswordState(DevicePolicyManager.PASSWORD_QUALITY_BIOMETRIC_WEAK,
-                            0, 0, 0, 0, 0, 0, 0);
+                            0, 0, 0, 0, 0, 0, 0, getCurrentOrCallingUserId());
                 }
             } else {
                 if (keyStore.isEmpty()) {
                     keyStore.reset();
                 }
                 dpm.setActivePasswordState(DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED, 0, 0,
-                        0, 0, 0, 0, 0);
+                        0, 0, 0, 0, 0, getCurrentOrCallingUserId());
             }
-        } catch (FileNotFoundException fnfe) {
-            // Cant do much, unless we want to fail over to using the settings
-            // provider
-            Log.e(TAG, "Unable to save lock pattern to " + sLockPatternFilename);
-        } catch (IOException ioe) {
-            // Cant do much
-            Log.e(TAG, "Unable to save lock pattern to " + sLockPatternFilename);
+        } catch (RemoteException re) {
+            Log.e(TAG, "Couldn't save lock pattern " + re);
         }
     }
 
@@ -541,7 +570,8 @@ public class LockPatternUtils {
     /** Update the encryption password if it is enabled **/
     private void updateEncryptionPassword(String password) {
         DevicePolicyManager dpm = getDevicePolicyManager();
-        if (dpm.getStorageEncryptionStatus() != DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE) {
+        if (dpm.getStorageEncryptionStatus(getCurrentOrCallingUserId())
+                != DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE) {
             return;
         }
 
@@ -567,7 +597,7 @@ public class LockPatternUtils {
      * @param quality {@see DevicePolicyManager#getPasswordQuality(android.content.ComponentName)}
      */
     public void saveLockPassword(String password, int quality) {
-        this.saveLockPassword(password, quality, false);
+        this.saveLockPassword(password, quality, false, getCurrentOrCallingUserId());
     }
 
     /**
@@ -579,31 +609,38 @@ public class LockPatternUtils {
      * @param isFallback Specifies if this is a fallback to biometric weak
      */
     public void saveLockPassword(String password, int quality, boolean isFallback) {
+        saveLockPassword(password, quality, isFallback, getCurrentOrCallingUserId());
+    }
+
+    /**
+     * Save a lock password.  Does not ensure that the password is as good
+     * as the requested mode, but will adjust the mode to be as good as the
+     * pattern.
+     * @param password The password to save
+     * @param quality {@see DevicePolicyManager#getPasswordQuality(android.content.ComponentName)}
+     * @param isFallback Specifies if this is a fallback to biometric weak
+     * @param userHandle The userId of the user to change the password for
+     */
+    public void saveLockPassword(String password, int quality, boolean isFallback, int userHandle) {
         // Compute the hash
         final byte[] hash = passwordToHash(password);
         try {
-            // Write the hash to file
-            RandomAccessFile raf = new RandomAccessFile(sLockPasswordFilename, "rw");
-            // Truncate the file if pattern is null, to clear the lock
-            if (password == null) {
-                raf.setLength(0);
-            } else {
-                raf.write(hash, 0, hash.length);
-            }
-            raf.close();
+            getLockSettings().setLockPassword(hash, userHandle);
             DevicePolicyManager dpm = getDevicePolicyManager();
             KeyStore keyStore = KeyStore.getInstance();
             if (password != null) {
-                // Update the encryption password.
-                updateEncryptionPassword(password);
+                if (userHandle == UserHandle.USER_OWNER) {
+                    // Update the encryption password.
+                    updateEncryptionPassword(password);
 
-                // Update the keystore password
-                keyStore.password(password);
+                    // Update the keystore password
+                    keyStore.password(password);
+                }
 
                 int computedQuality = computePasswordQuality(password);
                 if (!isFallback) {
                     deleteGallery();
-                    setLong(PASSWORD_TYPE_KEY, Math.max(quality, computedQuality));
+                    setLong(PASSWORD_TYPE_KEY, Math.max(quality, computedQuality), userHandle);
                     if (computedQuality != DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED) {
                         int letters = 0;
                         int uppercase = 0;
@@ -629,25 +666,27 @@ public class LockPatternUtils {
                         }
                         dpm.setActivePasswordState(Math.max(quality, computedQuality),
                                 password.length(), letters, uppercase, lowercase,
-                                numbers, symbols, nonletter);
+                                numbers, symbols, nonletter, userHandle);
                     } else {
                         // The password is not anything.
                         dpm.setActivePasswordState(
                                 DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED,
-                                0, 0, 0, 0, 0, 0, 0);
+                                0, 0, 0, 0, 0, 0, 0, userHandle);
                     }
                 } else {
                     // Case where it's a fallback for biometric weak
-                    setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_BIOMETRIC_WEAK);
-                    setLong(PASSWORD_TYPE_ALTERNATE_KEY, Math.max(quality, computedQuality));
+                    setLong(PASSWORD_TYPE_KEY, DevicePolicyManager.PASSWORD_QUALITY_BIOMETRIC_WEAK,
+                            userHandle);
+                    setLong(PASSWORD_TYPE_ALTERNATE_KEY, Math.max(quality, computedQuality),
+                            userHandle);
                     finishBiometricWeak();
                     dpm.setActivePasswordState(DevicePolicyManager.PASSWORD_QUALITY_BIOMETRIC_WEAK,
-                            0, 0, 0, 0, 0, 0, 0);
+                            0, 0, 0, 0, 0, 0, 0, userHandle);
                 }
                 // Add the password to the password history. We assume all
                 // password
                 // hashes have the same length for simplicity of implementation.
-                String passwordHistory = getString(PASSWORD_HISTORY_KEY);
+                String passwordHistory = getString(PASSWORD_HISTORY_KEY, userHandle);
                 if (passwordHistory == null) {
                     passwordHistory = new String();
                 }
@@ -662,7 +701,7 @@ public class LockPatternUtils {
                             * passwordHistoryLength + passwordHistoryLength - 1, passwordHistory
                             .length()));
                 }
-                setString(PASSWORD_HISTORY_KEY, passwordHistory);
+                setString(PASSWORD_HISTORY_KEY, passwordHistory, userHandle);
             } else {
                 // Conditionally reset the keystore if empty. If
                 // non-empty, we are just switching key guard type
@@ -670,14 +709,12 @@ public class LockPatternUtils {
                     keyStore.reset();
                 }
                 dpm.setActivePasswordState(
-                        DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED, 0, 0, 0, 0, 0, 0, 0);
+                        DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED, 0, 0, 0, 0, 0, 0, 0,
+                        userHandle);
             }
-        } catch (FileNotFoundException fnfe) {
-            // Cant do much, unless we want to fail over to using the settings provider
-            Log.e(TAG, "Unable to save lock pattern to " + sLockPasswordFilename);
-        } catch (IOException ioe) {
+        } catch (RemoteException re) {
             // Cant do much
-            Log.e(TAG, "Unable to save lock pattern to " + sLockPasswordFilename);
+            Log.e(TAG, "Unable to save lock password " + re);
         }
     }
 
@@ -714,13 +751,16 @@ public class LockPatternUtils {
      * @param string The pattern serialized with {@link #patternToString}
      * @return The pattern.
      */
-    public static List<LockPatternView.Cell> stringToPattern(String string) {
+    public List<LockPatternView.Cell> stringToPattern(String string) {
         List<LockPatternView.Cell> result = Lists.newArrayList();
+
+        final byte size = getLockPatternSize();
+        LockPatternView.Cell.updateSize(size);
 
         final byte[] bytes = string.getBytes();
         for (int i = 0; i < bytes.length; i++) {
             byte b = bytes[i];
-            result.add(LockPatternView.Cell.of(b / 3, b % 3));
+            result.add(LockPatternView.Cell.of(b / size, b % size, size));
         }
         return result;
     }
@@ -730,7 +770,7 @@ public class LockPatternUtils {
      * @param pattern The pattern.
      * @return The pattern in string form.
      */
-    public static String patternToString(List<LockPatternView.Cell> pattern) {
+    public String patternToString(List<LockPatternView.Cell> pattern) {
         if (pattern == null) {
             return "";
         }
@@ -739,7 +779,7 @@ public class LockPatternUtils {
         byte[] res = new byte[patternSize];
         for (int i = 0; i < patternSize; i++) {
             LockPatternView.Cell cell = pattern.get(i);
-            res[i] = (byte) (cell.getRow() * 3 + cell.getColumn());
+            res[i] = (byte) (cell.getRow() * getLockPatternSize() + cell.getColumn());
         }
         return new String(res);
     }
@@ -751,7 +791,7 @@ public class LockPatternUtils {
      * @param pattern the gesture pattern.
      * @return the hash of the pattern in a byte array.
      */
-    private static byte[] patternToHash(List<LockPatternView.Cell> pattern) {
+    private byte[] patternToHash(List<LockPatternView.Cell> pattern) {
         if (pattern == null) {
             return null;
         }
@@ -760,7 +800,7 @@ public class LockPatternUtils {
         byte[] res = new byte[patternSize];
         for (int i = 0; i < patternSize; i++) {
             LockPatternView.Cell cell = pattern.get(i);
-            res[i] = (byte) (cell.getRow() * 3 + cell.getColumn());
+            res[i] = (byte) (cell.getRow() * getLockPatternSize() + cell.getColumn());
         }
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
@@ -857,11 +897,6 @@ public class LockPatternUtils {
      * @return Whether biometric weak lock is installed and that the front facing camera exists
      */
     public boolean isBiometricWeakInstalled() {
-        // Check that the system flag was set
-        if (!OPTION_ENABLE_FACELOCK.equals(getString(LOCKSCREEN_OPTIONS))) {
-            return false;
-        }
-
         // Check that it's installed
         PackageManager pm = mContext.getPackageManager();
         try {
@@ -874,12 +909,34 @@ public class LockPatternUtils {
         if (!pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_FRONT)) {
             return false;
         }
-        if (getDevicePolicyManager().getCameraDisabled(null)) {
+        if (getDevicePolicyManager().getCameraDisabled(null, getCurrentOrCallingUserId())) {
             return false;
         }
 
 
         return true;
+    }
+
+    /**
+     * Set whether biometric weak liveliness is enabled.
+     */
+    public void setBiometricWeakLivelinessEnabled(boolean enabled) {
+        long currentFlag = getLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, 0L);
+        long newFlag;
+        if (enabled) {
+            newFlag = currentFlag | FLAG_BIOMETRIC_WEAK_LIVELINESS;
+        } else {
+            newFlag = currentFlag & ~FLAG_BIOMETRIC_WEAK_LIVELINESS;
+        }
+        setLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, newFlag);
+    }
+
+    /**
+     * @return Whether the biometric weak liveliness is enabled.
+     */
+    public boolean isBiometricWeakLivelinessEnabled() {
+        long currentFlag = getLong(Settings.Secure.LOCK_BIOMETRIC_WEAK_FLAGS, 0L);
+        return ((currentFlag & FLAG_BIOMETRIC_WEAK_LIVELINESS) != 0);
     }
 
     /**
@@ -907,14 +964,42 @@ public class LockPatternUtils {
      * @return Whether tactile feedback for the pattern is enabled.
      */
     public boolean isTactileFeedbackEnabled() {
-        return getBoolean(Settings.Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED, false);
+        return Settings.System.getIntForUser(mContentResolver,
+                Settings.System.HAPTIC_FEEDBACK_ENABLED, 1, UserHandle.USER_CURRENT) != 0;
     }
 
     /**
-     * Set whether tactile feedback for the pattern is enabled.
+     * @return the pattern lockscreen size
      */
-    public void setTactileFeedbackEnabled(boolean enabled) {
-        setBoolean(Settings.Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED, enabled);
+    public byte getLockPatternSize() {
+        try {
+            return getLockSettings().getLockPatternSize(getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            return PATTERN_SIZE_DEFAULT;
+        }
+    }
+
+    /**
+     * Set the pattern lockscreen size
+     */
+    public void setLockPatternSize(long size) {
+        setLong(Settings.Secure.LOCK_PATTERN_SIZE, size);
+    }
+
+    public void setVisibleDotsEnabled(boolean enabled) {
+        setBoolean(Settings.Secure.LOCK_DOTS_VISIBLE, enabled);
+    }
+
+    public boolean isVisibleDotsEnabled() {
+        return getBoolean(Settings.Secure.LOCK_DOTS_VISIBLE, true);
+    }
+
+    public void setShowErrorPath(boolean enabled) {
+        setBoolean(Settings.Secure.LOCK_SHOW_ERROR_PATH, enabled);
+    }
+
+    public boolean isShowErrorPath() {
+        return getBoolean(Settings.Secure.LOCK_SHOW_ERROR_PATH, true);
     }
 
     /**
@@ -983,8 +1068,8 @@ public class LockPatternUtils {
      *   or null if there is no next alarm.
      */
     public String getNextAlarm() {
-        String nextAlarm = Settings.System.getString(mContentResolver,
-                Settings.System.NEXT_ALARM_FORMATTED);
+        String nextAlarm = Settings.System.getStringForUser(mContentResolver,
+                Settings.System.NEXT_ALARM_FORMATTED, UserHandle.USER_CURRENT);
         if (nextAlarm == null || TextUtils.isEmpty(nextAlarm)) {
             return null;
         }
@@ -992,30 +1077,195 @@ public class LockPatternUtils {
     }
 
     private boolean getBoolean(String secureSettingKey, boolean defaultValue) {
-        return 1 ==
-                android.provider.Settings.Secure.getInt(mContentResolver, secureSettingKey,
-                        defaultValue ? 1 : 0);
+        try {
+            return getLockSettings().getBoolean(secureSettingKey, defaultValue,
+                    getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            return defaultValue;
+        }
     }
 
     private void setBoolean(String secureSettingKey, boolean enabled) {
-        android.provider.Settings.Secure.putInt(mContentResolver, secureSettingKey,
-                                                enabled ? 1 : 0);
+        try {
+            getLockSettings().setBoolean(secureSettingKey, enabled, getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            // What can we do?
+            Log.e(TAG, "Couldn't write boolean " + secureSettingKey + re);
+        }
     }
 
-    private long getLong(String secureSettingKey, long def) {
-        return android.provider.Settings.Secure.getLong(mContentResolver, secureSettingKey, def);
+    public int[] getAppWidgets() {
+        String appWidgetIdString = Settings.Secure.getStringForUser(
+                mContentResolver, Settings.Secure.LOCK_SCREEN_APPWIDGET_IDS,
+                UserHandle.USER_CURRENT);
+        String delims = ",";
+        if (appWidgetIdString != null && appWidgetIdString.length() > 0) {
+            String[] appWidgetStringIds = appWidgetIdString.split(delims);
+            int[] appWidgetIds = new int[appWidgetStringIds.length];
+            for (int i = 0; i < appWidgetStringIds.length; i++) {
+                String appWidget = appWidgetStringIds[i];
+                try {
+                    appWidgetIds[i] = Integer.decode(appWidget);
+                } catch (NumberFormatException e) {
+                    Log.d(TAG, "Error when parsing widget id " + appWidget);
+                    return null;
+                }
+            }
+            return appWidgetIds;
+        }
+        return new int[0];
+    }
+
+    private static String combineStrings(int[] list, String separator) {
+        int listLength = list.length;
+
+        switch (listLength) {
+            case 0: {
+                return "";
+            }
+            case 1: {
+                return Integer.toString(list[0]);
+            }
+        }
+
+        int strLength = 0;
+        int separatorLength = separator.length();
+
+        String[] stringList = new String[list.length];
+        for (int i = 0; i < listLength; i++) {
+            stringList[i] = Integer.toString(list[i]);
+            strLength += stringList[i].length();
+            if (i < listLength - 1) {
+                strLength += separatorLength;
+            }
+        }
+
+        StringBuilder sb = new StringBuilder(strLength);
+
+        for (int i = 0; i < listLength; i++) {
+            sb.append(list[i]);
+            if (i < listLength - 1) {
+                sb.append(separator);
+            }
+        }
+
+        return sb.toString();
+    }
+
+    // appwidget used when appwidgets are disabled (we make an exception for
+    // default clock widget)
+    public void writeFallbackAppWidgetId(int appWidgetId) {
+        Settings.Secure.putIntForUser(mContentResolver,
+                Settings.Secure.LOCK_SCREEN_FALLBACK_APPWIDGET_ID,
+                appWidgetId,
+                UserHandle.USER_CURRENT);
+    }
+
+    // appwidget used when appwidgets are disabled (we make an exception for
+    // default clock widget)
+    public int getFallbackAppWidgetId() {
+        return Settings.Secure.getIntForUser(
+                mContentResolver,
+                Settings.Secure.LOCK_SCREEN_FALLBACK_APPWIDGET_ID,
+                AppWidgetManager.INVALID_APPWIDGET_ID,
+                UserHandle.USER_CURRENT);
+    }
+
+    private void writeAppWidgets(int[] appWidgetIds) {
+        Settings.Secure.putStringForUser(mContentResolver,
+                        Settings.Secure.LOCK_SCREEN_APPWIDGET_IDS,
+                        combineStrings(appWidgetIds, ","),
+                        UserHandle.USER_CURRENT);
+    }
+
+    // TODO: log an error if this returns false
+    public boolean addAppWidget(int widgetId, int index) {
+        int[] widgets = getAppWidgets();
+        if (widgets == null) {
+            return false;
+        }
+        if (index < 0 || index > widgets.length) {
+            return false;
+        }
+        int[] newWidgets = new int[widgets.length + 1];
+        for (int i = 0, j = 0; i < newWidgets.length; i++) {
+            if (index == i) {
+                newWidgets[i] = widgetId;
+                i++;
+            }
+            if (i < newWidgets.length) {
+                newWidgets[i] = widgets[j];
+                j++;
+            }
+        }
+        writeAppWidgets(newWidgets);
+        return true;
+    }
+
+    public boolean removeAppWidget(int widgetId) {
+        int[] widgets = getAppWidgets();
+
+        if (widgets.length == 0) {
+            return false;
+        }
+
+        int[] newWidgets = new int[widgets.length - 1];
+        for (int i = 0, j = 0; i < widgets.length; i++) {
+            if (widgets[i] == widgetId) {
+                // continue...
+            } else if (j >= newWidgets.length) {
+                // we couldn't find the widget
+                return false;
+            } else {
+                newWidgets[j] = widgets[i];
+                j++;
+            }
+        }
+        writeAppWidgets(newWidgets);
+        return true;
+    }
+
+    private long getLong(String secureSettingKey, long defaultValue) {
+        try {
+            return getLockSettings().getLong(secureSettingKey, defaultValue,
+                    getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            return defaultValue;
+        }
     }
 
     private void setLong(String secureSettingKey, long value) {
-        android.provider.Settings.Secure.putLong(mContentResolver, secureSettingKey, value);
+        setLong(secureSettingKey, value, getCurrentOrCallingUserId());
+    }
+
+    private void setLong(String secureSettingKey, long value, int userHandle) {
+        try {
+            getLockSettings().setLong(secureSettingKey, value, getCurrentOrCallingUserId());
+        } catch (RemoteException re) {
+            // What can we do?
+            Log.e(TAG, "Couldn't write long " + secureSettingKey + re);
+        }
     }
 
     private String getString(String secureSettingKey) {
-        return android.provider.Settings.Secure.getString(mContentResolver, secureSettingKey);
+        return getString(secureSettingKey, getCurrentOrCallingUserId());
     }
 
-    private void setString(String secureSettingKey, String value) {
-        android.provider.Settings.Secure.putString(mContentResolver, secureSettingKey, value);
+    private String getString(String secureSettingKey, int userHandle) {
+        try {
+            return getLockSettings().getString(secureSettingKey, null, userHandle);
+        } catch (RemoteException re) {
+            return null;
+        }
+    }
+
+    private void setString(String secureSettingKey, String value, int userHandle) {
+        try {
+            getLockSettings().setString(secureSettingKey, value, userHandle);
+        } catch (RemoteException re) {
+            // What can we do?
+            Log.e(TAG, "Couldn't write string " + secureSettingKey + re);
+        }
     }
 
     public boolean isSecure() {
@@ -1043,8 +1293,13 @@ public class LockPatternUtils {
      *  {@link TelephonyManager#CALL_STATE_RINGING}
      *  {@link TelephonyManager#CALL_STATE_OFFHOOK}
      * @param shown indicates whether the given screen wants the emergency button to show at all
+     * @param button
+     * @param phoneState
+     * @param shown shown if true; hidden if false
+     * @param upperCase if true, converts button label string to upper case
      */
-    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown) {
+    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown,
+            boolean upperCase, boolean showIcon) {
         if (isEmergencyCallCapable() && shown) {
             button.setVisibility(View.VISIBLE);
         } else {
@@ -1056,14 +1311,30 @@ public class LockPatternUtils {
         if (phoneState == TelephonyManager.CALL_STATE_OFFHOOK) {
             // show "return to call" text and show phone icon
             textId = R.string.lockscreen_return_to_call;
-            int phoneCallIcon = R.drawable.stat_sys_phone_call;
+            int phoneCallIcon = showIcon ? R.drawable.stat_sys_phone_call : 0;
             button.setCompoundDrawablesWithIntrinsicBounds(phoneCallIcon, 0, 0, 0);
         } else {
             textId = R.string.lockscreen_emergency_call;
-            int emergencyIcon = R.drawable.ic_emergency;
+            int emergencyIcon = showIcon ? R.drawable.ic_emergency : 0;
             button.setCompoundDrawablesWithIntrinsicBounds(emergencyIcon, 0, 0, 0);
         }
-        button.setText(textId);
+        if (upperCase) {
+            CharSequence original = mContext.getResources().getText(textId);
+            String upper = original != null ? original.toString().toUpperCase() : null;
+            button.setText(upper);
+        } else {
+            button.setText(textId);
+        }
+    }
+
+    /**
+     * @deprecated
+     * @param button
+     * @param phoneState
+     * @param shown
+     */
+    public void updateEmergencyCallButtonState(Button button, int  phoneState, boolean shown) {
+        updateEmergencyCallButtonState(button, phoneState, shown, false, true);
     }
 
     /**
@@ -1101,6 +1372,25 @@ public class LockPatternUtils {
 
     public boolean getPowerButtonInstantlyLocks() {
         return getBoolean(LOCKSCREEN_POWER_BUTTON_INSTANTLY_LOCKS, true);
+    }
+
+    public static boolean isSafeModeEnabled() {
+        try {
+            return IWindowManager.Stub.asInterface(
+                    ServiceManager.getService("window")).isSafeModeEnabled();
+        } catch (RemoteException e) {
+            // Shouldn't happen!
+        }
+        return false;
+    }
+
+    /**
+     * @hide
+     * Set the lock-before-unlock option (show widgets before the secure
+     * unlock screen). See config_enableLockBeforeUnlockScreen
+     */
+    public void setLockBeforeUnlock(boolean enabled) {
+        setBoolean(Settings.Secure.LOCK_BEFORE_UNLOCK, enabled);
     }
 
 }

@@ -117,7 +117,7 @@ import android.util.Slog;
  *
  * <ul>
  * <li><p>The Intent namespace is global.  Make sure that Intent action names and
- * other strings are written in a namespace you own, or else you may inadvertantly
+ * other strings are written in a namespace you own, or else you may inadvertently
  * conflict with other applications.
  * <li><p>When you use {@link Context#registerReceiver(BroadcastReceiver, IntentFilter)},
  * <em>any</em> application may send broadcasts to that registered receiver.  You can
@@ -237,6 +237,7 @@ public abstract class BroadcastReceiver {
         final boolean mOrderedHint;
         final boolean mInitialStickyHint;
         final IBinder mToken;
+        final int mSendingUser;
         
         int mResultCode;
         String mResultData;
@@ -246,7 +247,7 @@ public abstract class BroadcastReceiver {
         
         /** @hide */
         public PendingResult(int resultCode, String resultData, Bundle resultExtras,
-                int type, boolean ordered, boolean sticky, IBinder token) {
+                int type, boolean ordered, boolean sticky, IBinder token, int userId) {
             mResultCode = resultCode;
             mResultData = resultData;
             mResultExtras = resultExtras;
@@ -254,6 +255,7 @@ public abstract class BroadcastReceiver {
             mOrderedHint = ordered;
             mInitialStickyHint = sticky;
             mToken = token;
+            mSendingUser = userId;
         }
         
         /**
@@ -425,7 +427,12 @@ public abstract class BroadcastReceiver {
                 }
             }
         }
-        
+
+        /** @hide */
+        public int getSendingUserId() {
+            return mSendingUser;
+        }
+
         void checkSynchronousHint() {
             // Note that we don't assert when receiving the initial sticky value,
             // since that may have come from an ordered broadcast.  We'll catch
@@ -728,7 +735,12 @@ public abstract class BroadcastReceiver {
     public final PendingResult getPendingResult() {
         return mPendingResult;
     }
-    
+
+    /** @hide */
+    public int getSendingUserId() {
+        return mPendingResult.mSendingUser;
+    }
+
     /**
      * Control inclusion of debugging help for mismatched
      * calls to {@ Context#registerReceiver(BroadcastReceiver, IntentFilter)

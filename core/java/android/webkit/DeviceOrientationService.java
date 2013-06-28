@@ -123,7 +123,7 @@ final class DeviceOrientationService implements SensorEventListener {
         // The angles are in radians
         float[] rotationAngles = new float[3];
         SensorManager.getOrientation(deviceRotationMatrix, rotationAngles);
-        double alpha = Math.toDegrees(-rotationAngles[0]) - 90.0;
+        double alpha = Math.toDegrees(-rotationAngles[0]);
         while (alpha < 0.0) { alpha += 360.0; } // [0, 360)
         double beta = Math.toDegrees(-rotationAngles[1]);
         while (beta < -180.0) { beta += 360.0; } // [-180, 180)
@@ -184,6 +184,7 @@ final class DeviceOrientationService implements SensorEventListener {
      * SensorEventListener implementation.
      * Callbacks happen on the thread on which we registered - the WebCore thread.
      */
+    @Override
     public void onSensorChanged(SensorEvent event) {
         assert(event.values.length == 3);
         assert WebViewCore.THREAD_NAME.equals(Thread.currentThread().getName());
@@ -217,6 +218,7 @@ final class DeviceOrientationService implements SensorEventListener {
         }
     }
 
+    @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
         assert WebViewCore.THREAD_NAME.equals(Thread.currentThread().getName());
     }

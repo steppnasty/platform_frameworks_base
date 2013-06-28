@@ -16,6 +16,7 @@
 
 package android.server.search;
 
+import android.app.AppGlobals;
 import android.app.SearchManager;
 import android.app.SearchableInfo;
 import android.content.ComponentName;
@@ -23,6 +24,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Bundle;
@@ -65,12 +67,19 @@ public class Searchables {
     public static String ENHANCED_GOOGLE_SEARCH_COMPONENT_NAME =
             "com.google.android.providers.enhancedgooglesearch/.Launcher";
 
+    // Cache the package manager instance
+    final private IPackageManager mPm;
+    // User for which this Searchables caches information
+    private int mUserId;
+
     /**
      *
      * @param context Context to use for looking up activities etc.
      */
-    public Searchables (Context context) {
+    public Searchables (Context context, int userId) {
         mContext = context;
+        mUserId = userId;
+        mPm = AppGlobals.getPackageManager();
     }
 
     /**
@@ -219,7 +228,8 @@ public class Searchables {
                 ActivityInfo ai = info.activityInfo;
                 // Check first to avoid duplicate entries.
                 if (newSearchablesMap.get(new ComponentName(ai.packageName, ai.name)) == null) {
-                    SearchableInfo searchable = SearchableInfo.getActivityMetaData(mContext, ai);
+                    SearchableInfo searchable = SearchableInfo.getActivityMetaData(mContext, ai,
+                            mUserId);
                     if (searchable != null) {
                         newSearchablesList.add(searchable);
                         newSearchablesMap.put(searchable.getSearchActivity(), searchable);

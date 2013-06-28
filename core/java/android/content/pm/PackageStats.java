@@ -18,6 +18,7 @@ package android.content.pm;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.UserHandle;
 
 /**
  * implementation of PackageStats associated with a
@@ -26,6 +27,9 @@ import android.os.Parcelable;
 public class PackageStats implements Parcelable {
     /** Name of the package to which this stats applies. */
     public String packageName;
+
+    /** @hide */
+    public int userHandle;
 
     /** Size of the code (e.g., APK) */
     public long codeSize;
@@ -101,10 +105,18 @@ public class PackageStats implements Parcelable {
 
     public PackageStats(String pkgName) {
         packageName = pkgName;
+        userHandle = UserHandle.myUserId();
+    }
+
+    /** @hide */
+    public PackageStats(String pkgName, int userHandle) {
+        this.packageName = pkgName;
+        this.userHandle = userHandle;
     }
 
     public PackageStats(Parcel source) {
         packageName = source.readString();
+        userHandle = source.readInt();
         codeSize = source.readLong();
         dataSize = source.readLong();
         cacheSize = source.readLong();
@@ -117,6 +129,7 @@ public class PackageStats implements Parcelable {
 
     public PackageStats(PackageStats pStats) {
         packageName = pStats.packageName;
+        userHandle = pStats.userHandle;
         codeSize = pStats.codeSize;
         dataSize = pStats.dataSize;
         cacheSize = pStats.cacheSize;
@@ -133,6 +146,7 @@ public class PackageStats implements Parcelable {
 
     public void writeToParcel(Parcel dest, int parcelableFlags){
         dest.writeString(packageName);
+        dest.writeInt(userHandle);
         dest.writeLong(codeSize);
         dest.writeLong(dataSize);
         dest.writeLong(cacheSize);

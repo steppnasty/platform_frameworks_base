@@ -19,6 +19,7 @@ package android.view;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
+import android.graphics.Rect;
 
 /**
  * An OpenGL ES 2.0 implementation of {@link HardwareLayer}. This
@@ -52,7 +53,8 @@ class GLES20TextureLayer extends GLES20Layer {
     }
 
     @Override
-    void resize(int width, int height) {
+    boolean resize(int width, int height) {
+        return isValid();
     }
 
     @Override
@@ -88,7 +90,16 @@ class GLES20TextureLayer extends GLES20Layer {
     }
 
     @Override
+    void setOpaque(boolean isOpaque) {
+        throw new UnsupportedOperationException("Use update(int, int, boolean) instead");
+    }
+
+    @Override
     void setTransform(Matrix matrix) {
         GLES20Canvas.nSetTextureLayerTransform(mLayer, matrix.native_instance);
+    }
+
+    @Override
+    void redrawLater(DisplayList displayList, Rect dirtyRect) {
     }
 }

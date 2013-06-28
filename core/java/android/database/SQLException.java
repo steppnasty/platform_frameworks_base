@@ -27,4 +27,8 @@ public class SQLException extends RuntimeException
     {
         super(error);
     }
+
+    public SQLException(String error, Throwable cause) {
+        super(error, cause);
+    }
 }

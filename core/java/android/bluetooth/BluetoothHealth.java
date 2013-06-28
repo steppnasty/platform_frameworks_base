@@ -435,7 +435,7 @@ public final class BluetoothHealth implements BluetoothProfile {
      * Create a BluetoothHealth proxy object.
      */
     /*package*/ BluetoothHealth(Context mContext, ServiceListener l) {
-        IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_SERVICE);
+        IBinder b = ServiceManager.getService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE);
         mServiceListener = l;
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         if (b != null) {

@@ -145,17 +145,33 @@ class GLES20Canvas extends HardwareCanvas {
     ///////////////////////////////////////////////////////////////////////////
     // Hardware layers
     ///////////////////////////////////////////////////////////////////////////
-    
+
+    @Override
+    void pushLayerUpdate(HardwareLayer layer) {
+        nPushLayerUpdate(mRenderer, ((GLES20RenderLayer) layer).mLayer);
+    }
+
+    @Override
+    void clearLayerUpdates() {
+        nClearLayerUpdates(mRenderer);
+    }
+
     static native int nCreateTextureLayer(boolean opaque, int[] layerInfo);
     static native void nSetSurfaceTexture(SurfaceTexture surfaceTexture);
     static native int nCreateLayer(int width, int height, boolean isOpaque, int[] layerInfo);
-    static native void nResizeLayer(int layerId, int width, int height, int[] layerInfo);
+    static native boolean nResizeLayer(int layerId, int width, int height, int[] layerInfo);
+    static native void nSetOpaqueLayer(int layerId, boolean isOpaque);
     static native void nUpdateTextureLayer(int layerId, int width, int height, boolean opaque,
             SurfaceTexture surface);
     static native void nSetTextureLayerTransform(int layerId, int matrix);
     static native void nDestroyLayer(int layerId);
     static native void nDestroyLayerDeferred(int layerId);
+    static native void nUpdateRenderLayer(int layerId, int renderer, int displayList,
+            int left, int top, int right, int bottom);
     static native boolean nCopyLayer(int layerId, int bitmap);
+
+    private static native void nClearLayerUpdates(int renderer);
+    private static native void nPushLayerUpdate(int renderer, int layer);
 
     ///////////////////////////////////////////////////////////////////////////
     // Canvas management
@@ -187,7 +203,14 @@ class GLES20Canvas extends HardwareCanvas {
     }
 
     private static native int nGetMaximumTextureWidth();
-    private static native int nGetMaximumTextureHeight();    
+    private static native int nGetMaximumTextureHeight();
+
+    /**
+     * Returns the native OpenGLRenderer object.
+     */
+    int getRenderer() {
+        return mRenderer;
+    }
 
     ///////////////////////////////////////////////////////////////////////////
     // Setup
@@ -247,48 +270,50 @@ class GLES20Canvas extends HardwareCanvas {
     private static native void nDisableVsync();
 
     @Override
-    void onPreDraw(Rect dirty) {
+    public int onPreDraw(Rect dirty) {
         if (dirty != null) {
-            nPrepareDirty(mRenderer, dirty.left, dirty.top, dirty.right, dirty.bottom, mOpaque);
+            return nPrepareDirty(mRenderer, dirty.left, dirty.top, dirty.right, dirty.bottom,
+                    mOpaque);
         } else {
-            nPrepare(mRenderer, mOpaque);
+            return nPrepare(mRenderer, mOpaque);
         }
     }
 
-    @Override
-    void startTileRendering(Rect dirty) {
-        if (dirty != null) {
-            nStartTileRendering(mRenderer, dirty.left, dirty.top, dirty.right, dirty.bottom);
-        } else {
-            nStartTileRendering(mRenderer, 0, 0, 0, 0);
-        }
-    }
-
-    @Override
-    void endTileRendering() {
-            nEndTileRendering(mRenderer);
-    }
-
-    private static native void nPrepare(int renderer, boolean opaque);
-    private static native void nPrepareDirty(int renderer, int left, int top, int right, int bottom,
+    private static native int nPrepare(int renderer, boolean opaque);
+    private static native int nPrepareDirty(int renderer, int left, int top, int right, int bottom,
             boolean opaque);
-    private static native void nStartTileRendering(int renderer, int left, int top, int right, int bottom);
-    private static native void nEndTileRendering(int renderer);
 
     @Override
-    void onPostDraw() {
+    public void onPostDraw() {
         nFinish(mRenderer);
     }
 
     private static native void nFinish(int renderer);
 
+    ///////////////////////////////////////////////////////////////////////////
+    // Functor
+    ///////////////////////////////////////////////////////////////////////////
+
     @Override
-    public boolean callDrawGLFunction(int drawGLFunction) {
+    public int callDrawGLFunction(int drawGLFunction) {
         return nCallDrawGLFunction(mRenderer, drawGLFunction);
     }
 
-    private static native boolean nCallDrawGLFunction(int renderer, int drawGLFunction);
+    private static native int nCallDrawGLFunction(int renderer, int drawGLFunction);
 
+    @Override
+    public void detachFunctor(int functor) {
+        nDetachFunctor(mRenderer, functor);
+    }
+
+    private static native void nDetachFunctor(int renderer, int functor);
+
+    @Override
+    public void attachFunctor(int functor) {
+        nAttachFunctor(mRenderer, functor);
+    }
+
+    private static native void nAttachFunctor(int renderer, int functor);
 
     ///////////////////////////////////////////////////////////////////////////
     // Memory
@@ -362,7 +387,7 @@ class GLES20Canvas extends HardwareCanvas {
     }
 
     private static native int nGetDisplayList(int renderer, int displayList);
-    
+
     static void destroyDisplayList(int displayList) {
         nDestroyDisplayList(displayList);
     }
@@ -375,14 +400,20 @@ class GLES20Canvas extends HardwareCanvas {
 
     private static native int nGetDisplayListSize(int displayList);
 
-    @Override
-    public boolean drawDisplayList(DisplayList displayList, int width, int height, Rect dirty) {
-        return nDrawDisplayList(mRenderer,
-                ((GLES20DisplayList) displayList).getNativeDisplayList(), width, height, dirty);
+    static void setDisplayListName(int displayList, String name) {
+        nSetDisplayListName(displayList, name);
     }
 
-    private static native boolean nDrawDisplayList(int renderer, int displayList,
-            int width, int height, Rect dirty);
+    private static native void nSetDisplayListName(int displayList, String name);
+
+    @Override
+    public int drawDisplayList(DisplayList displayList, Rect dirty, int flags) {
+        return nDrawDisplayList(mRenderer, ((GLES20DisplayList) displayList).getNativeDisplayList(),
+                dirty, flags);
+    }
+
+    private static native int nDrawDisplayList(int renderer, int displayList,
+            Rect dirty, int flags);
 
     @Override
     void outputDisplayList(DisplayList displayList) {
@@ -944,15 +975,41 @@ class GLES20Canvas extends HardwareCanvas {
     private static native void nDrawPoints(int renderer, float[] points,
             int offset, int count, int paint);
 
+    @SuppressWarnings("deprecation")
     @Override
     public void drawPosText(char[] text, int index, int count, float[] pos, Paint paint) {
-        // TODO: Implement
+        if (index < 0 || index + count > text.length || count * 2 > pos.length) {
+            throw new IndexOutOfBoundsException();
+        }
+
+        int modifiers = setupModifiers(paint);
+        try {
+            nDrawPosText(mRenderer, text, index, count, pos, paint.mNativePaint);
+        } finally {
+            if (modifiers != MODIFIER_NONE) nResetModifiers(mRenderer, modifiers);
+        }
     }
 
+    private static native void nDrawPosText(int renderer, char[] text, int index, int count,
+            float[] pos, int paint);
+
+    @SuppressWarnings("deprecation")
     @Override
     public void drawPosText(String text, float[] pos, Paint paint) {
-        // TODO: Implement
+        if (text.length() * 2 > pos.length) {
+            throw new ArrayIndexOutOfBoundsException();
+        }
+
+        int modifiers = setupModifiers(paint);
+        try {
+            nDrawPosText(mRenderer, text, 0, text.length(), pos, paint.mNativePaint);
+        } finally {
+            if (modifiers != MODIFIER_NONE) nResetModifiers(mRenderer, modifiers);
+        }
     }
+
+    private static native void nDrawPosText(int renderer, String text, int start, int end,
+            float[] pos, int paint);
 
     @Override
     public void drawRect(float left, float top, float right, float bottom, Paint paint) {

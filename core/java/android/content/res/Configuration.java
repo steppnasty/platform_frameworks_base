@@ -20,7 +20,8 @@ package android.content.res;
 import android.content.pm.ActivityInfo;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.util.LocaleUtil;
+import android.text.TextUtils;
+import android.view.View;
 import android.util.Log;
 import android.os.SystemProperties;
 import android.text.TextUtils;
@@ -38,6 +39,9 @@ import java.util.Locale;
  * <pre>Configuration config = getResources().getConfiguration();</pre>
  */
 public final class Configuration implements Parcelable, Comparable<Configuration> {
+    /** @hide */
+    public static final Configuration EMPTY = new Configuration();
+
     /**
      * Current user preference for the scaling factor for fonts, relative
      * to the base density scaling.
@@ -45,17 +49,23 @@ public final class Configuration implements Parcelable, Comparable<Configuration
     public float fontScale;
 
     /**
-     * IMSI MCC (Mobile Country Code).  0 if undefined.
+     * IMSI MCC (Mobile Country Code), corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#MccQualifier">mcc</a>
+     * resource qualifier.  0 if undefined.
      */
     public int mcc;
     
     /**
-     * IMSI MNC (Mobile Network Code).  0 if undefined.
+     * IMSI MNC (Mobile Network Code), corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#MccQualifier">mnc</a>
+     * resource qualifier.  0 if undefined.
      */
     public int mnc;
     
     /**
-     * Current user preference for the locale.
+     * Current user preference for the locale, corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#LocaleQualifier">locale</a>
+     * resource qualifier.
      */
     public Locale locale;
 
@@ -77,31 +87,72 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * value indicating that no size has been set. */
     public static final int SCREENLAYOUT_SIZE_UNDEFINED = 0x00;
     /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_SIZE_MASK}
-     * value indicating the screen is at least approximately 320x426 dp units.
+     * value indicating the screen is at least approximately 320x426 dp units,
+     * corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenSizeQualifier">small</a>
+     * resource qualifier.
      * See <a href="{@docRoot}guide/practices/screens_support.html">Supporting
      * Multiple Screens</a> for more information. */
     public static final int SCREENLAYOUT_SIZE_SMALL = 0x01;
     /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_SIZE_MASK}
-     * value indicating the screen is at least approximately 320x470 dp units.
+     * value indicating the screen is at least approximately 320x470 dp units,
+     * corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenSizeQualifier">normal</a>
+     * resource qualifier.
      * See <a href="{@docRoot}guide/practices/screens_support.html">Supporting
      * Multiple Screens</a> for more information. */
     public static final int SCREENLAYOUT_SIZE_NORMAL = 0x02;
     /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_SIZE_MASK}
-     * value indicating the screen is at least approximately 480x640 dp units.
+     * value indicating the screen is at least approximately 480x640 dp units,
+     * corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenSizeQualifier">large</a>
+     * resource qualifier.
      * See <a href="{@docRoot}guide/practices/screens_support.html">Supporting
      * Multiple Screens</a> for more information. */
     public static final int SCREENLAYOUT_SIZE_LARGE = 0x03;
     /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_SIZE_MASK}
-     * value indicating the screen is at least approximately 720x960 dp units.
+     * value indicating the screen is at least approximately 720x960 dp units,
+     * corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenSizeQualifier">xlarge</a>
+     * resource qualifier.
      * See <a href="{@docRoot}guide/practices/screens_support.html">Supporting
      * Multiple Screens</a> for more information.*/
     public static final int SCREENLAYOUT_SIZE_XLARGE = 0x04;
-    
+
+    /** Constant for {@link #screenLayout}: bits that encode the aspect ratio. */
     public static final int SCREENLAYOUT_LONG_MASK = 0x30;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LONG_MASK}
+     * value indicating that no size has been set. */
     public static final int SCREENLAYOUT_LONG_UNDEFINED = 0x00;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LONG_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenAspectQualifier">notlong</a>
+     * resource qualifier. */
     public static final int SCREENLAYOUT_LONG_NO = 0x10;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LONG_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenAspectQualifier">long</a>
+     * resource qualifier. */
     public static final int SCREENLAYOUT_LONG_YES = 0x20;
-    
+
+    /** Constant for {@link #screenLayout}: bits that encode the layout direction. */
+    public static final int SCREENLAYOUT_LAYOUTDIR_MASK = 0xC0;
+    /** Constant for {@link #screenLayout}: bits shift to get the layout direction. */
+    public static final int SCREENLAYOUT_LAYOUTDIR_SHIFT = 6;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LAYOUTDIR_MASK}
+     * value indicating that no layout dir has been set. */
+    public static final int SCREENLAYOUT_LAYOUTDIR_UNDEFINED = 0x00;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LAYOUTDIR_MASK}
+     * value indicating that a layout dir has been set to LTR. */
+    public static final int SCREENLAYOUT_LAYOUTDIR_LTR = 0x01 << SCREENLAYOUT_LAYOUTDIR_SHIFT;
+    /** Constant for {@link #screenLayout}: a {@link #SCREENLAYOUT_LAYOUTDIR_MASK}
+     * value indicating that a layout dir has been set to RTL. */
+    public static final int SCREENLAYOUT_LAYOUTDIR_RTL = 0x02 << SCREENLAYOUT_LAYOUTDIR_SHIFT;
+
+    /** Constant for {@link #screenLayout}: a value indicating that screenLayout is undefined */
+    public static final int SCREENLAYOUT_UNDEFINED = SCREENLAYOUT_SIZE_UNDEFINED |
+            SCREENLAYOUT_LONG_UNDEFINED | SCREENLAYOUT_LAYOUTDIR_UNDEFINED;
+
     /**
      * Special flag we generate to indicate that the screen layout requires
      * us to use a compatibility mode for apps that are not modern layout
@@ -122,11 +173,85 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * is wider/taller than normal.  They may be one of
      * {@link #SCREENLAYOUT_LONG_NO} or {@link #SCREENLAYOUT_LONG_YES}.
      * 
+     * <p>The {@link #SCREENLAYOUT_LAYOUTDIR_MASK} defines whether the screen layout
+     * is either LTR or RTL.  They may be one of
+     * {@link #SCREENLAYOUT_LAYOUTDIR_LTR} or {@link #SCREENLAYOUT_LAYOUTDIR_RTL}.
+     *
      * <p>See <a href="{@docRoot}guide/practices/screens_support.html">Supporting
      * Multiple Screens</a> for more information.
      */
     public int screenLayout;
-    
+
+    /** @hide */
+    static public int resetScreenLayout(int curLayout) {
+        return (curLayout&~(SCREENLAYOUT_LONG_MASK | SCREENLAYOUT_SIZE_MASK
+                        | SCREENLAYOUT_COMPAT_NEEDED))
+                | (SCREENLAYOUT_LONG_YES | SCREENLAYOUT_SIZE_XLARGE);
+    }
+
+    /** @hide */
+    static public int reduceScreenLayout(int curLayout, int longSizeDp, int shortSizeDp) {
+        int screenLayoutSize;
+        boolean screenLayoutLong;
+        boolean screenLayoutCompatNeeded;
+
+        // These semi-magic numbers define our compatibility modes for
+        // applications with different screens.  These are guarantees to
+        // app developers about the space they can expect for a particular
+        // configuration.  DO NOT CHANGE!
+        if (longSizeDp < 470) {
+            // This is shorter than an HVGA normal density screen (which
+            // is 480 pixels on its long side).
+            screenLayoutSize = SCREENLAYOUT_SIZE_SMALL;
+            screenLayoutLong = false;
+            screenLayoutCompatNeeded = false;
+        } else {
+            // What size is this screen screen?
+            if (longSizeDp >= 960 && shortSizeDp >= 720) {
+                // 1.5xVGA or larger screens at medium density are the point
+                // at which we consider it to be an extra large screen.
+                screenLayoutSize = SCREENLAYOUT_SIZE_XLARGE;
+            } else if (longSizeDp >= 640 && shortSizeDp >= 480) {
+                // VGA or larger screens at medium density are the point
+                // at which we consider it to be a large screen.
+                screenLayoutSize = SCREENLAYOUT_SIZE_LARGE;
+            } else {
+                screenLayoutSize = SCREENLAYOUT_SIZE_NORMAL;
+            }
+
+            // If this screen is wider than normal HVGA, or taller
+            // than FWVGA, then for old apps we want to run in size
+            // compatibility mode.
+            if (shortSizeDp > 321 || longSizeDp > 570) {
+                screenLayoutCompatNeeded = true;
+            } else {
+                screenLayoutCompatNeeded = false;
+            }
+
+            // Is this a long screen?
+            if (((longSizeDp*3)/5) >= (shortSizeDp-1)) {
+                // Anything wider than WVGA (5:3) is considering to be long.
+                screenLayoutLong = true;
+            } else {
+                screenLayoutLong = false;
+            }
+        }
+
+        // Now reduce the last screenLayout to not be better than what we
+        // have found.
+        if (!screenLayoutLong) {
+            curLayout = (curLayout&~SCREENLAYOUT_LONG_MASK) | SCREENLAYOUT_LONG_NO;
+        }
+        if (screenLayoutCompatNeeded) {
+            curLayout |= Configuration.SCREENLAYOUT_COMPAT_NEEDED;
+        }
+        int curSize = curLayout&SCREENLAYOUT_SIZE_MASK;
+        if (screenLayoutSize < curSize) {
+            curLayout = (curLayout&~SCREENLAYOUT_SIZE_MASK) | screenLayoutSize;
+        }
+        return curLayout;
+    }
+
     /**
      * Check if the Configuration's current {@link #screenLayout} is at
      * least the given size.
@@ -143,21 +268,38 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         return cur >= size;
     }
 
+    /** Constant for {@link #touchscreen}: a value indicating that no value has been set. */
     public static final int TOUCHSCREEN_UNDEFINED = 0;
+    /** Constant for {@link #touchscreen}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#TouchscreenQualifier">notouch</a>
+     * resource qualifier. */
     public static final int TOUCHSCREEN_NOTOUCH = 1;
-    public static final int TOUCHSCREEN_STYLUS = 2;
+    /** @deprecated Not currently supported or used. */
+    @Deprecated public static final int TOUCHSCREEN_STYLUS = 2;
+    /** Constant for {@link #touchscreen}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#TouchscreenQualifier">finger</a>
+     * resource qualifier. */
     public static final int TOUCHSCREEN_FINGER = 3;
     
     /**
      * The kind of touch screen attached to the device.
-     * One of: {@link #TOUCHSCREEN_NOTOUCH}, {@link #TOUCHSCREEN_STYLUS}, 
-     * {@link #TOUCHSCREEN_FINGER}. 
+     * One of: {@link #TOUCHSCREEN_NOTOUCH}, {@link #TOUCHSCREEN_FINGER}.
      */
     public int touchscreen;
-    
+
+    /** Constant for {@link #keyboard}: a value indicating that no value has been set. */
     public static final int KEYBOARD_UNDEFINED = 0;
+    /** Constant for {@link #keyboard}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ImeQualifier">nokeys</a>
+     * resource qualifier. */
     public static final int KEYBOARD_NOKEYS = 1;
+    /** Constant for {@link #keyboard}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ImeQualifier">qwerty</a>
+     * resource qualifier. */
     public static final int KEYBOARD_QWERTY = 2;
+    /** Constant for {@link #keyboard}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ImeQualifier">12key</a>
+     * resource qualifier. */
     public static final int KEYBOARD_12KEY = 3;
     
     /**
@@ -166,9 +308,16 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * {@link #KEYBOARD_12KEY}.
      */
     public int keyboard;
-    
+
+    /** Constant for {@link #keyboardHidden}: a value indicating that no value has been set. */
     public static final int KEYBOARDHIDDEN_UNDEFINED = 0;
+    /** Constant for {@link #keyboardHidden}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#KeyboardAvailQualifier">keysexposed</a>
+     * resource qualifier. */
     public static final int KEYBOARDHIDDEN_NO = 1;
+    /** Constant for {@link #keyboardHidden}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#KeyboardAvailQualifier">keyshidden</a>
+     * resource qualifier. */
     public static final int KEYBOARDHIDDEN_YES = 2;
     /** Constant matching actual resource implementation. {@hide} */
     public static final int KEYBOARDHIDDEN_SOFT = 3;
@@ -182,8 +331,13 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      */
     public int keyboardHidden;
     
+    /** Constant for {@link #hardKeyboardHidden}: a value indicating that no value has been set. */
     public static final int HARDKEYBOARDHIDDEN_UNDEFINED = 0;
+    /** Constant for {@link #hardKeyboardHidden}, value corresponding to the
+     * physical keyboard being exposed. */
     public static final int HARDKEYBOARDHIDDEN_NO = 1;
+    /** Constant for {@link #hardKeyboardHidden}, value corresponding to the
+     * physical keyboard being hidden. */
     public static final int HARDKEYBOARDHIDDEN_YES = 2;
     
     /**
@@ -194,10 +348,23 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      */
     public int hardKeyboardHidden;
     
+    /** Constant for {@link #navigation}: a value indicating that no value has been set. */
     public static final int NAVIGATION_UNDEFINED = 0;
+    /** Constant for {@link #navigation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavigationQualifier">nonav</a>
+     * resource qualifier. */
     public static final int NAVIGATION_NONAV = 1;
+    /** Constant for {@link #navigation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavigationQualifier">dpad</a>
+     * resource qualifier. */
     public static final int NAVIGATION_DPAD = 2;
+    /** Constant for {@link #navigation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavigationQualifier">trackball</a>
+     * resource qualifier. */
     public static final int NAVIGATION_TRACKBALL = 3;
+    /** Constant for {@link #navigation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavigationQualifier">wheel</a>
+     * resource qualifier. */
     public static final int NAVIGATION_WHEEL = 4;
     
     /**
@@ -207,8 +374,15 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      */
     public int navigation;
     
+    /** Constant for {@link #navigationHidden}: a value indicating that no value has been set. */
     public static final int NAVIGATIONHIDDEN_UNDEFINED = 0;
+    /** Constant for {@link #navigationHidden}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavAvailQualifier">navexposed</a>
+     * resource qualifier. */
     public static final int NAVIGATIONHIDDEN_NO = 1;
+    /** Constant for {@link #navigationHidden}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NavAvailQualifier">navhidden</a>
+     * resource qualifier. */
     public static final int NAVIGATIONHIDDEN_YES = 2;
     
     /**
@@ -219,10 +393,19 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      */
     public int navigationHidden;
     
+    /** Constant for {@link #orientation}: a value indicating that no value has been set. */
     public static final int ORIENTATION_UNDEFINED = 0;
+    /** Constant for {@link #orientation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#OrientationQualifier">port</a>
+     * resource qualifier. */
     public static final int ORIENTATION_PORTRAIT = 1;
+    /** Constant for {@link #orientation}, value corresponding to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#OrientationQualifier">land</a>
+     * resource qualifier. */
     public static final int ORIENTATION_LANDSCAPE = 2;
-    public static final int ORIENTATION_SQUARE = 3;
+    /** @deprecated Not currently supported or used. */
+    @Deprecated public static final int ORIENTATION_SQUARE = 3;
+
 
     /**
      * @hide
@@ -238,24 +421,58 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * @hide
      */
     public static final String THEME_PACKAGE_NAME_PERSISTENCE_PROPERTY = "persist.sys.themePackageName";
-
+    
     /**
      * Overall orientation of the screen.  May be one of
-     * {@link #ORIENTATION_LANDSCAPE}, {@link #ORIENTATION_PORTRAIT},
-     * or {@link #ORIENTATION_SQUARE}.
+     * {@link #ORIENTATION_LANDSCAPE}, {@link #ORIENTATION_PORTRAIT}.
      */
     public int orientation;
 
+    /** Constant for {@link #uiMode}: bits that encode the mode type. */
     public static final int UI_MODE_TYPE_MASK = 0x0f;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value indicating that no mode type has been set. */
     public static final int UI_MODE_TYPE_UNDEFINED = 0x00;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value that corresponds to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#UiModeQualifier">no
+     * UI mode</a> resource qualifier specified. */
     public static final int UI_MODE_TYPE_NORMAL = 0x01;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#UiModeQualifier">desk</a>
+     * resource qualifier. */
     public static final int UI_MODE_TYPE_DESK = 0x02;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#UiModeQualifier">car</a>
+     * resource qualifier. */
     public static final int UI_MODE_TYPE_CAR = 0x03;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#UiModeQualifier">television</a>
+     * resource qualifier. */
     public static final int UI_MODE_TYPE_TELEVISION = 0x04;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_TYPE_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#UiModeQualifier">appliance</a>
+     * resource qualifier. */
+    public static final int UI_MODE_TYPE_APPLIANCE = 0x05;
 
+    /** Constant for {@link #uiMode}: bits that encode the night mode. */
     public static final int UI_MODE_NIGHT_MASK = 0x30;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_NIGHT_MASK}
+     * value indicating that no mode type has been set. */
     public static final int UI_MODE_NIGHT_UNDEFINED = 0x00;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_NIGHT_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NightQualifier">notnight</a>
+     * resource qualifier. */
     public static final int UI_MODE_NIGHT_NO = 0x10;
+    /** Constant for {@link #uiMode}: a {@link #UI_MODE_NIGHT_MASK}
+     * value that corresponds to the
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#NightQualifier">night</a>
+     * resource qualifier. */
     public static final int UI_MODE_NIGHT_YES = 0x20;
 
     /**
@@ -263,7 +480,8 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * <p>The {@link #UI_MODE_TYPE_MASK} bits define the overall ui mode of the
      * device. They may be one of {@link #UI_MODE_TYPE_UNDEFINED},
      * {@link #UI_MODE_TYPE_NORMAL}, {@link #UI_MODE_TYPE_DESK},
-     * or {@link #UI_MODE_TYPE_CAR}.
+     * {@link #UI_MODE_TYPE_CAR}, {@link #UI_MODE_TYPE_TELEVISION}, or
+     * {@link #UI_MODE_TYPE_APPLIANCE}.
      *
      * <p>The {@link #UI_MODE_NIGHT_MASK} defines whether the screen
      * is in a special mode. They may be one of {@link #UI_MODE_NIGHT_UNDEFINED},
@@ -271,28 +489,67 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      */
     public int uiMode;
 
+    /**
+     * Default value for {@link #screenWidthDp} indicating that no width
+     * has been specified.
+     */
     public static final int SCREEN_WIDTH_DP_UNDEFINED = 0;
 
     /**
-     * The current width of the available screen space, in dp units.
+     * The current width of the available screen space, in dp units,
+     * corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenWidthQualifier">screen
+     * width</a> resource qualifier.  Set to
+     * {@link #SCREEN_WIDTH_DP_UNDEFINED} if no width is specified.
      */
     public int screenWidthDp;
 
+    /**
+     * Default value for {@link #screenHeightDp} indicating that no width
+     * has been specified.
+     */
     public static final int SCREEN_HEIGHT_DP_UNDEFINED = 0;
 
     /**
-     * The current height of the available screen space, in dp units.
+     * The current height of the available screen space, in dp units,
+     * corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#ScreenHeightQualifier">screen
+     * height</a> resource qualifier.  Set to
+     * {@link #SCREEN_HEIGHT_DP_UNDEFINED} if no height is specified.
      */
     public int screenHeightDp;
 
+    /**
+     * Default value for {@link #smallestScreenWidthDp} indicating that no width
+     * has been specified.
+     */
     public static final int SMALLEST_SCREEN_WIDTH_DP_UNDEFINED = 0;
 
     /**
-     * The smallest screen size an application will see in normal operation.
+     * The smallest screen size an application will see in normal operation,
+     * corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#SmallestScreenWidthQualifier">smallest
+     * screen width</a> resource qualifier.
      * This is the smallest value of both screenWidthDp and screenHeightDp
-     * in both portrait and landscape.
+     * in both portrait and landscape.  Set to
+     * {@link #SMALLEST_SCREEN_WIDTH_DP_UNDEFINED} if no width is specified.
      */
     public int smallestScreenWidthDp;
+
+    /**
+     * Default value for {@link #densityDpi} indicating that no width
+     * has been specified.
+     */
+    public static final int DENSITY_DPI_UNDEFINED = 0;
+
+    /**
+     * The target screen density being rendered to,
+     * corresponding to
+     * <a href="{@docRoot}guide/topics/resources/providing-resources.html#DensityQualifier">density</a>
+     * resource qualifier.  Set to
+     * {@link #DENSITY_DPI_UNDEFINED} if no density is specified.
+     */
+    public int densityDpi;
 
     /** @hide Hack to get this information from WM to app running in compat mode. */
     public int compatScreenWidthDp;
@@ -300,11 +557,6 @@ public final class Configuration implements Parcelable, Comparable<Configuration
     public int compatScreenHeightDp;
     /** @hide Hack to get this information from WM to app running in compat mode. */
     public int compatSmallestScreenWidthDp;
-
-    /**
-     * @hide The text layout direction associated to the current Locale
-     */
-    public int textLayoutDirection;
 
     /**
      * @hide Internal book-keeping.
@@ -332,7 +584,6 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         mnc = o.mnc;
         if (o.locale != null) {
             locale = (Locale) o.locale.clone();
-            textLayoutDirection = o.textLayoutDirection;
         }
         userSetLocale = o.userSetLocale;
         touchscreen = o.touchscreen;
@@ -347,6 +598,7 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         screenWidthDp = o.screenWidthDp;
         screenHeightDp = o.screenHeightDp;
         smallestScreenWidthDp = o.smallestScreenWidthDp;
+        densityDpi = o.densityDpi;
         compatScreenWidthDp = o.compatScreenWidthDp;
         compatScreenHeightDp = o.compatScreenHeightDp;
         compatSmallestScreenWidthDp = o.compatSmallestScreenWidthDp;
@@ -361,19 +613,31 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         sb.append("{");
         sb.append(fontScale);
         sb.append(" ");
-        sb.append(mcc);
-        sb.append("mcc");
-        sb.append(mnc);
-        sb.append("mnc");
+        if (mcc != 0) {
+            sb.append(mcc);
+            sb.append("mcc");
+        } else {
+            sb.append("?mcc");
+        }
+        if (mnc != 0) {
+            sb.append(mnc);
+            sb.append("mnc");
+        } else {
+            sb.append("?mnc");
+        }
         if (locale != null) {
             sb.append(" ");
             sb.append(locale);
         } else {
-            sb.append(" (no locale)");
+            sb.append(" ?locale");
         }
-        switch (textLayoutDirection) {
-            case LocaleUtil.TEXT_LAYOUT_DIRECTION_RTL_DO_NOT_USE: sb.append(" rtl"); break;
-            default: sb.append(" layoutdir="); sb.append(textLayoutDirection); break;
+        int layoutDir = (screenLayout&SCREENLAYOUT_LAYOUTDIR_MASK);
+        switch (layoutDir) {
+            case SCREENLAYOUT_LAYOUTDIR_UNDEFINED: sb.append(" ?layoutDir"); break;
+            case SCREENLAYOUT_LAYOUTDIR_LTR: sb.append(" ldltr"); break;
+            case SCREENLAYOUT_LAYOUTDIR_RTL: sb.append(" ldrtl"); break;
+            default: sb.append(" layoutDir=");
+                sb.append(layoutDir >> SCREENLAYOUT_LAYOUTDIR_SHIFT); break;
         }
         if (smallestScreenWidthDp != SMALLEST_SCREEN_WIDTH_DP_UNDEFINED) {
             sb.append(" sw"); sb.append(smallestScreenWidthDp); sb.append("dp");
@@ -389,6 +653,11 @@ public final class Configuration implements Parcelable, Comparable<Configuration
             sb.append(" h"); sb.append(screenHeightDp); sb.append("dp");
         } else {
             sb.append(" ?hdp");
+        }
+        if (densityDpi != DENSITY_DPI_UNDEFINED) {
+            sb.append(" "); sb.append(densityDpi); sb.append("dpi");
+        } else {
+            sb.append(" ?density");
         }
         switch ((screenLayout&SCREENLAYOUT_SIZE_MASK)) {
             case SCREENLAYOUT_SIZE_UNDEFINED: sb.append(" ?lsize"); break;
@@ -418,6 +687,7 @@ public final class Configuration implements Parcelable, Comparable<Configuration
             case UI_MODE_TYPE_DESK: sb.append(" desk"); break;
             case UI_MODE_TYPE_CAR: sb.append(" car"); break;
             case UI_MODE_TYPE_TELEVISION: sb.append(" television"); break;
+            case UI_MODE_TYPE_APPLIANCE: sb.append(" appliance"); break;
             default: sb.append(" uimode="); sb.append(uiMode&UI_MODE_TYPE_MASK); break;
         }
         switch ((uiMode&UI_MODE_NIGHT_MASK)) {
@@ -492,12 +762,12 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         navigation = NAVIGATION_UNDEFINED;
         navigationHidden = NAVIGATIONHIDDEN_UNDEFINED;
         orientation = ORIENTATION_UNDEFINED;
-        screenLayout = SCREENLAYOUT_SIZE_UNDEFINED;
+        screenLayout = SCREENLAYOUT_UNDEFINED;
         uiMode = UI_MODE_TYPE_UNDEFINED;
         screenWidthDp = compatScreenWidthDp = SCREEN_WIDTH_DP_UNDEFINED;
         screenHeightDp = compatScreenHeightDp = SCREEN_HEIGHT_DP_UNDEFINED;
         smallestScreenWidthDp = compatSmallestScreenWidthDp = SMALLEST_SCREEN_WIDTH_DP_UNDEFINED;
-        textLayoutDirection = LocaleUtil.TEXT_LAYOUT_DIRECTION_LTR_DO_NOT_USE;
+        densityDpi = DENSITY_DPI_UNDEFINED;
         seq = 0;
         customTheme = null;
     }
@@ -534,7 +804,11 @@ public final class Configuration implements Parcelable, Comparable<Configuration
             changed |= ActivityInfo.CONFIG_LOCALE;
             locale = delta.locale != null
                     ? (Locale) delta.locale.clone() : null;
-            textLayoutDirection = LocaleUtil.getLayoutDirectionFromLocale(locale);
+            // If locale has changed, then layout direction is also changed ...
+            changed |= ActivityInfo.CONFIG_LAYOUT_DIRECTION;
+            // ... and we need to update the layout direction (represented by the first
+            // 2 most significant bits in screenLayout).
+            setLayoutDirection(locale);
         }
         if (delta.userSetLocale && (!userSetLocale || ((changed & ActivityInfo.CONFIG_LOCALE) != 0)))
         {
@@ -576,10 +850,17 @@ public final class Configuration implements Parcelable, Comparable<Configuration
             changed |= ActivityInfo.CONFIG_ORIENTATION;
             orientation = delta.orientation;
         }
-        if (delta.screenLayout != SCREENLAYOUT_SIZE_UNDEFINED
-                && screenLayout != delta.screenLayout) {
+        if (getScreenLayoutNoDirection(delta.screenLayout) !=
+                    (SCREENLAYOUT_SIZE_UNDEFINED | SCREENLAYOUT_LONG_UNDEFINED)
+                && (getScreenLayoutNoDirection(screenLayout) !=
+                    getScreenLayoutNoDirection(delta.screenLayout))) {
             changed |= ActivityInfo.CONFIG_SCREEN_LAYOUT;
-            screenLayout = delta.screenLayout;
+            // We need to preserve the previous layout dir bits if they were defined
+            if ((delta.screenLayout&SCREENLAYOUT_LAYOUTDIR_MASK) == 0) {
+                screenLayout = (screenLayout&SCREENLAYOUT_LAYOUTDIR_MASK)|delta.screenLayout;
+            } else {
+                screenLayout = delta.screenLayout;
+            }
         }
         if (delta.uiMode != (UI_MODE_TYPE_UNDEFINED|UI_MODE_NIGHT_UNDEFINED)
                 && uiMode != delta.uiMode) {
@@ -604,7 +885,12 @@ public final class Configuration implements Parcelable, Comparable<Configuration
             screenHeightDp = delta.screenHeightDp;
         }
         if (delta.smallestScreenWidthDp != SMALLEST_SCREEN_WIDTH_DP_UNDEFINED) {
+            changed |= ActivityInfo.CONFIG_SCREEN_SIZE;
             smallestScreenWidthDp = delta.smallestScreenWidthDp;
+        }
+        if (delta.densityDpi != DENSITY_DPI_UNDEFINED) {
+            changed |= ActivityInfo.CONFIG_DENSITY;
+            densityDpi = delta.densityDpi;
         }
         if (delta.compatScreenWidthDp != SCREEN_WIDTH_DP_UNDEFINED) {
             compatScreenWidthDp = delta.compatScreenWidthDp;
@@ -615,7 +901,6 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         if (delta.compatSmallestScreenWidthDp != SMALLEST_SCREEN_WIDTH_DP_UNDEFINED) {
             compatSmallestScreenWidthDp = delta.compatSmallestScreenWidthDp;
         }
-        
         if (delta.seq != 0) {
             seq = delta.seq;
         }
@@ -657,6 +942,8 @@ public final class Configuration implements Parcelable, Comparable<Configuration
      * PackageManager.ActivityInfo.CONFIG_SCREEN_SIZE}, or
      * {@link android.content.pm.ActivityInfo#CONFIG_SMALLEST_SCREEN_SIZE
      * PackageManager.ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE}.
+     * {@link android.content.pm.ActivityInfo#CONFIG_LAYOUT_DIRECTION
+     * PackageManager.ActivityInfo.CONFIG_LAYOUT_DIRECTION}.
      */
     public int diff(Configuration delta) {
         int changed = 0;
@@ -672,6 +959,7 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         if (delta.locale != null
                 && (locale == null || !locale.equals(delta.locale))) {
             changed |= ActivityInfo.CONFIG_LOCALE;
+            changed |= ActivityInfo.CONFIG_LAYOUT_DIRECTION;
         }
         if (delta.touchscreen != TOUCHSCREEN_UNDEFINED
                 && touchscreen != delta.touchscreen) {
@@ -701,8 +989,10 @@ public final class Configuration implements Parcelable, Comparable<Configuration
                 && orientation != delta.orientation) {
             changed |= ActivityInfo.CONFIG_ORIENTATION;
         }
-        if (delta.screenLayout != SCREENLAYOUT_SIZE_UNDEFINED
-                && screenLayout != delta.screenLayout) {
+        if (getScreenLayoutNoDirection(delta.screenLayout) !=
+                    (SCREENLAYOUT_SIZE_UNDEFINED | SCREENLAYOUT_LONG_UNDEFINED)
+                && getScreenLayoutNoDirection(screenLayout) !=
+                    getScreenLayoutNoDirection(delta.screenLayout)) {
             changed |= ActivityInfo.CONFIG_SCREEN_LAYOUT;
         }
         if (delta.uiMode != (UI_MODE_TYPE_UNDEFINED|UI_MODE_NIGHT_UNDEFINED)
@@ -721,11 +1011,14 @@ public final class Configuration implements Parcelable, Comparable<Configuration
                 && smallestScreenWidthDp != delta.smallestScreenWidthDp) {
             changed |= ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE;
         }
+        if (delta.densityDpi != DENSITY_DPI_UNDEFINED
+                && densityDpi != delta.densityDpi) {
+            changed |= ActivityInfo.CONFIG_DENSITY;
+        }
         if (delta.customTheme != null &&
                 (customTheme == null || !customTheme.equals(delta.customTheme))) {
             changed |= ActivityInfo.CONFIG_THEME_RESOURCE;
         }
-        
         return changed;
     }
 
@@ -811,10 +1104,10 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         dest.writeInt(screenWidthDp);
         dest.writeInt(screenHeightDp);
         dest.writeInt(smallestScreenWidthDp);
+        dest.writeInt(densityDpi);
         dest.writeInt(compatScreenWidthDp);
         dest.writeInt(compatScreenHeightDp);
         dest.writeInt(compatSmallestScreenWidthDp);
-        dest.writeInt(textLayoutDirection);
         dest.writeInt(seq);
 
         if (customTheme == null) {
@@ -847,10 +1140,10 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         screenWidthDp = source.readInt();
         screenHeightDp = source.readInt();
         smallestScreenWidthDp = source.readInt();
+        densityDpi = source.readInt();
         compatScreenWidthDp = source.readInt();
         compatScreenHeightDp = source.readInt();
         compatSmallestScreenWidthDp = source.readInt();
-        textLayoutDirection = source.readInt();
         seq = source.readInt();
 
         if (source.readInt() != 0) {
@@ -923,6 +1216,8 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         n = this.screenHeightDp - that.screenHeightDp;
         if (n != 0) return n;
         n = this.smallestScreenWidthDp - that.smallestScreenWidthDp;
+        if (n != 0) return n;
+        n = this.densityDpi - that.densityDpi;
         //if (n != 0) return n;
         if (this.customTheme == null) {
             if (that.customTheme != null) return 1;
@@ -970,8 +1265,55 @@ public final class Configuration implements Parcelable, Comparable<Configuration
         result = 31 * result + screenWidthDp;
         result = 31 * result + screenHeightDp;
         result = 31 * result + smallestScreenWidthDp;
+        result = 31 * result + densityDpi;
         result = 31 * result + (this.customTheme != null ?
                                   this.customTheme.hashCode() : 0);
         return result;
+    }
+
+    /**
+     * Set the locale. This is the preferred way for setting up the locale (instead of using the
+     * direct accessor). This will also set the userLocale and layout direction according to
+     * the locale.
+     *
+     * @param loc The locale. Can be null.
+     */
+    public void setLocale(Locale loc) {
+        locale = loc;
+        userSetLocale = true;
+        setLayoutDirection(locale);
+    }
+
+    /**
+     * Return the layout direction. Will be either {@link View#LAYOUT_DIRECTION_LTR} or
+     * {@link View#LAYOUT_DIRECTION_RTL}.
+     *
+     * @return the layout direction
+     */
+    public int getLayoutDirection() {
+        // We need to substract one here as the configuration values are using "0" as undefined thus
+        // having LRT set to "1" and RTL set to "2"
+        return ((screenLayout&SCREENLAYOUT_LAYOUTDIR_MASK) >> SCREENLAYOUT_LAYOUTDIR_SHIFT) - 1;
+    }
+
+    /**
+     * Set the layout direction from the Locale.
+     *
+     * @param locale The Locale. If null will set the layout direction to
+     * {@link View#LAYOUT_DIRECTION_LTR}. If not null will set it to the layout direction
+     * corresponding to the Locale.
+     *
+     * @see {@link View#LAYOUT_DIRECTION_LTR} and {@link View#LAYOUT_DIRECTION_RTL}
+     */
+    public void setLayoutDirection(Locale locale) {
+        // There is a "1" difference between the configuration values for
+        // layout direction and View constants for layout direction, just add "1".
+        final int layoutDirection = 1 + TextUtils.getLayoutDirectionFromLocale(locale);
+        screenLayout = (screenLayout&~SCREENLAYOUT_LAYOUTDIR_MASK)|
+                (layoutDirection << SCREENLAYOUT_LAYOUTDIR_SHIFT);
+    }
+
+    private static int getScreenLayoutNoDirection(int screenLayout) {
+        return screenLayout&~SCREENLAYOUT_LAYOUTDIR_MASK;
     }
 }

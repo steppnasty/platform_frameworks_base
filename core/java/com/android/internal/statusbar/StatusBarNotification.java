@@ -19,8 +19,7 @@ package com.android.internal.statusbar;
 import android.app.Notification;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.widget.RemoteViews;
-
+import android.os.UserHandle;
 
 /*
 boolean clearable = !n.ongoingEvent && ((notification.flags & Notification.FLAG_NO_CLEAR) == 0);
@@ -34,25 +33,30 @@ if (truncatedTicker != null && truncatedTicker.length() > maxTickerLen) {
 }
 */
 
+/**
+ * Class encapsulating a Notification. Sent by the NotificationManagerService to the IStatusBar (in System UI).
+ */
 public class StatusBarNotification implements Parcelable {
-    public static int PRIORITY_JIFFY_EXPRESS = -100;
-    public static int PRIORITY_NORMAL        = 0;
-    public static int PRIORITY_ONGOING       = 100;
-    public static int PRIORITY_SYSTEM        = 200;
+    public final String pkg;
+    public final int id;
+    public final String tag;
+    public final int uid;
+    public final int initialPid;
+    // TODO: make this field private and move callers to an accessor that
+    // ensures sourceUser is applied.
+    public final Notification notification;
+    public final int score;
+    public final UserHandle user;
 
-    public String pkg;
-    public int id;
-    public String tag;
-    public int uid;
-    public int initialPid;
-    public Notification notification;
-    public int priority = PRIORITY_NORMAL;
-
-    public StatusBarNotification() {
+    /** This is temporarily needed for the JB MR1 PDK. */
+    @Deprecated
+    public StatusBarNotification(String pkg, int id, String tag, int uid, int initialPid, int score,
+            Notification notification) {
+        this(pkg, id, tag, uid, initialPid, score, notification, UserHandle.OWNER);
     }
 
-    public StatusBarNotification(String pkg, int id, String tag,
-            int uid, int initialPid, Notification notification) {
+    public StatusBarNotification(String pkg, int id, String tag, int uid, int initialPid, int score,
+            Notification notification, UserHandle user) {
         if (pkg == null) throw new NullPointerException();
         if (notification == null) throw new NullPointerException();
 
@@ -61,16 +65,13 @@ public class StatusBarNotification implements Parcelable {
         this.tag = tag;
         this.uid = uid;
         this.initialPid = initialPid;
+        this.score = score;
         this.notification = notification;
-
-        this.priority = PRIORITY_NORMAL;
+        this.user = user;
+        this.notification.setUser(user);
     }
 
     public StatusBarNotification(Parcel in) {
-        readFromParcel(in);
-    }
-
-    public void readFromParcel(Parcel in) {
         this.pkg = in.readString();
         this.id = in.readInt();
         if (in.readInt() != 0) {
@@ -80,8 +81,10 @@ public class StatusBarNotification implements Parcelable {
         }
         this.uid = in.readInt();
         this.initialPid = in.readInt();
-        this.priority = in.readInt();
+        this.score = in.readInt();
         this.notification = new Notification(in);
+        this.user = UserHandle.readFromParcel(in);
+        this.notification.setUser(user);
     }
 
     public void writeToParcel(Parcel out, int flags) {
@@ -95,8 +98,9 @@ public class StatusBarNotification implements Parcelable {
         }
         out.writeInt(this.uid);
         out.writeInt(this.initialPid);
-        out.writeInt(this.priority);
+        out.writeInt(this.score);
         this.notification.writeToParcel(out, flags);
+        user.writeToParcel(out, flags);
     }
 
     public int describeContents() {
@@ -117,14 +121,16 @@ public class StatusBarNotification implements Parcelable {
         }
     };
 
+    @Override
     public StatusBarNotification clone() {
-        return new StatusBarNotification(this.pkg, this.id, this.tag,
-                this.uid, this.initialPid, this.notification.clone());
+        return new StatusBarNotification(this.pkg, this.id, this.tag, this.uid, this.initialPid,
+                this.score, this.notification.clone(), this.user);
     }
 
+    @Override
     public String toString() {
-        return "StatusBarNotification(package=" + pkg + " id=" + id + " tag=" + tag
-                + " notification=" + notification + " priority=" + priority + ")";
+        return "StatusBarNotification(pkg=" + pkg + " id=" + id + " tag=" + tag + " score=" + score
+                + " notn=" + notification + " user=" + user + ")";
     }
 
     public boolean isOngoing() {
@@ -135,6 +141,9 @@ public class StatusBarNotification implements Parcelable {
         return ((notification.flags & Notification.FLAG_ONGOING_EVENT) == 0)
                 && ((notification.flags & Notification.FLAG_NO_CLEAR) == 0);
     }
+
+    /** Returns a userHandle for the instance of the app that posted this notification. */
+    public int getUserId() {
+        return this.user.getIdentifier();
+    }
 }
-
-

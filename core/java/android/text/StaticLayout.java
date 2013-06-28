@@ -150,8 +150,8 @@ public class StaticLayout extends Layout {
 
         mColumns = COLUMNS_ELLIPSIZE;
         mLines = new int[ArrayUtils.idealIntArraySize(2 * mColumns)];
-        mLineDirections = new Directions[
-                             ArrayUtils.idealIntArraySize(2 * mColumns)];
+        mLineDirections = new Directions[ArrayUtils.idealIntArraySize(2 * mColumns)];
+        // FIXME This is never recycled
         mMeasured = MeasuredText.obtain();
     }
 
@@ -246,12 +246,17 @@ public class StaticLayout extends Layout {
             int width = firstWidth;
 
             float w = 0;
+            // here is the offset of the starting character of the line we are currently measuring
             int here = paraStart;
 
+            // ok is a character offset located after a word separator (space, tab, number...) where
+            // we would prefer to cut the current line. Equals to here when no such break was found.
             int ok = paraStart;
             float okWidth = w;
             int okAscent = 0, okDescent = 0, okTop = 0, okBottom = 0;
 
+            // fit is a character offset such that the [here, fit[ range fits in the allowed width.
+            // We will cut the line there if no ok position is found.
             int fit = paraStart;
             float fitWidth = w;
             int fitAscent = 0, fitDescent = 0, fitTop = 0, fitBottom = 0;
@@ -260,29 +265,21 @@ public class StaticLayout extends Layout {
             boolean hasTab = false;
             TabStops tabStops = null;
 
-            for (int spanStart = paraStart, spanEnd = spanStart, nextSpanStart;
-                    spanStart < paraEnd; spanStart = nextSpanStart) {
+            for (int spanStart = paraStart, spanEnd; spanStart < paraEnd; spanStart = spanEnd) {
 
-                if (spanStart == spanEnd) {
-                    if (spanned == null)
-                        spanEnd = paraEnd;
-                    else
-                        spanEnd = spanned.nextSpanTransition(spanStart, paraEnd,
-                                MetricAffectingSpan.class);
-
+                if (spanned == null) {
+                    spanEnd = paraEnd;
                     int spanLen = spanEnd - spanStart;
-                    if (spanned == null) {
-                        measured.addStyleRun(paint, spanLen, fm);
-                    } else {
-                        MetricAffectingSpan[] spans =
+                    measured.addStyleRun(paint, spanLen, fm);
+                } else {
+                    spanEnd = spanned.nextSpanTransition(spanStart, paraEnd,
+                            MetricAffectingSpan.class);
+                    int spanLen = spanEnd - spanStart;
+                    MetricAffectingSpan[] spans =
                             spanned.getSpans(spanStart, spanEnd, MetricAffectingSpan.class);
-                        spans = TextUtils.removeEmptySpans(spans, spanned,
-                                MetricAffectingSpan.class);
-                        measured.addStyleRun(paint, spans, spanLen, fm);
-                    }
+                    spans = TextUtils.removeEmptySpans(spans, spanned, MetricAffectingSpan.class);
+                    measured.addStyleRun(paint, spans, spanLen, fm);
                 }
-
-                nextSpanStart = spanEnd;
 
                 int fmTop = fm.top;
                 int fmBottom = fm.bottom;
@@ -343,9 +340,9 @@ public class StaticLayout extends Layout {
                         w += widths[j - paraStart];
                     }
 
-                    // Log.e("text", "was " + before + " now " + w + " after " + c + " within " + width);
+                    boolean isSpaceOrTab = c == CHAR_SPACE || c == CHAR_TAB;
 
-                    if (w <= width) {
+                    if (w <= width || isSpaceOrTab) {
                         fitWidth = w;
                         fit = j + 1;
 
@@ -358,31 +355,17 @@ public class StaticLayout extends Layout {
                         if (fmBottom > fitBottom)
                             fitBottom = fmBottom;
 
-                        /*
-                         * From the Unicode Line Breaking Algorithm:
-                         * (at least approximately)
-                         *
-                         * .,:; are class IS: breakpoints
-                         *      except when adjacent to digits
-                         * /    is class SY: a breakpoint
-                         *      except when followed by a digit.
-                         * -    is class HY: a breakpoint
-                         *      except when followed by a digit.
-                         *
-                         * Ideographs are class ID: breakpoints when adjacent,
-                         * except for NS (non-starters), which can be broken
-                         * after but not before.
-                         */
+                        // From the Unicode Line Breaking Algorithm (at least approximately)
+                        boolean isLineBreak = isSpaceOrTab ||
+                                // / is class SY and - is class HY, except when followed by a digit
+                                ((c == CHAR_SLASH || c == CHAR_HYPHEN) &&
+                                (j + 1 >= spanEnd || !Character.isDigit(chs[j + 1 - paraStart]))) ||
+                                // Ideographs are class ID: breakpoints when adjacent, except for NS
+                                // (non-starters), which can be broken after but not before
+                                (c >= CHAR_FIRST_CJK && isIdeographic(c, true) &&
+                                j + 1 < spanEnd && isIdeographic(chs[j + 1 - paraStart], false));
 
-                        if (c == CHAR_SPACE || c == CHAR_TAB ||
-                            ((c == CHAR_DOT || c == CHAR_COMMA ||
-                                    c == CHAR_COLON || c == CHAR_SEMICOLON) &&
-                             (j - 1 < here || !Character.isDigit(chs[j - 1 - paraStart])) &&
-                             (j + 1 >= spanEnd || !Character.isDigit(chs[j + 1 - paraStart]))) ||
-                            ((c == CHAR_SLASH || c == CHAR_HYPHEN) &&
-                             (j + 1 >= spanEnd || !Character.isDigit(chs[j + 1 - paraStart]))) ||
-                            (c >= CHAR_FIRST_CJK && isIdeographic(c, true) &&
-                             j + 1 < spanEnd && isIdeographic(chs[j + 1 - paraStart], false))) {
+                        if (isLineBreak) {
                             okWidth = w;
                             ok = j + 1;
 
@@ -402,13 +385,6 @@ public class StaticLayout extends Layout {
                         float currentTextWidth;
 
                         if (ok != here) {
-                            // If it is a space that makes the length exceed width, cut here
-                            if (c == CHAR_SPACE) ok = j + 1;
-
-                            while (ok < spanEnd && chs[ok - paraStart] == CHAR_SPACE) {
-                                ok++;
-                            }
-
                             endPos = ok;
                             above = okAscent;
                             below = okDescent;
@@ -437,17 +413,9 @@ public class StaticLayout extends Layout {
                                 needMultiply, chdirs, dir, easy, bufEnd, includepad, trackpad,
                                 chs, widths, paraStart, ellipsize, ellipsizedWidth,
                                 currentTextWidth, paint, moreChars);
+
                         here = endPos;
-
-                        if (here < spanStart) {
-                            // didn't output all the text for this span
-                            // we've measured the raw widths, though, so
-                            // just reset the start point
-                            j = nextSpanStart = here;
-                        } else {
-                            j = here - 1;    // continue looping
-                        }
-
+                        j = here - 1; // restart j-span loop from here, compensating for the j++
                         ok = fit = here;
                         w = 0;
                         fitAscent = fitDescent = fitTop = fitBottom = 0;
@@ -456,9 +424,18 @@ public class StaticLayout extends Layout {
                         if (--firstWidthLineLimit <= 0) {
                             width = restWidth;
                         }
-                    }
-                    if (mLineCount >= mMaximumVisibleLineCount) {
-                        break;
+
+                        if (here < spanStart) {
+                            // The text was cut before the beginning of the current span range.
+                            // Exit the span loop, and get spanStart to start over from here.
+                            measured.setPos(here);
+                            spanEnd = here;
+                            break;
+                        }
+
+                        if (mLineCount >= mMaximumVisibleLineCount) {
+                            break;
+                        }
                     }
                 }
             }
@@ -716,7 +693,8 @@ public class StaticLayout extends Layout {
             boolean currentLineIsTheLastVisibleOne = (j + 1 == mMaximumVisibleLineCount);
             boolean forceEllipsis = moreChars && (mLineCount + 1 == mMaximumVisibleLineCount);
 
-            boolean doEllipsis = (firstLine && !moreChars &&
+            boolean doEllipsis =
+                        (((mMaximumVisibleLineCount == 1 && moreChars) || (firstLine && !moreChars)) &&
                                 ellipsize != TextUtils.TruncateAt.MARQUEE) ||
                         (!firstLine && (currentLineIsTheLastVisibleOne || !moreChars) &&
                                 ellipsize == TextUtils.TruncateAt.END);
@@ -744,7 +722,8 @@ public class StaticLayout extends Layout {
         }
 
         float ellipsisWidth = paint.measureText(
-                (where == TextUtils.TruncateAt.END_SMALL) ? ELLIPSIS_TWO_DOTS : ELLIPSIS_NORMAL);
+                (where == TextUtils.TruncateAt.END_SMALL) ?
+                        ELLIPSIS_TWO_DOTS : ELLIPSIS_NORMAL, 0, 1);
         int ellipsisStart = 0;
         int ellipsisCount = 0;
         int len = lineEnd - lineStart;
@@ -975,17 +954,10 @@ public class StaticLayout extends Layout {
     private static final char CHAR_NEW_LINE = '\n';
     private static final char CHAR_TAB = '\t';
     private static final char CHAR_SPACE = ' ';
-    private static final char CHAR_DOT = '.';
-    private static final char CHAR_COMMA = ',';
-    private static final char CHAR_COLON = ':';
-    private static final char CHAR_SEMICOLON = ';';
     private static final char CHAR_SLASH = '/';
     private static final char CHAR_HYPHEN = '-';
 
     private static final double EXTRA_ROUNDING = 0.5;
-
-    private static final String ELLIPSIS_NORMAL = "\u2026"; // this is "..."
-    private static final String ELLIPSIS_TWO_DOTS = "\u2025"; // this is ".."
 
     private static final int CHAR_FIRST_HIGH_SURROGATE = 0xD800;
     private static final int CHAR_LAST_LOW_SURROGATE = 0xDFFF;

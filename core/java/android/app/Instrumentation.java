@@ -23,6 +23,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
+import android.hardware.input.InputManager;
 import android.os.Bundle;
 import android.os.PerformanceCollector;
 import android.os.RemoteException;
@@ -32,9 +33,11 @@ import android.os.MessageQueue;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.ServiceManager;
+import android.os.UserHandle;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
 import android.view.IWindowManager;
+import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -843,7 +846,7 @@ public class Instrumentation {
             }
         }        
     }
-    
+
     /**
      * Send a key event to the currently focused window/view and wait for it to
      * be processed.  Finished at some point after the recipient has returned
@@ -855,13 +858,32 @@ public class Instrumentation {
      */
     public void sendKeySync(KeyEvent event) {
         validateNotAppThread();
-        try {
-            (IWindowManager.Stub.asInterface(ServiceManager.getService("window")))
-                .injectKeyEvent(event, true);
-        } catch (RemoteException e) {
+
+        long downTime = event.getDownTime();
+        long eventTime = event.getEventTime();
+        int action = event.getAction();
+        int code = event.getKeyCode();
+        int repeatCount = event.getRepeatCount();
+        int metaState = event.getMetaState();
+        int deviceId = event.getDeviceId();
+        int scancode = event.getScanCode();
+        int source = event.getSource();
+        int flags = event.getFlags();
+        if (source == InputDevice.SOURCE_UNKNOWN) {
+            source = InputDevice.SOURCE_KEYBOARD;
         }
+        if (eventTime == 0) {
+            eventTime = SystemClock.uptimeMillis();
+        }
+        if (downTime == 0) {
+            downTime = eventTime;
+        }
+        KeyEvent newEvent = new KeyEvent(downTime, eventTime, action, code, repeatCount, metaState,
+                deviceId, scancode, flags | KeyEvent.FLAG_FROM_SYSTEM, source);
+        InputManager.getInstance().injectInputEvent(newEvent,
+                InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH);
     }
-    
+
     /**
      * Sends an up and down key event sync to the currently focused window.
      * 
@@ -898,11 +920,11 @@ public class Instrumentation {
      */
     public void sendPointerSync(MotionEvent event) {
         validateNotAppThread();
-        try {
-            (IWindowManager.Stub.asInterface(ServiceManager.getService("window")))
-                .injectPointerEvent(event, true);
-        } catch (RemoteException e) {
+        if ((event.getSource() & InputDevice.SOURCE_CLASS_POINTER) == 0) {
+            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         }
+        InputManager.getInstance().injectInputEvent(event,
+                InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH);
     }
 
     /**
@@ -918,11 +940,11 @@ public class Instrumentation {
      */
     public void sendTrackballEventSync(MotionEvent event) {
         validateNotAppThread();
-        try {
-            (IWindowManager.Stub.asInterface(ServiceManager.getService("window")))
-                .injectTrackballEvent(event, true);
-        } catch (RemoteException e) {
+        if ((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) == 0) {
+            event.setSource(InputDevice.SOURCE_TRACKBALL);
         }
+        InputManager.getInstance().injectInputEvent(event,
+                InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH);
     }
 
     /**
@@ -1357,7 +1379,7 @@ public class Instrumentation {
      */
     public ActivityResult execStartActivity(
             Context who, IBinder contextThread, IBinder token, Activity target,
-            Intent intent, int requestCode) {
+            Intent intent, int requestCode, Bundle options) {
         IApplicationThread whoThread = (IApplicationThread) contextThread;
         if (mActivityMonitors != null) {
             synchronized (mSync) {
@@ -1379,8 +1401,8 @@ public class Instrumentation {
             int result = ActivityManagerNative.getDefault()
                 .startActivity(whoThread, intent,
                         intent.resolveTypeIfNeeded(who.getContentResolver()),
-                        null, 0, token, target != null ? target.mEmbeddedID : null,
-                        requestCode, false, false, null, null, false);
+                        token, target != null ? target.mEmbeddedID : null,
+                        requestCode, 0, null, null, options);
             checkStartActivityResult(result, intent);
         } catch (RemoteException e) {
         }
@@ -1396,7 +1418,22 @@ public class Instrumentation {
      * {@hide}
      */
     public void execStartActivities(Context who, IBinder contextThread,
-            IBinder token, Activity target, Intent[] intents) {
+            IBinder token, Activity target, Intent[] intents, Bundle options) {
+        execStartActivitiesAsUser(who, contextThread, token, target, intents, options,
+                UserHandle.myUserId());
+    }
+
+    /**
+     * Like {@link #execStartActivity(Context, IBinder, IBinder, Activity, Intent, int)},
+     * but accepts an array of activities to be started.  Note that active
+     * {@link ActivityMonitor} objects only match against the first activity in
+     * the array.
+     *
+     * {@hide}
+     */
+    public void execStartActivitiesAsUser(Context who, IBinder contextThread,
+            IBinder token, Activity target, Intent[] intents, Bundle options,
+            int userId) {
         IApplicationThread whoThread = (IApplicationThread) contextThread;
         if (mActivityMonitors != null) {
             synchronized (mSync) {
@@ -1420,7 +1457,8 @@ public class Instrumentation {
                 resolvedTypes[i] = intents[i].resolveTypeIfNeeded(who.getContentResolver());
             }
             int result = ActivityManagerNative.getDefault()
-                .startActivities(whoThread, intents, resolvedTypes, token);
+                .startActivities(whoThread, intents, resolvedTypes, token, options,
+                        userId);
             checkStartActivityResult(result, intents[0]);
         } catch (RemoteException e) {
         }
@@ -1455,7 +1493,7 @@ public class Instrumentation {
      */
     public ActivityResult execStartActivity(
         Context who, IBinder contextThread, IBinder token, Fragment target,
-        Intent intent, int requestCode) {
+        Intent intent, int requestCode, Bundle options) {
         IApplicationThread whoThread = (IApplicationThread) contextThread;
         if (mActivityMonitors != null) {
             synchronized (mSync) {
@@ -1477,8 +1515,8 @@ public class Instrumentation {
             int result = ActivityManagerNative.getDefault()
                 .startActivity(whoThread, intent,
                         intent.resolveTypeIfNeeded(who.getContentResolver()),
-                        null, 0, token, target != null ? target.mWho : null,
-                        requestCode, false, false, null, null, false);
+                        token, target != null ? target.mWho : null,
+                        requestCode, 0, null, null, options);
             checkStartActivityResult(result, intent);
         } catch (RemoteException e) {
         }
@@ -1497,13 +1535,13 @@ public class Instrumentation {
     }
 
     /*package*/ static void checkStartActivityResult(int res, Object intent) {
-        if (res >= IActivityManager.START_SUCCESS) {
+        if (res >= ActivityManager.START_SUCCESS) {
             return;
         }
         
         switch (res) {
-            case IActivityManager.START_INTENT_NOT_RESOLVED:
-            case IActivityManager.START_CLASS_NOT_FOUND:
+            case ActivityManager.START_INTENT_NOT_RESOLVED:
+            case ActivityManager.START_CLASS_NOT_FOUND:
                 if (intent instanceof Intent && ((Intent)intent).getComponent() != null)
                     throw new ActivityNotFoundException(
                             "Unable to find explicit activity class "
@@ -1511,13 +1549,13 @@ public class Instrumentation {
                             + "; have you declared this activity in your AndroidManifest.xml?");
                 throw new ActivityNotFoundException(
                         "No Activity found to handle " + intent);
-            case IActivityManager.START_PERMISSION_DENIED:
+            case ActivityManager.START_PERMISSION_DENIED:
                 throw new SecurityException("Not allowed to start activity "
                         + intent);
-            case IActivityManager.START_FORWARD_AND_REQUEST_CONFLICT:
+            case ActivityManager.START_FORWARD_AND_REQUEST_CONFLICT:
                 throw new AndroidRuntimeException(
                         "FORWARD_RESULT_FLAG used while also requesting a result");
-            case IActivityManager.START_NOT_ACTIVITY:
+            case ActivityManager.START_NOT_ACTIVITY:
                 throw new IllegalArgumentException(
                         "PendingIntent is not an activity");
             default:

@@ -51,6 +51,7 @@ public class ValueAnimator extends Animator {
     /**
      * Internal constants
      */
+    private static float sDurationScale = 1.0f;
 
     /*
      * The default amount of time in ms between animation frames
@@ -280,6 +281,20 @@ public class ValueAnimator extends Animator {
      * the animation indefinitely.
      */
     public static final int INFINITE = -1;
+
+    /**
+     * @hide
+     */
+    public static void setDurationScale(float durationScale) {
+        sDurationScale = durationScale;
+    }
+
+    /**
+     * @hide
+     */
+    public static float getDurationScale() {
+        return sDurationScale;
+    }
 
     /**
      * Creates a new ValueAnimator object. This default constructor is primarily for

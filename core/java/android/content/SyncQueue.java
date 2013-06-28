@@ -18,7 +18,7 @@ package android.content;
 
 import com.google.android.collect.Maps;
 
-import android.content.pm.RegisteredServicesCache;
+import android.content.pm.RegisteredServicesCache.ServiceInfo;
 import android.os.SystemClock;
 import android.text.format.DateUtils;
 import android.util.Pair;
@@ -26,6 +26,7 @@ import android.util.Log;
 import android.accounts.Account;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -37,6 +38,7 @@ import java.util.Map;
 public class SyncQueue {
     private static final String TAG = "SyncManager";
     private SyncStorageEngine mSyncStorageEngine;
+    private SyncAdaptersCache mSyncAdapters;
 
     // A Map of SyncOperations operationKey -> SyncOperation that is designed for
     // quick lookup of an enqueued SyncOperation.
@@ -44,22 +46,26 @@ public class SyncQueue {
 
     public SyncQueue(SyncStorageEngine syncStorageEngine, final SyncAdaptersCache syncAdapters) {
         mSyncStorageEngine = syncStorageEngine;
-        ArrayList<SyncStorageEngine.PendingOperation> ops
-                = mSyncStorageEngine.getPendingOperations();
-        final int N = ops.size();
-        for (int i=0; i<N; i++) {
-            SyncStorageEngine.PendingOperation op = ops.get(i);
-            final Pair<Long, Long> backoff = syncStorageEngine.getBackoff(op.account, op.authority);
-            final RegisteredServicesCache.ServiceInfo<SyncAdapterType> syncAdapterInfo =
-                    syncAdapters.getServiceInfo(
-                            SyncAdapterType.newKey(op.authority, op.account.type));
+        mSyncAdapters = syncAdapters;
+    }
+
+    public void addPendingOperations(int userId) {
+        for (SyncStorageEngine.PendingOperation op : mSyncStorageEngine.getPendingOperations()) {
+            if (op.userId != userId) continue;
+
+            final Pair<Long, Long> backoff = mSyncStorageEngine.getBackoff(
+                    op.account, op.userId, op.authority);
+            final ServiceInfo<SyncAdapterType> syncAdapterInfo = mSyncAdapters.getServiceInfo(
+                    SyncAdapterType.newKey(op.authority, op.account.type), op.userId);
             if (syncAdapterInfo == null) {
+                Log.w(TAG, "Missing sync adapter info for authority " + op.authority + ", userId "
+                        + op.userId);
                 continue;
             }
             SyncOperation syncOperation = new SyncOperation(
-                    op.account, op.syncSource, op.authority, op.extras, 0 /* delay */,
+                    op.account, op.userId, op.syncSource, op.authority, op.extras, 0 /* delay */,
                     backoff != null ? backoff.first : 0,
-                    syncStorageEngine.getDelayUntilTime(op.account, op.authority),
+                    mSyncStorageEngine.getDelayUntilTime(op.account, op.userId, op.authority),
                     syncAdapterInfo.type.allowParallelSyncs());
             syncOperation.expedited = op.expedited;
             syncOperation.pendingOperation = op;
@@ -102,7 +108,7 @@ public class SyncQueue {
         operation.pendingOperation = pop;
         if (operation.pendingOperation == null) {
             pop = new SyncStorageEngine.PendingOperation(
-                            operation.account, operation.syncSource,
+                            operation.account, operation.userId, operation.syncSource,
                             operation.authority, operation.extras, operation.expedited);
             pop = mSyncStorageEngine.insertIntoPending(pop);
             if (pop == null) {
@@ -114,6 +120,19 @@ public class SyncQueue {
 
         mOperationsMap.put(operationKey, operation);
         return true;
+    }
+
+    public void removeUser(int userId) {
+        ArrayList<SyncOperation> opsToRemove = new ArrayList<SyncOperation>();
+        for (SyncOperation op : mOperationsMap.values()) {
+            if (op.userId == userId) {
+                opsToRemove.add(op);
+            }
+        }
+
+        for (SyncOperation op : opsToRemove) {
+            remove(op);
+        }
     }
 
     /**
@@ -131,11 +150,12 @@ public class SyncQueue {
         }
     }
 
-    public void onBackoffChanged(Account account, String providerName, long backoff) {
+    public void onBackoffChanged(Account account, int userId, String providerName, long backoff) {
         // for each op that matches the account and provider update its
         // backoff and effectiveStartTime
         for (SyncOperation op : mOperationsMap.values()) {
-            if (op.account.equals(account) && op.authority.equals(providerName)) {
+            if (op.account.equals(account) && op.authority.equals(providerName)
+                    && op.userId == userId) {
                 op.backoff = backoff;
                 op.updateEffectiveRunTime();
             }
@@ -153,7 +173,7 @@ public class SyncQueue {
         }
     }
 
-    public void remove(Account account, String authority) {
+    public void remove(Account account, int userId, String authority) {
         Iterator<Map.Entry<String, SyncOperation>> entries = mOperationsMap.entrySet().iterator();
         while (entries.hasNext()) {
             Map.Entry<String, SyncOperation> entry = entries.next();
@@ -164,12 +184,19 @@ public class SyncQueue {
             if (authority != null && !syncOperation.authority.equals(authority)) {
                 continue;
             }
+            if (userId != syncOperation.userId) {
+                continue;
+            }
             entries.remove();
             if (!mSyncStorageEngine.deleteFromPending(syncOperation.pendingOperation)) {
                 final String errorMessage = "unable to find pending row for " + syncOperation;
                 Log.e(TAG, errorMessage, new IllegalStateException(errorMessage));
             }
         }
+    }
+
+    public Collection<SyncOperation> getOperations() {
+        return mOperationsMap.values();
     }
 
     public void dump(StringBuilder sb) {

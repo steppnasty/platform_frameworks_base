@@ -104,6 +104,12 @@ public class Process {
     public static final int NFC_UID = 1027;
 
     /**
+     * Defines the UID/GID for the Bluetooth service process.
+     * @hide
+     */
+    public static final int BLUETOOTH_UID = 1002;
+
+    /**
      * Defines the GID for the group that allows write access to the internal media storage.
      * @hide
      */
@@ -119,7 +125,33 @@ public class Process {
      * Last of application-specific UIDs starting at
      * {@link #FIRST_APPLICATION_UID}.
      */
-    public static final int LAST_APPLICATION_UID = 99999;
+    public static final int LAST_APPLICATION_UID = 19999;
+
+    /**
+     * First uid used for fully isolated sandboxed processes (with no permissions of their own)
+     * @hide
+     */
+    public static final int FIRST_ISOLATED_UID = 99000;
+
+    /**
+     * Last uid used for fully isolated sandboxed processes (with no permissions of their own)
+     * @hide
+     */
+    public static final int LAST_ISOLATED_UID = 99999;
+
+    /**
+     * First gid for applications to share resources. Used when forward-locking
+     * is enabled but all UserHandles need to be able to read the resources.
+     * @hide
+     */
+    public static final int FIRST_SHARED_APPLICATION_GID = 50000;
+
+    /**
+     * Last gid for applications to share resources. Used when forward-locking
+     * is enabled but all UserHandles need to be able to read the resources.
+     * @hide
+     */
+    public static final int LAST_SHARED_APPLICATION_GID = 59999;
 
     /**
      * Defines a secondary group id for access to the bluetooth hardware.
@@ -222,21 +254,27 @@ public class Process {
      * Default thread group - gets a 'normal' share of the CPU
      * @hide
      */
-    public static final int THREAD_GROUP_DEFAULT = 0;
+    public static final int THREAD_GROUP_DEFAULT = -1;
 
     /**
      * Background non-interactive thread group - All threads in
      * this group are scheduled with a reduced share of the CPU.
      * @hide
      */
-    public static final int THREAD_GROUP_BG_NONINTERACTIVE = 1;
+    public static final int THREAD_GROUP_BG_NONINTERACTIVE = 0;
 
     /**
      * Foreground 'boost' thread group - All threads in
      * this group are scheduled with an increased share of the CPU
      * @hide
      **/
-    public static final int THREAD_GROUP_FG_BOOST = 2;
+    public static final int THREAD_GROUP_FG_BOOST = 1;
+
+    /**
+     * System thread group.
+     * @hide
+     **/
+    public static final int THREAD_GROUP_SYSTEM = 2;
 
     public static final int SIGNAL_QUIT = 3;
     public static final int SIGNAL_KILL = 9;
@@ -284,11 +322,13 @@ public class Process {
     public static final ProcessStartResult start(final String processClass,
                                   final String niceName,
                                   int uid, int gid, int[] gids,
-                                  int debugFlags, int targetSdkVersion,
+                                  int debugFlags, int mountExternal,
+                                  int targetSdkVersion,
+                                  String seInfo,
                                   String[] zygoteArgs) {
         try {
             return startViaZygote(processClass, niceName, uid, gid, gids,
-                    debugFlags, targetSdkVersion, zygoteArgs);
+                    debugFlags, mountExternal, targetSdkVersion, seInfo, zygoteArgs);
         } catch (ZygoteStartFailedEx ex) {
             Log.e(LOG_TAG,
                     "Starting VM process through Zygote failed");
@@ -459,7 +499,9 @@ public class Process {
                                   final String niceName,
                                   final int uid, final int gid,
                                   final int[] gids,
-                                  int debugFlags, int targetSdkVersion,
+                                  int debugFlags, int mountExternal,
+                                  int targetSdkVersion,
+                                  String seInfo,
                                   String[] extraArgs)
                                   throws ZygoteStartFailedEx {
         synchronized(Process.class) {
@@ -485,6 +527,11 @@ public class Process {
             if ((debugFlags & Zygote.DEBUG_ENABLE_ASSERT) != 0) {
                 argsForZygote.add("--enable-assert");
             }
+            if (mountExternal == Zygote.MOUNT_EXTERNAL_MULTIUSER) {
+                argsForZygote.add("--mount-external-multiuser");
+            } else if (mountExternal == Zygote.MOUNT_EXTERNAL_MULTIUSER_ALL) {
+                argsForZygote.add("--mount-external-multiuser-all");
+            }
             argsForZygote.add("--target-sdk-version=" + targetSdkVersion);
 
             //TODO optionally enable debuger
@@ -508,6 +555,10 @@ public class Process {
 
             if (niceName != null) {
                 argsForZygote.add("--nice-name=" + niceName);
+            }
+
+            if (seInfo != null) {
+                argsForZygote.add("--seinfo=" + seInfo);
             }
 
             argsForZygote.add(processClass);
@@ -544,6 +595,16 @@ public class Process {
      * Returns the identifier of this process's user.
      */
     public static final native int myUid();
+
+    /**
+     * Returns this process's user handle.  This is the
+     * user the process is running under.  It is distinct from
+     * {@link #myUid()} in that a particular user will have multiple
+     * distinct apps running under it each with their own uid.
+     */
+    public static final UserHandle myUserHandle() {
+        return new UserHandle(UserHandle.getUserId(myUid()));
+    }
 
     /**
      * Returns the UID assigned to a particular user name, or -1 if there is
@@ -759,7 +820,10 @@ public class Process {
     
     /** @hide */
     public static final native long getFreeMemory();
-    
+
+    /** @hide */
+    public static final native long getTotalMemory();
+
     /** @hide */
     public static final native void readProcLines(String path,
             String[] reqFields, long[] outSizes);
@@ -793,6 +857,9 @@ public class Process {
     /** @hide */
     public static final native boolean parseProcLine(byte[] buffer, int startIndex, 
             int endIndex, int[] format, String[] outStrings, long[] outLongs, float[] outFloats);
+
+    /** @hide */
+    public static final native int[] getPidsForCommands(String[] cmds);
 
     /**
      * Gets the total Pss value for a given process, in bytes.

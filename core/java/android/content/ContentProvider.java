@@ -27,13 +27,18 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.ICancellationSignal;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
+import android.os.RemoteException;
 import android.util.Log;
 
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 
 /**
@@ -173,10 +178,11 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
         }
 
         public Cursor query(Uri uri, String[] projection,
-                String selection, String[] selectionArgs, String sortOrder) {
+                String selection, String[] selectionArgs, String sortOrder,
+                ICancellationSignal cancellationSignal) {
             enforceReadPermission(uri);
-            return ContentProvider.this.query(uri, projection, selection,
-                    selectionArgs, sortOrder);
+            return ContentProvider.this.query(uri, projection, selection, selectionArgs, sortOrder,
+                    CancellationSignal.fromTransport(cancellationSignal));
         }
 
         public String getType(Uri uri) {
@@ -247,6 +253,11 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
                 throws FileNotFoundException {
             enforceReadPermission(uri);
             return ContentProvider.this.openTypedAssetFile(uri, mimeType, opts);
+        }
+
+        @Override
+        public ICancellationSignal createCancellationSignal() throws RemoteException {
+            return CancellationSignal.createTransport();
         }
 
         private void enforceReadPermission(Uri uri) {
@@ -537,6 +548,75 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
      */
     public abstract Cursor query(Uri uri, String[] projection,
             String selection, String[] selectionArgs, String sortOrder);
+
+    /**
+     * Implement this to handle query requests from clients with support for cancellation.
+     * This method can be called from multiple threads, as described in
+     * <a href="{@docRoot}guide/topics/fundamentals/processes-and-threads.html#Threads">Processes
+     * and Threads</a>.
+     * <p>
+     * Example client call:<p>
+     * <pre>// Request a specific record.
+     * Cursor managedCursor = managedQuery(
+                ContentUris.withAppendedId(Contacts.People.CONTENT_URI, 2),
+                projection,    // Which columns to return.
+                null,          // WHERE clause.
+                null,          // WHERE clause value substitution
+                People.NAME + " ASC");   // Sort order.</pre>
+     * Example implementation:<p>
+     * <pre>// SQLiteQueryBuilder is a helper class that creates the
+        // proper SQL syntax for us.
+        SQLiteQueryBuilder qBuilder = new SQLiteQueryBuilder();
+
+        // Set the table we're querying.
+        qBuilder.setTables(DATABASE_TABLE_NAME);
+
+        // If the query ends in a specific record number, we're
+        // being asked for a specific record, so set the
+        // WHERE clause in our query.
+        if((URI_MATCHER.match(uri)) == SPECIFIC_MESSAGE){
+            qBuilder.appendWhere("_id=" + uri.getPathLeafId());
+        }
+
+        // Make the query.
+        Cursor c = qBuilder.query(mDb,
+                projection,
+                selection,
+                selectionArgs,
+                groupBy,
+                having,
+                sortOrder);
+        c.setNotificationUri(getContext().getContentResolver(), uri);
+        return c;</pre>
+     * <p>
+     * If you implement this method then you must also implement the version of
+     * {@link #query(Uri, String[], String, String[], String)} that does not take a cancellation
+     * signal to ensure correct operation on older versions of the Android Framework in
+     * which the cancellation signal overload was not available.
+     *
+     * @param uri The URI to query. This will be the full URI sent by the client;
+     *      if the client is requesting a specific record, the URI will end in a record number
+     *      that the implementation should parse and add to a WHERE or HAVING clause, specifying
+     *      that _id value.
+     * @param projection The list of columns to put into the cursor. If
+     *      null all columns are included.
+     * @param selection A selection criteria to apply when filtering rows.
+     *      If null then all rows are included.
+     * @param selectionArgs You may include ?s in selection, which will be replaced by
+     *      the values from selectionArgs, in order that they appear in the selection.
+     *      The values will be bound as Strings.
+     * @param sortOrder How the rows in the cursor should be sorted.
+     *      If null then the provider is free to define the sort order.
+     * @param cancellationSignal A signal to cancel the operation in progress, or null if none.
+     * If the operation is canceled, then {@link OperationCanceledException} will be thrown
+     * when the query is executed.
+     * @return a Cursor or null.
+     */
+    public Cursor query(Uri uri, String[] projection,
+            String selection, String[] selectionArgs, String sortOrder,
+            CancellationSignal cancellationSignal) {
+        return query(uri, projection, selection, selectionArgs, sortOrder);
+    }
 
     /**
      * Implement this to handle requests for the MIME type of the data at the
@@ -1012,5 +1092,20 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
     public void shutdown() {
         Log.w(TAG, "implement ContentProvider shutdown() to make sure all database " +
                 "connections are gracefully shutdown");
+    }
+
+    /**
+     * Print the Provider's state into the given stream.  This gets invoked if
+     * you run "adb shell dumpsys activity provider &lt;provider_component_name&gt;".
+     *
+     * @param prefix Desired prefix to prepend at each line of output.
+     * @param fd The raw file descriptor that the dump is being sent to.
+     * @param writer The PrintWriter to which you should dump your state.  This will be
+     * closed for you after you return.
+     * @param args additional arguments to the dump request.
+     * @hide
+     */
+    public void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
+        writer.println("nothing to dump");
     }
 }

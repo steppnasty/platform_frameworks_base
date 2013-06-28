@@ -834,4 +834,19 @@ public class ConnectivityManager {
         } catch (RemoteException e) {}
         return false;
     }
+
+    /**
+     * Returns if the currently active data network is metered. A network is
+     * classified as metered when the user is sensitive to heavy data usage on
+     * that connection. You should check this before doing large data transfers,
+     * and warn the user or delay the operation until another network is
+     * available.
+     */
+    public boolean isActiveNetworkMetered() {
+        try {
+            return mService.isActiveNetworkMetered();
+        } catch (RemoteException e) {
+            return false;
+        }
+    }
 }

@@ -23,8 +23,10 @@ import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Point;
+import android.os.Bundle;
 import android.os.IRemoteCallback;
 import android.view.IApplicationToken;
+import android.view.IDisplayContentChangeListener;
 import android.view.IOnKeyguardExitResult;
 import android.view.IRotationWatcher;
 import android.view.IWindowSession;
@@ -33,6 +35,8 @@ import android.view.InputEvent;
 import android.view.MotionEvent;
 import android.view.InputChannel;
 import android.view.InputDevice;
+import android.view.IInputFilter;
+import android.view.WindowInfo;
 
 /**
  * System private interface to the window manager.
@@ -54,41 +58,35 @@ interface IWindowManager
     IWindowSession openSession(in IInputMethodClient client,
             in IInputContext inputContext);
     boolean inputMethodClientHasFocus(IInputMethodClient client);
-    
-    void getDisplaySize(out Point size);
-    void getRealDisplaySize(out Point size);
-    int getMaximumSizeDimension();
+ 
+    void setForcedDisplaySize(int displayId, int width, int height);
+    void clearForcedDisplaySize(int displayId);
+    void setForcedDisplayDensity(int displayId, int density);
+    void clearForcedDisplayDensity(int displayId);
+   
+    // Is the device configured to have a full system bar for larger screens?
+    boolean hasSystemNavBar();
 
-    void setForcedDisplaySize(int longDimen, int shortDimen);
-    void clearForcedDisplaySize();
-
-    // Is device configured with a hideable status bar or a tablet system bar?
-    boolean canStatusBarHide();
-
-    // These can only be called when injecting events to your own window,
-    // or by holding the INJECT_EVENTS permission.  These methods may block
-    // until pending input events are finished being dispatched even when 'sync' is false.
-    // Avoid calling these methods on your UI thread or use the 'NoWait' version instead.
-    boolean injectKeyEvent(in KeyEvent ev, boolean sync);
-    boolean injectPointerEvent(in MotionEvent ev, boolean sync);
-    boolean injectTrackballEvent(in MotionEvent ev, boolean sync);
-    boolean injectInputEventNoWait(in InputEvent ev);
-    
     // These can only be called when holding the MANAGE_APP_TOKENS permission.
     void pauseKeyDispatching(IBinder token);
     void resumeKeyDispatching(IBinder token);
     void setEventDispatching(boolean enabled);
     void addWindowToken(IBinder token, int type);
     void removeWindowToken(IBinder token);
-    void addAppToken(int addPos, IApplicationToken token,
-            int groupId, int requestedOrientation, boolean fullscreen);
+    void addAppToken(int addPos, int userId, IApplicationToken token,
+            int groupId, int requestedOrientation, boolean fullscreen, boolean showWhenLocked);
     void setAppGroupId(IBinder token, int groupId);
     void setAppOrientation(IApplicationToken token, int requestedOrientation);
     int getAppOrientation(IApplicationToken token);
     void setFocusedApp(IBinder token, boolean moveFocusNow);
     void prepareAppTransition(int transit, boolean alwaysKeepCurrent);
     int getPendingAppTransition();
-    void overridePendingAppTransition(String packageName, int enterAnim, int exitAnim);
+    void overridePendingAppTransition(String packageName, int enterAnim, int exitAnim,
+            IRemoteCallback startedCallback);
+    void overridePendingAppTransitionScaleUp(int startX, int startY, int startWidth,
+            int startHeight);
+    void overridePendingAppTransitionThumb(in Bitmap srcThumb, int startX, int startY,
+            IRemoteCallback startedCallback, boolean scaleUp);
     void executeAppTransition();
     void setAppStartingWindow(IBinder token, String pkg, int theme,
             in CompatibilityInfo compatInfo, CharSequence nonLocalizedLabel, int labelRes,
@@ -108,7 +106,10 @@ interface IWindowManager
     Configuration updateOrientationFromAppTokens(in Configuration currentConfig,
             IBinder freezeThisOneIfNeeded);
     void setNewConfiguration(in Configuration config);
-    
+
+    void startFreezingScreen(int exitAnim, int enterAnim);
+    void stopFreezingScreen();
+
     // these require DISABLE_KEYGUARD permission
     void disableKeyguard(IBinder token, String tag);
     void reenableKeyguard(IBinder token);
@@ -127,25 +128,8 @@ interface IWindowManager
     void setAnimationScales(in float[] scales);
     
     // These require the READ_INPUT_STATE permission.
-    int getSwitchState(int sw);
-    int getSwitchStateForDevice(int devid, int sw);
-    int getScancodeState(int sw);
-    int getScancodeStateForDevice(int devid, int sw);
-    int getTrackballScancodeState(int sw);
-    int getDPadScancodeState(int sw);
-    int getKeycodeState(int sw);
-    int getKeycodeStateForDevice(int devid, int sw);
-    int getTrackballKeycodeState(int sw);
-    int getDPadKeycodeState(int sw);
     InputChannel monitorInput(String inputChannelName);
 
-    // Report whether the hardware supports the given keys; returns true if successful
-    boolean hasKeys(in int[] keycodes, inout boolean[] keyExists);
-    
-    // Get input device information.
-    InputDevice getInputDevice(int deviceId);
-    int[] getInputDeviceIds();
-    
     // For testing
     void setInTouchMode(boolean showFocus);
 
@@ -169,8 +153,10 @@ interface IWindowManager
      * @param alwaysSendConfiguration Flag to force a new configuration to
      * be evaluated.  This can be used when there are other parameters in
      * configuration that are changing.
+     * @param forceRelayout If true, the window manager will always do a relayout
+     * of its windows even if the rotation hasn't changed.
      */
-    void updateRotation(boolean alwaysSendConfiguration);
+    void updateRotation(boolean alwaysSendConfiguration, boolean forceRelayout);
 
     /**
      * Retrieve the current screen orientation, constants as per
@@ -205,10 +191,10 @@ interface IWindowManager
 	 */
 	void thawRotation();
 
-	/**
-	 * Create a screenshot of the applications currently displayed.
-	 */
-	Bitmap screenshotApplications(IBinder appToken, int maxWidth, int maxHeight);
+    /**
+     * Create a screenshot of the applications currently displayed.
+     */
+    Bitmap screenshotApplications(IBinder appToken, int displayId, int maxWidth, int maxHeight);
 
     /**
      * Called by the status bar to notify Views of changes to System UI visiblity.
@@ -216,14 +202,9 @@ interface IWindowManager
     void statusBarVisibilityChanged(int visibility);
 
     /**
-     * Called by the settings application to temporarily set the pointer speed.
-     */
-    void setPointerSpeed(int speed);
-
-    /**
      * Block until the given window has been drawn to the screen.
      */
-    void waitForWindowDrawn(IBinder token, in IRemoteCallback callback);
+    boolean waitForWindowDrawn(IBinder token, in IRemoteCallback callback);
 
     /**
      * Device has a software navigation bar (separate from the status bar).
@@ -233,5 +214,56 @@ interface IWindowManager
     /**
      * Lock the device immediately.
      */
-    void lockNow();
+    void lockNow(in Bundle options);
+
+    /**
+     * Gets the token for the focused window.
+     */
+    IBinder getFocusedWindowToken();
+
+    /**
+     * Gets the compatibility scale of e window given its token.
+     */
+    float getWindowCompatibilityScale(IBinder windowToken);
+
+    /**
+     * Sets an input filter for manipulating the input event stream.
+     */
+    void setInputFilter(in IInputFilter filter);
+
+    /**
+     * Sets the scale and offset for implementing accessibility magnification.
+     */
+    void magnifyDisplay(int dipslayId, float scale, float offsetX, float offsetY);
+
+    /**
+     * Adds a listener for display content changes.
+     */
+    void addDisplayContentChangeListener(int displayId, IDisplayContentChangeListener listener);
+
+    /**
+     * Removes a listener for display content changes.
+     */
+    void removeDisplayContentChangeListener(int displayId, IDisplayContentChangeListener listener);
+
+    /**
+     * Gets the info for a window given its token.
+     */
+    WindowInfo getWindowInfo(IBinder token);
+
+    /**
+     * Gets the infos for all visible windows.
+     */
+    void getVisibleWindowsForDisplay(int displayId, out List<WindowInfo> outInfos);
+
+    /**
+     * Device is in safe mode.
+     */
+    boolean isSafeModeEnabled();
+
+    /**
+     * Tell keyguard to show the assistant (Intent.ACTION_ASSIST) after asking for the user's
+     * credentials.
+     */
+    void showAssistant();
 }

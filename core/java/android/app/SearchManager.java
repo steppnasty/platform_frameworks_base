@@ -22,6 +22,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.database.Cursor;
 import android.graphics.Rect;
@@ -30,6 +31,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -395,11 +397,7 @@ public class SearchManager
 
     /**
      * Intent action to be broadcast to inform that the global search provider
-     * has changed. Normal components will have no need to handle this intent since
-     * they should be using API methods from this class to access the global search
-     * activity
-     *
-     * @hide
+     * has changed.
      */
     public final static String INTENT_GLOBAL_SEARCH_ACTIVITY_CHANGED
             = "android.search.action.GLOBAL_SEARCH_ACTIVITY_CHANGED";
@@ -590,8 +588,6 @@ public class SearchManager
 
     /**
      * Gets the name of the global search activity.
-     *
-     * @hide
      */
     public ComponentName getGlobalSearchActivity() {
         try {
@@ -843,4 +839,37 @@ public class SearchManager
         }
     }
 
+    /**
+     * Gets an intent for launching installed assistant activity, or null if not available.
+     * @return The assist intent.
+     *
+     * @hide
+     */
+    public Intent getAssistIntent(Context context) {
+        return getAssistIntent(context, UserHandle.myUserId());
+    }
+
+    /**
+     * Gets an intent for launching installed assistant activity, or null if not available.
+     * @return The assist intent.
+     *
+     * @hide
+     */
+    public Intent getAssistIntent(Context context, int userHandle) {
+        try {
+            if (mService == null) {
+                return null;
+            }
+            ComponentName comp = mService.getAssistIntent(userHandle);
+            if (comp == null) {
+                return null;
+            }
+            Intent intent = new Intent(Intent.ACTION_ASSIST);
+            intent.setComponent(comp);
+            return intent;
+        } catch (RemoteException re) {
+            Log.e(TAG, "getAssistIntent() failed: " + re);
+            return null;
+        }
+    }
 }

@@ -37,8 +37,13 @@ interface IWindowSession {
     int add(IWindow window, int seq, in WindowManager.LayoutParams attrs,
             in int viewVisibility, out Rect outContentInsets,
             out InputChannel outInputChannel);
+    int addToDisplay(IWindow window, int seq, in WindowManager.LayoutParams attrs,
+            in int viewVisibility, in int layerStackId, out Rect outContentInsets,
+            out InputChannel outInputChannel);
     int addWithoutInputChannel(IWindow window, int seq, in WindowManager.LayoutParams attrs,
             in int viewVisibility, out Rect outContentInsets);
+    int addToDisplayWithoutInputChannel(IWindow window, int seq, in WindowManager.LayoutParams attrs,
+            in int viewVisibility, in int layerStackId, out Rect outContentInsets);
     void remove(IWindow window);
     
     /**
@@ -172,4 +177,12 @@ interface IWindowSession {
             int z, in Bundle extras, boolean sync);
     
     void wallpaperCommandComplete(IBinder window, in Bundle result);
+
+    void setUniverseTransform(IBinder window, float alpha, float offx, float offy,
+            float dsdx, float dtdx, float dsdy, float dtdy);
+
+    /**
+     * Notifies that a rectangle on the screen has been requested.
+     */
+    void onRectangleOnScreenRequested(IBinder token, in Rect rectangle, boolean immediate);
 }

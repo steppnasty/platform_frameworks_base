@@ -69,12 +69,29 @@ public final class ServiceManager {
      */
     public static void addService(String name, IBinder service) {
         try {
-            getIServiceManager().addService(name, service);
+            getIServiceManager().addService(name, service, false);
         } catch (RemoteException e) {
             Log.e(TAG, "error in addService", e);
         }
     }
-    
+
+    /**
+     * Place a new @a service called @a name into the service
+     * manager.
+     * 
+     * @param name the name of the new service
+     * @param service the service object
+     * @param allowIsolated set to true to allow isolated sandboxed processes
+     * to access this service
+     */
+    public static void addService(String name, IBinder service, boolean allowIsolated) {
+        try {
+            getIServiceManager().addService(name, service, allowIsolated);
+        } catch (RemoteException e) {
+            Log.e(TAG, "error in addService", e);
+        }
+    }
+
     /**
      * Retrieve an existing service called @a name from the
      * service manager.  Non-blocking.

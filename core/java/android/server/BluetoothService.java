@@ -1698,9 +1698,9 @@ public class BluetoothService extends IBluetooth.Stub {
                 Settings.System.AIRPLANE_MODE_TOGGLEABLE_RADIOS);
 
         mIsAirplaneSensitive = airplaneModeRadios == null ? true :
-                airplaneModeRadios.contains(Settings.System.RADIO_BLUETOOTH);
+                airplaneModeRadios.contains(Settings.Global.RADIO_BLUETOOTH);
         mIsAirplaneToggleable = toggleableRadios == null ? false :
-                toggleableRadios.contains(Settings.System.RADIO_BLUETOOTH);
+                toggleableRadios.contains(Settings.Global.RADIO_BLUETOOTH);
 
         if (mIsAirplaneSensitive) {
             filter.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);
@@ -1709,8 +1709,8 @@ public class BluetoothService extends IBluetooth.Stub {
 
     /* Returns true if airplane mode is currently on */
     /*package*/ final boolean isAirplaneModeOn() {
-        return Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.AIRPLANE_MODE_ON, 0) == 1;
+        return Settings.Global.getInt(mContext.getContentResolver(),
+                Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
     }
 
     /* Broadcast the Uuid intent */

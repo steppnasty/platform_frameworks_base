@@ -20,7 +20,9 @@ import android.app.WallpaperManager;
 import android.content.Context;
 import android.graphics.BitmapFactory;
 import android.graphics.Point;
+import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.os.UserHandle;
 import android.util.Slog;
 import android.view.Display;
 import android.view.WindowManager;
@@ -38,7 +40,12 @@ public class WallpaperBackupHelper extends FileBackupHelperBase implements Backu
     private static final boolean DEBUG = false;
 
     // This path must match what the WallpaperManagerService uses
-    private static final String WALLPAPER_IMAGE = "/data/data/com.android.settings/files/wallpaper";
+    private static final String WALLPAPER_IMAGE =
+            new File(Environment.getUserSystemDirectory(UserHandle.USER_OWNER),
+                    "wallpaper").getAbsolutePath();
+    public static final String WALLPAPER_IMAGE_KEY =
+            "/data/data/com.android.settings/files/wallpaper";
+    public static final String WALLPAPER_INFO_KEY = "/data/system/wallpaper_info.xml";
 
     // Stage file - should be adjacent to the WALLPAPER_IMAGE location.  The wallpapers
     // will be saved to this file from the restore stream, then renamed to the proper

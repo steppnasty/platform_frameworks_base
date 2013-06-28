@@ -16,6 +16,7 @@
 package android.accounts;
 
 import android.app.Activity;
+import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.widget.TextView;
@@ -31,6 +32,8 @@ import android.content.pm.RegisteredServicesCache;
 import android.text.TextUtils;
 import android.graphics.drawable.Drawable;
 import com.android.internal.R;
+
+import java.io.IOException;
 
 /**
  * @hide
@@ -81,7 +84,7 @@ public class GrantCredentialsPermissionActivity extends Activity implements View
 
         String accountTypeLabel;
         try {
-            accountTypeLabel = accountManagerService.getAccountLabel(mAccount.type);
+            accountTypeLabel = getAccountLabel(mAccount);
         } catch (IllegalArgumentException e) {
             // label or resource was missing. abort the activity.
             setResult(Activity.RESULT_CANCELED);
@@ -92,29 +95,27 @@ public class GrantCredentialsPermissionActivity extends Activity implements View
         final TextView authTokenTypeView = (TextView) findViewById(R.id.authtoken_type);
         authTokenTypeView.setVisibility(View.GONE);
 
-        /** Handles the responses from the AccountManager */
-        IAccountManagerResponse response = new IAccountManagerResponse.Stub() {
-            public void onResult(Bundle bundle) {
-                final String authTokenLabel =
-                    bundle.getString(AccountManager.KEY_AUTH_TOKEN_LABEL);
-                if (!TextUtils.isEmpty(authTokenLabel)) {
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            if (!isFinishing()) {
-                                authTokenTypeView.setText(authTokenLabel);
-                                authTokenTypeView.setVisibility(View.VISIBLE);
+        final AccountManagerCallback<String> callback = new AccountManagerCallback<String>() {
+            public void run(AccountManagerFuture<String> future) {
+                try {
+                    final String authTokenLabel = future.getResult();
+                    if (!TextUtils.isEmpty(authTokenLabel)) {
+                        runOnUiThread(new Runnable() {
+                            public void run() {
+                                if (!isFinishing()) {
+                                    authTokenTypeView.setText(authTokenLabel);
+                                    authTokenTypeView.setVisibility(View.VISIBLE);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
+                } catch (OperationCanceledException e) {
+                } catch (IOException e) {
+                } catch (AuthenticatorException e) {
                 }
             }
-
-            public void onError(int code, String message) {
-            }
         };
-
-        accountManagerService.getAuthTokenLabel(
-                response, mAccount, mAuthTokenType);
+        AccountManager.get(this).getAuthTokenLabel(mAccount.type, mAuthTokenType, callback, null);
 
         findViewById(R.id.allow_button).setOnClickListener(this);
         findViewById(R.id.deny_button).setOnClickListener(this);
@@ -135,6 +136,24 @@ public class GrantCredentialsPermissionActivity extends Activity implements View
         ((TextView) findViewById(R.id.account_type)).setText(accountTypeLabel);
     }
 
+    private String getAccountLabel(Account account) {
+        final AuthenticatorDescription[] authenticatorTypes =
+                AccountManager.get(this).getAuthenticatorTypes();
+        for (int i = 0, N = authenticatorTypes.length; i < N; i++) {
+            final AuthenticatorDescription desc = authenticatorTypes[i];
+            if (desc.type.equals(account.type)) {
+                try {
+                    return createPackageContext(desc.packageName, 0).getString(desc.labelId);
+                } catch (PackageManager.NameNotFoundException e) {
+                    return account.type;
+                } catch (Resources.NotFoundException e) {
+                    return account.type;
+                }
+            }
+        }
+        return account.type;
+    }
+
     private View newPackageView(String packageLabel) {
         View view = mInflater.inflate(R.layout.permissions_package_list_item, null);
         ((TextView) view.findViewById(R.id.package_label)).setText(packageLabel);
@@ -144,7 +163,7 @@ public class GrantCredentialsPermissionActivity extends Activity implements View
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.allow_button:
-                accountManagerService.grantAppPermission(mAccount, mAuthTokenType, mUid);
+                AccountManager.get(this).updateAppPermission(mAccount, mAuthTokenType, mUid, true);
                 Intent result = new Intent();
                 result.putExtra("retry", true);
                 setResult(RESULT_OK, result);
@@ -152,7 +171,7 @@ public class GrantCredentialsPermissionActivity extends Activity implements View
                 break;
 
             case R.id.deny_button:
-                accountManagerService.revokeAppPermission(mAccount, mAuthTokenType, mUid);
+                AccountManager.get(this).updateAppPermission(mAccount, mAuthTokenType, mUid, false);
                 setResult(RESULT_CANCELED);
                 break;
         }

@@ -151,7 +151,13 @@ public class ViewConfiguration {
      * the characteristics of the touch panel and firmware.
      */
     private static final int TOUCH_SLOP = 8;
-    
+
+    /**
+     * Distance the first touch can wander before we stop considering this event a double tap
+     * (in dips)
+     */
+    private static final int DOUBLE_TAP_TOUCH_SLOP = TOUCH_SLOP;
+
     /**
      * Distance a touch can wander before we think the user is attempting a paged scroll
      * (in dips)
@@ -231,6 +237,7 @@ public class ViewConfiguration {
     private final int mMaximumFlingVelocity;
     private final int mScrollbarSize;
     private final int mTouchSlop;
+    private final int mDoubleTapTouchSlop;
     private final int mPagingTouchSlop;
     private final int mDoubleTapSlop;
     private final int mScaledTouchExplorationTapSlop;
@@ -257,6 +264,7 @@ public class ViewConfiguration {
         mMaximumFlingVelocity = MAXIMUM_FLING_VELOCITY;
         mScrollbarSize = SCROLL_BAR_SIZE;
         mTouchSlop = TOUCH_SLOP;
+        mDoubleTapTouchSlop = DOUBLE_TAP_TOUCH_SLOP;
         mPagingTouchSlop = PAGING_TOUCH_SLOP;
         mDoubleTapSlop = DOUBLE_TAP_SLOP;
         mScaledTouchExplorationTapSlop = TOUCH_EXPLORATION_TAP_SLOP;
@@ -306,9 +314,9 @@ public class ViewConfiguration {
         mOverflingDistance = (int) (sizeAndDensity * OVERFLING_DISTANCE + 0.5f);
 
         if (!sHasPermanentMenuKeySet) {
-            IWindowManager wm = Display.getWindowManager();
+            IWindowManager wm = WindowManagerGlobal.getWindowManagerService();
             try {
-                sHasPermanentMenuKey = wm.canStatusBarHide() && !wm.hasNavigationBar();
+                sHasPermanentMenuKey = !wm.hasSystemNavBar() && !wm.hasNavigationBar();
                 sHasPermanentMenuKeySet = true;
             } catch (RemoteException ex) {
                 sHasPermanentMenuKey = false;
@@ -320,6 +328,8 @@ public class ViewConfiguration {
         mTouchSlop = res.getDimensionPixelSize(
                 com.android.internal.R.dimen.config_viewConfigurationTouchSlop);
         mPagingTouchSlop = mTouchSlop * 2;
+
+        mDoubleTapTouchSlop = mTouchSlop;
     }
 
     /**
@@ -505,7 +515,16 @@ public class ViewConfiguration {
     public int getScaledTouchSlop() {
         return mTouchSlop;
     }
-    
+
+    /**
+     * @return Distance in pixels the first touch can wander before we do not consider this a
+     * potential double tap event
+     * @hide
+     */
+    public int getScaledDoubleTapTouchSlop() {
+        return mDoubleTapTouchSlop;
+    }
+
     /**
      * @return Distance a touch can wander before we think the user is scrolling a full page
      *         in dips

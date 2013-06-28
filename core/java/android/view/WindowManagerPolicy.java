@@ -21,12 +21,11 @@ import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Bundle;
 import android.os.IBinder;
-import android.os.LocalPowerManager;
 import android.os.Looper;
 import android.view.animation.Animation;
 
-import java.io.FileDescriptor;
 import java.io.PrintWriter;
 
 /**
@@ -91,6 +90,11 @@ public interface WindowManagerPolicy {
     public final static int FLAG_BRIGHT_HERE = 0x20000000;
     public final static int FLAG_PASS_TO_USER = 0x40000000;
 
+    // Flags used for indicating whether the internal and/or external input devices
+    // of some type are available.
+    public final static int PRESENCE_INTERNAL = 1 << 0;
+    public final static int PRESENCE_EXTERNAL = 1 << 1;
+
     public final static boolean WATCH_POINTER = false;
 
     /**
@@ -111,16 +115,16 @@ public interface WindowManagerPolicy {
     public final static int ACTION_PASS_TO_USER = 0x00000001;
 
     /**
-     * This key event should extend the user activity timeout and turn the lights on.
+     * This key event should wake the device.
      * To be returned from {@link #interceptKeyBeforeQueueing}.
      * Do not return this and {@link #ACTION_GO_TO_SLEEP} or {@link #ACTION_PASS_TO_USER}.
      */
-    public final static int ACTION_POKE_USER_ACTIVITY = 0x00000002;
+    public final static int ACTION_WAKE_UP = 0x00000002;
 
     /**
      * This key event should put the device to sleep (and engage keyguard if necessary)
      * To be returned from {@link #interceptKeyBeforeQueueing}.
-     * Do not return this and {@link #ACTION_POKE_USER_ACTIVITY} or {@link #ACTION_PASS_TO_USER}.
+     * Do not return this and {@link #ACTION_WAKE_UP} or {@link #ACTION_PASS_TO_USER}.
      */
     public final static int ACTION_GO_TO_SLEEP = 0x00000004;
 
@@ -173,7 +177,7 @@ public interface WindowManagerPolicy {
          * Retrieve the frame of the display that this window was last
          * laid out in.  Must be called with the
          * window manager lock held.
-         * 
+         *
          * @return Rect The rectangle holding the display frame.
          */
         public Rect getDisplayFrameLw();
@@ -298,6 +302,12 @@ public interface WindowManagerPolicy {
         boolean isDisplayedLw();
 
         /**
+         * Return true if this window (or a window it is attached to, but not
+         * considering its app token) is currently animating.
+         */
+        public boolean isAnimatingLw();
+
+        /**
          * Is this window considered to be gone for purposes of layout?
          */
         boolean isGoneForLayoutLw();
@@ -305,8 +315,6 @@ public interface WindowManagerPolicy {
         /**
          * Returns true if this window has been shown on screen at some time in 
          * the past.  Must be called with the window manager lock held.
-         * 
-         * @return boolean
          */
         public boolean hasDrawnLw();
 
@@ -326,6 +334,17 @@ public interface WindowManagerPolicy {
          * Returns true if {@link #hideLw} was last called for the window.
          */
         public boolean showLw(boolean doAnimation);
+
+        /**
+         * Check whether the process hosting this window is currently alive.
+         */
+        public boolean isAlive();
+
+        /**
+         * Check if window is on {@link Display#DEFAULT_DISPLAY}.
+         * @return true if window is on default display.
+         */
+        public boolean isDefaultDisplay();
     }
 
     /**
@@ -344,6 +363,10 @@ public interface WindowManagerPolicy {
      * between it and the policy.
      */
     public interface WindowManagerFuncs {
+        public static final int LID_ABSENT = -1;
+        public static final int LID_CLOSED = 0;
+        public static final int LID_OPEN = 1;
+
         /**
          * Ask the window manager to re-evaluate the system UI flags.
          */
@@ -353,9 +376,30 @@ public interface WindowManagerPolicy {
          * Add a fake window to the window manager.  This window sits
          * at the top of the other windows and consumes events.
          */
-        public FakeWindow addFakeWindow(Looper looper, InputHandler inputHandler,
+        public FakeWindow addFakeWindow(Looper looper,
+                InputEventReceiver.Factory inputEventReceiverFactory,
                 String name, int windowType, int layoutParamsFlags, boolean canReceiveKeys,
                 boolean hasFocus, boolean touchFullscreen);
+
+        /**
+         * Returns a code that describes the current state of the lid switch.
+         */
+        public int getLidState();
+
+        /**
+         * Creates an input channel that will receive all input from the input dispatcher.
+         */
+        public InputChannel monitorInput(String name);
+
+        /**
+         * Switch the keyboard layout for the given device.
+         * Direction should be +1 or -1 to go to the next or previous keyboard layout.
+         */
+        public void switchKeyboardLayout(int deviceId, int direction);
+
+        public void shutdown(boolean confirm);
+        public void rebootSafeMode(boolean confirm);
+        public void reboot();
     }
 
     /**
@@ -436,28 +480,36 @@ public interface WindowManagerPolicy {
      * Perform initialization of the policy.
      * 
      * @param context The system context we are running in.
-     * @param powerManager 
      */
     public void init(Context context, IWindowManager windowManager,
-            WindowManagerFuncs windowManagerFuncs,
-            LocalPowerManager powerManager);
+            WindowManagerFuncs windowManagerFuncs);
 
     /**
      * Called by window manager once it has the initial, default native
      * display dimensions.
      */
-    public void setInitialDisplaySize(int width, int height);
+    public void setInitialDisplaySize(Display display, int width, int height, int density);
 
     /**
      * Check permissions when adding a window.
      * 
      * @param attrs The window's LayoutParams. 
      *  
-     * @return {@link WindowManagerImpl#ADD_OKAY} if the add can proceed;
+     * @return {@link WindowManagerGlobal#ADD_OKAY} if the add can proceed;
      *      else an error code, usually
-     *      {@link WindowManagerImpl#ADD_PERMISSION_DENIED}, to abort the add.
+     *      {@link WindowManagerGlobal#ADD_PERMISSION_DENIED}, to abort the add.
      */
     public int checkAddPermission(WindowManager.LayoutParams attrs);
+
+    /**
+     * Check permissions when adding a window.
+     *
+     * @param attrs The window's LayoutParams.
+     *
+     * @return True if the window may only be shown to the current user, false if the window can
+     * be shown on all users' windows.
+     */
+    public boolean checkShowToOwnerOnly(WindowManager.LayoutParams attrs);
 
     /**
      * Sanitize the layout parameters coming from a client.  Allows the policy
@@ -480,8 +532,13 @@ public interface WindowManagerPolicy {
      * 
      * @param config The Configuration being computed, for you to change as
      * desired.
+     * @param keyboardPresence Flags that indicate whether internal or external
+     * keyboards are present.
+     * @param navigationPresence Flags that indicate whether internal or external
+     * navigation devices are present.
      */
-    public void adjustConfigurationLw(Configuration config);
+    public void adjustConfigurationLw(Configuration config, int keyboardPresence,
+            int navigationPresence);
     
     /**
      * Assign a window type to a layer.  Allows you to control how different
@@ -511,12 +568,19 @@ public interface WindowManagerPolicy {
      * allowed to be in.
      */
     public int getMaxWallpaperLayer();
-    
+
     /**
-     * Return true if the policy allows the status bar to hide.  Otherwise,
-     * it is a tablet-style system bar.
+     * Return the window layer at which windows appear above the normal
+     * universe (that is no longer impacted by the universe background
+     * transform).
      */
-    public boolean canStatusBarHide();
+    public int getAboveUniverseLayer();
+
+    /**
+     * Return true if the policy desires a full unified system nav bar.  Otherwise,
+     * it is a phone-style status bar with optional nav bar.
+     */
+    public boolean hasSystemNavBar();
 
     /**
      * Return the display width available after excluding any screen
@@ -535,7 +599,7 @@ public interface WindowManagerPolicy {
     /**
      * Return the available screen width that we should report for the
      * configuration.  This must be no larger than
-     * {@link #getNonDecorDisplayWidth(int, int)}; it may be smaller than
+     * {@link #getNonDecorDisplayWidth(int, int, int)}; it may be smaller than
      * that to account for more transient decoration like a status bar.
      */
     public int getConfigDisplayWidth(int fullWidth, int fullHeight, int rotation);
@@ -543,7 +607,7 @@ public interface WindowManagerPolicy {
     /**
      * Return the available screen height that we should report for the
      * configuration.  This must be no larger than
-     * {@link #getNonDecorDisplayHeight(int, int)}; it may be smaller than
+     * {@link #getNonDecorDisplayHeight(int, int, int)}; it may be smaller than
      * that to account for more transient decoration like a status bar.
      */
     public int getConfigDisplayHeight(int fullWidth, int fullHeight, int rotation);
@@ -616,7 +680,7 @@ public interface WindowManagerPolicy {
      * @param win The window being added.
      * @param attrs The window's LayoutParams. 
      *  
-     * @return {@link WindowManagerImpl#ADD_OKAY} if the add can proceed, else an 
+     * @return {@link WindowManagerGlobal#ADD_OKAY} if the add can proceed, else an
      *         error code to abort the add.
      */
     public int prepareAddWindowLw(WindowState win,
@@ -647,7 +711,7 @@ public interface WindowManagerPolicy {
     /**
      * Create and return an animation to re-display a force hidden window.
      */
-    public Animation createForceHideEnterAnimation();
+    public Animation createForceHideEnterAnimation(boolean onWallpaper);
     
     /**
      * Called from the input reader thread before a key is enqueued.
@@ -661,7 +725,7 @@ public interface WindowManagerPolicy {
      * @param isScreenOn True if the screen is already on
      *
      * @return The bitwise or of the {@link #ACTION_PASS_TO_USER},
-     *          {@link #ACTION_POKE_USER_ACTIVITY} and {@link #ACTION_GO_TO_SLEEP} flags.
+     *      {@link #ACTION_WAKE_UP} and {@link #ACTION_GO_TO_SLEEP} flags.
      */
     public int interceptKeyBeforeQueueing(KeyEvent event, int policyFlags, boolean isScreenOn);
 
@@ -675,7 +739,7 @@ public interface WindowManagerPolicy {
      * @param policyFlags The policy flags associated with the motion.
      *
      * @return The bitwise or of the {@link #ACTION_PASS_TO_USER},
-     *          {@link #ACTION_POKE_USER_ACTIVITY} and {@link #ACTION_GO_TO_SLEEP} flags.
+     *      {@link #ACTION_WAKE_UP} and {@link #ACTION_GO_TO_SLEEP} flags.
      */
     public int interceptMotionBeforeQueueingWhenScreenOff(int policyFlags);
 
@@ -716,12 +780,29 @@ public interface WindowManagerPolicy {
     /**
      * Called when layout of the windows is about to start.
      * 
+     * @param isDefaultDisplay true if window is on {@link Display#DEFAULT_DISPLAY}.
      * @param displayWidth The current full width of the screen.
      * @param displayHeight The current full height of the screen.
      * @param displayRotation The current rotation being applied to the base
      * window.
      */
-    public void beginLayoutLw(int displayWidth, int displayHeight, int displayRotation);
+    public void beginLayoutLw(boolean isDefaultDisplay, int displayWidth, int displayHeight,
+                              int displayRotation);
+
+    /**
+     * Return the rectangle of the screen currently covered by system decorations.
+     * This will be called immediately after {@link #layoutWindowLw}.  It can
+     * fill in the rectangle to indicate any part of the screen that it knows
+     * for sure is covered by system decor such as the status bar.  The rectangle
+     * is initially set to the actual size of the screen, indicating nothing is
+     * covered.
+     *
+     * @param systemRect The rectangle of the screen that is not covered by
+     * system decoration.
+     * @return Returns the layer above which the system rectangle should
+     * not be applied.
+     */
+    public int getSystemDecorRectLw(Rect systemRect);
 
     /**
      * Called for each window attached to the window manager as layout is
@@ -748,17 +829,13 @@ public interface WindowManagerPolicy {
      * 
      */
     public void getContentInsetHintLw(WindowManager.LayoutParams attrs, Rect contentInset);
-    
+
     /**
      * Called when layout of the windows is finished.  After this function has
      * returned, all windows given to layoutWindow() <em>must</em> have had a
      * frame assigned.
-     *  
-     * @return Return any bit set of {@link #FINISH_LAYOUT_REDO_LAYOUT},
-     * {@link #FINISH_LAYOUT_REDO_CONFIG}, {@link #FINISH_LAYOUT_REDO_WALLPAPER},
-     * or {@link #FINISH_LAYOUT_REDO_ANIM}.
      */
-    public int finishLayoutLw();
+    public void finishLayoutLw();
 
     /** Layout state may have changed (so another layout will be performed) */
     static final int FINISH_LAYOUT_REDO_LAYOUT = 0x0001;
@@ -770,32 +847,33 @@ public interface WindowManagerPolicy {
     static final int FINISH_LAYOUT_REDO_ANIM = 0x0008;
     
     /**
-     * Called when animation of the windows is about to start.
+     * Called following layout of all windows before each window has policy applied.
      * 
      * @param displayWidth The current full width of the screen.
      * @param displayHeight The current full height of the screen.
      */
-    public void beginAnimationLw(int displayWidth, int displayHeight);
+    public void beginPostLayoutPolicyLw(int displayWidth, int displayHeight);
 
     /**
-     * Called each time a window is animating.
+     * Called following layout of all window to apply policy to each window.
      * 
      * @param win The window being positioned.
      * @param attrs The LayoutParams of the window. 
      */
-    public void animatingWindowLw(WindowState win,
+    public void applyPostLayoutPolicyLw(WindowState win,
             WindowManager.LayoutParams attrs);
 
     /**
-     * Called when animation of the windows is finished.  If in this function you do 
-     * something that may have modified the animation state of another window, 
-     * be sure to return true in order to perform another animation frame. 
+     * Called following layout of all windows and after policy has been applied
+     * to each window. If in this function you do
+     * something that may have modified the animation state of another window,
+     * be sure to return non-zero in order to perform another pass through layout.
      *  
      * @return Return any bit set of {@link #FINISH_LAYOUT_REDO_LAYOUT},
      * {@link #FINISH_LAYOUT_REDO_CONFIG}, {@link #FINISH_LAYOUT_REDO_WALLPAPER},
      * or {@link #FINISH_LAYOUT_REDO_ANIM}.
      */
-    public int finishAnimationLw();
+    public int finishPostLayoutPolicyLw();
 
     /**
      * Return true if it is okay to perform animations for an app transition
@@ -821,7 +899,7 @@ public interface WindowManagerPolicy {
 
     public interface ScreenOnListener {
         void onScreenOn();
-    };
+    }
 
     /**
      * Called when the power manager would like to turn the screen on.
@@ -941,10 +1019,10 @@ public interface WindowManagerPolicy {
     public void setRotationLw(int rotation);
 
     /**
-     * Called when the system is mostly done booting to determine whether
+     * Called when the system is mostly done booting to set whether
      * the system should go into safe mode.
      */
-    public boolean detectSafeMode();
+    public void setSafeMode(boolean safeMode);
     
     /**
      * Called when the system is mostly done booting.
@@ -975,7 +1053,7 @@ public interface WindowManagerPolicy {
 
     /**
      * Called when we have finished booting and can now display the home
-     * screen to the user.  This wilWl happen after systemReady(), and at
+     * screen to the user.  This will happen after systemReady(), and at
      * this point the display is active.
      */
     public void enableScreenAfterBoot();
@@ -991,26 +1069,21 @@ public interface WindowManagerPolicy {
      * Called when we have started keeping the screen on because a window
      * requesting this has become visible.
      */
-    public void screenOnStartedLw();
+    public void keepScreenOnStartedLw();
 
     /**
      * Called when we have stopped keeping the screen on because the last window
      * requesting this is no longer visible.
      */
-    public void screenOnStoppedLw();
-
-    /**
-     * Return false to disable key repeat events from being generated.
-     */
-    public boolean allowKeyRepeat();
+    public void keepScreenOnStoppedLw();
 
     /**
      * Inform the policy that the user has chosen a preferred orientation ("rotation lock"). 
      *
      * @param mode One of {@link WindowManagerPolicy#USER_ROTATION_LOCKED} or
-     *             {@link * WindowManagerPolicy#USER_ROTATION_FREE}. 
+     *             {@link WindowManagerPolicy#USER_ROTATION_FREE}. 
      * @param rotation One of {@link Surface#ROTATION_0}, {@link Surface#ROTATION_90},
-     *                 {@link Surface#ROTATION_180}, {@link Surface#ROTATION_270}. 
+     *                 {@link Surface#ROTATION_180}, {@link Surface#ROTATION_270}.
      */
     public void setUserRotationMode(int mode, int rotation);
 
@@ -1030,16 +1103,44 @@ public interface WindowManagerPolicy {
     /**
      * Lock the device now.
      */
-    public void lockNow();
+    public void lockNow(Bundle options);
+
+    /**
+     * Set the last used input method window state. This state is used to make IME transition
+     * smooth.
+     * @hide
+     */
+    public void setLastInputMethodWindowLw(WindowState ime, WindowState target);
+
+    /**
+     * Returns whether magnification can be applied to the given window type.
+     *
+     * @param attrs The window's LayoutParams.
+     * @return Whether magnification can be applied.
+     */
+    public boolean canMagnifyWindowLw(WindowManager.LayoutParams attrs);
+
+    /**
+     * Called when the current user changes. Guaranteed to be called before the broadcast
+     * of the new user id is made to all listeners.
+     *
+     * @param newUserId The id of the incoming user.
+     */
+    public void setCurrentUserLw(int newUserId);
 
     /**
      * Print the WindowManagerPolicy's state into the given stream.
      *
      * @param prefix Text to print at the front of each line.
-     * @param fd The raw file descriptor that the dump is being sent to.
      * @param writer The PrintWriter to which you should dump your state.  This will be
      * closed for you after you return.
      * @param args additional arguments to the dump request.
      */
-    public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args);
+    public void dump(String prefix, PrintWriter writer, String[] args);
+
+    /**
+     * Ask keyguard to invoke the assist intent after dismissing keyguard
+     * {@link android.content.Intent#ACTION_ASSIST}
+     */
+    public void showAssistant();
 }

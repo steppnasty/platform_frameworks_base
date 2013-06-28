@@ -77,6 +77,9 @@ public final class Message implements Parcelable {
     /** If set message is in use */
     /*package*/ static final int FLAG_IN_USE = 1;
 
+    /** If set message is asynchronous */
+    /*package*/ static final int FLAG_ASYNCHRONOUS = 1 << 1;
+
     /** Flags reserved for future use (All are reserved for now) */
     /*package*/ static final int FLAGS_RESERVED = ~FLAG_IN_USE;
 
@@ -361,6 +364,48 @@ public final class Message implements Parcelable {
      */
     public void sendToTarget() {
         target.sendMessage(this);
+    }
+
+    /**
+     * Returns true if the message is asynchronous.
+     *
+     * Asynchronous messages represent interrupts or events that do not require global ordering
+     * with represent to synchronous messages.  Asynchronous messages are not subject to
+     * the synchronization barriers introduced by {@link MessageQueue#enqueueSyncBarrier(long)}.
+     *
+     * @return True if the message is asynchronous.
+     *
+     * @see #setAsynchronous(boolean)
+     * @see MessageQueue#enqueueSyncBarrier(long)
+     * @see MessageQueue#removeSyncBarrier(int)
+     *
+     * @hide
+     */
+    public boolean isAsynchronous() {
+        return (flags & FLAG_ASYNCHRONOUS) != 0;
+    }
+
+    /**
+     * Sets whether the message is asynchronous.
+     *
+     * Asynchronous messages represent interrupts or events that do not require global ordering
+     * with represent to synchronous messages.  Asynchronous messages are not subject to
+     * the synchronization barriers introduced by {@link MessageQueue#enqueueSyncBarrier(long)}.
+     *
+     * @param async True if the message is asynchronous.
+     *
+     * @see #isAsynchronous()
+     * @see MessageQueue#enqueueSyncBarrier(long)
+     * @see MessageQueue#removeSyncBarrier(int)
+     *
+     * @hide
+     */
+    public void setAsynchronous(boolean async) {
+        if (async) {
+            flags |= FLAG_ASYNCHRONOUS;
+        } else {
+            flags &= ~FLAG_ASYNCHRONOUS;
+        }
     }
 
     /*package*/ void clearForRecycle() {

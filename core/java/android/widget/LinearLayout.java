@@ -27,6 +27,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewDebug;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.RemoteViews.RemoteView;
 
 
@@ -39,8 +41,8 @@ import android.widget.RemoteViews.RemoteView;
  * {@link android.widget.LinearLayout.LayoutParams LinearLayout.LayoutParams}.
  * The default orientation is horizontal.
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-linearlayout.html">Linear Layout
- * tutorial</a>.</p>
+ * <p>See the <a href="{@docRoot}guide/topics/ui/layout/linear.html">Linear Layout</a>
+ * guide.</p>
  *
  * <p>
  * Also see {@link LinearLayout.LayoutParams android.widget.LinearLayout.LayoutParams}
@@ -233,9 +235,24 @@ public class LinearLayout extends ViewGroup {
     }
 
     /**
+     * @return the divider Drawable that will divide each item.
+     *
+     * @see #setDividerDrawable(Drawable)
+     *
+     * @attr ref android.R.styleable#LinearLayout_divider
+     */
+    public Drawable getDividerDrawable() {
+        return mDivider;
+    }
+
+    /**
      * Set a drawable to be used as a divider between items.
+     *
      * @param divider Drawable that will divide each item.
+     *
      * @see #setShowDividers(int)
+     *
+     * @attr ref android.R.styleable#LinearLayout_divider
      */
     public void setDividerDrawable(Drawable divider) {
         if (divider == mDivider) {
@@ -328,28 +345,42 @@ public class LinearLayout extends ViewGroup {
 
     void drawDividersHorizontal(Canvas canvas) {
         final int count = getVirtualChildCount();
+        final boolean isLayoutRtl = isLayoutRtl();
         for (int i = 0; i < count; i++) {
             final View child = getVirtualChildAt(i);
 
             if (child != null && child.getVisibility() != GONE) {
                 if (hasDividerBeforeChildAt(i)) {
                     final LayoutParams lp = (LayoutParams) child.getLayoutParams();
-                    final int left = child.getLeft() - lp.leftMargin - mDividerWidth;
-                    drawVerticalDivider(canvas, left);
+                    final int position;
+                    if (isLayoutRtl) {
+                        position = child.getRight() + lp.rightMargin;
+                    } else {
+                        position = child.getLeft() - lp.leftMargin - mDividerWidth;
+                    }
+                    drawVerticalDivider(canvas, position);
                 }
             }
         }
 
         if (hasDividerBeforeChildAt(count)) {
             final View child = getVirtualChildAt(count - 1);
-            int right = 0;
+            int position;
             if (child == null) {
-                right = getWidth() - getPaddingRight() - mDividerWidth;
+                if (isLayoutRtl) {
+                    position = getPaddingLeft();
+                } else {
+                    position = getWidth() - getPaddingRight() - mDividerWidth;
+                }
             } else {
                 final LayoutParams lp = (LayoutParams) child.getLayoutParams();
-                right = child.getRight() + lp.rightMargin;
+                if (isLayoutRtl) {
+                    position = child.getLeft() - lp.leftMargin - mDividerWidth;
+                } else {
+                    position = child.getRight() + lp.rightMargin;
+                }
             }
-            drawVerticalDivider(canvas, right);
+            drawVerticalDivider(canvas, position);
         }
     }
 
@@ -396,6 +427,8 @@ public class LinearLayout extends ViewGroup {
      * 
      * @return True to measure children with a weight using the minimum
      *         size of the largest child, false otherwise.
+     *
+     * @attr ref android.R.styleable#LinearLayout_measureWithLargestChild
      */
     public boolean isMeasureWithLargestChildEnabled() {
         return mUseLargestChild;
@@ -410,6 +443,8 @@ public class LinearLayout extends ViewGroup {
      * 
      * @param enabled True to measure children with a weight using the
      *        minimum size of the largest child, false otherwise.
+     *
+     * @attr ref android.R.styleable#LinearLayout_measureWithLargestChild
      */
     @android.view.RemotableViewMethod
     public void setMeasureWithLargestChildEnabled(boolean enabled) {
@@ -846,7 +881,7 @@ public class LinearLayout extends ViewGroup {
 
             // We have no limit, so make all weighted views as tall as the largest child.
             // Children will have already been measured once.
-            if (useLargestChild && widthMode == MeasureSpec.UNSPECIFIED) {
+            if (useLargestChild && heightMode != MeasureSpec.EXACTLY) {
                 for (int i = 0; i < count; i++) {
                     final View child = getVirtualChildAt(i);
 
@@ -1262,7 +1297,7 @@ public class LinearLayout extends ViewGroup {
 
             // We have no limit, so make all weighted views as wide as the largest child.
             // Children will have already been measured once.
-            if (useLargestChild && widthMode == MeasureSpec.UNSPECIFIED) {
+            if (useLargestChild && widthMode != MeasureSpec.EXACTLY) {
                 for (int i = 0; i < count; i++) {
                     final View child = getVirtualChildAt(i);
 
@@ -1305,7 +1340,7 @@ public class LinearLayout extends ViewGroup {
     private void forceUniformHeight(int count, int widthMeasureSpec) {
         // Pretend that the linear layout has an exact size. This is the measured height of
         // ourselves. The measured height should be the max height of the children, changed
-        // to accomodate the heightMesureSpec from the parent
+        // to accommodate the heightMeasureSpec from the parent
         int uniformMeasureSpec = MeasureSpec.makeMeasureSpec(getMeasuredHeight(),
                 MeasureSpec.EXACTLY);
         for (int i = 0; i < count; ++i) {
@@ -1460,7 +1495,7 @@ public class LinearLayout extends ViewGroup {
                 if (gravity < 0) {
                     gravity = minorGravity;
                 }
-                final int layoutDirection = getResolvedLayoutDirection();
+                final int layoutDirection = getLayoutDirection();
                 final int absoluteGravity = Gravity.getAbsoluteGravity(gravity, layoutDirection);
                 switch (absoluteGravity & Gravity.HORIZONTAL_GRAVITY_MASK) {
                     case Gravity.CENTER_HORIZONTAL:
@@ -1524,7 +1559,7 @@ public class LinearLayout extends ViewGroup {
         final int[] maxAscent = mMaxAscent;
         final int[] maxDescent = mMaxDescent;
 
-        final int layoutDirection = getResolvedLayoutDirection();
+        final int layoutDirection = getLayoutDirection();
         switch (Gravity.getAbsoluteGravity(majorGravity, layoutDirection)) {
             case Gravity.RIGHT:
                 // mTotalLength contains the padding already
@@ -1729,7 +1764,19 @@ public class LinearLayout extends ViewGroup {
     protected boolean checkLayoutParams(ViewGroup.LayoutParams p) {
         return p instanceof LinearLayout.LayoutParams;
     }
-    
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(LinearLayout.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(LinearLayout.class.getName());
+    }
+
     /**
      * Per-child layout information associated with ViewLinearLayout.
      * 

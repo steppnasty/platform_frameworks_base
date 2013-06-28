@@ -156,6 +156,12 @@ public class ActivityInfo extends ComponentInfo
      */
     public static final int FLAG_HARDWARE_ACCELERATED = 0x0200;
     /**
+     * Value for {@link #flags}: true when the application can be displayed over the lockscreen
+     * and consequently over all users' windows.
+     * @hide
+     */
+    public static final int FLAG_SHOW_ON_LOCK_SCREEN = 0x0400;
+    /**
      * @hide
      * Bit in {@link #flags} corresponding to an immersive activity
      * that wishes not to be interrupted by notifications.
@@ -172,6 +178,20 @@ public class ActivityInfo extends ComponentInfo
      * {@see android.app.Notification#FLAG_HIGH_PRIORITY}
      */
     public static final int FLAG_IMMERSIVE = 0x0400;
+    /**
+     * @hide Bit in {@link #flags}: If set, this component will only be seen
+     * by the primary user.  Only works with broadcast receivers.  Set from the
+     * {@link android.R.attr#primaryUserOnly} attribute.
+     */
+    public static final int FLAG_PRIMARY_USER_ONLY = 0x20000000;
+    /**
+     * Bit in {@link #flags}: If set, a single instance of the receiver will
+     * run for all users on the device.  Set from the
+     * {@link android.R.attr#singleUser} attribute.  Note that this flag is
+     * only relevant for ActivityInfo structures that are describing receiver
+     * components; it is not applied to activities.
+     */
+    public static final int FLAG_SINGLE_USER = 0x40000000;
     /**
      * Options that have been set in the activity declaration in the
      * manifest.
@@ -363,6 +383,18 @@ public class ActivityInfo extends ComponentInfo
     public static final int CONFIG_SMALLEST_SCREEN_SIZE = 0x0800;
     /**
      * Bit in {@link #configChanges} that indicates that the activity
+     * can itself handle density changes. Set from the
+     * {@link android.R.attr#configChanges} attribute.
+     */
+    public static final int CONFIG_DENSITY = 0x1000;
+    /**
+     * Bit in {@link #configChanges} that indicates that the activity
+     * can itself handle the change to layout direction. Set from the
+     * {@link android.R.attr#configChanges} attribute.
+     */
+    public static final int CONFIG_LAYOUT_DIRECTION = 0x2000;
+    /**
+     * Bit in {@link #configChanges} that indicates that the activity
      * can itself handle changes to the font scaling factor.  Set from the
      * {@link android.R.attr#configChanges} attribute.  This is
      * not a core resource configutation, but a higher-level value, so its
@@ -388,6 +420,8 @@ public class ActivityInfo extends ComponentInfo
         0x1000, // UI MODE
         0x0200, // SCREEN SIZE
         0x2000, // SMALLEST SCREEN SIZE
+        0x0100, // DENSITY
+        0x4000, // LAYOUT DIRECTION
     };
     /** @hide
      * Convert Java change bits to native.
@@ -454,6 +488,11 @@ public class ActivityInfo extends ComponentInfo
      * attribute.
      */
     public static final int UIOPTION_SPLIT_ACTION_BAR_WHEN_NARROW = 1;
+
+    /**
+     * If defined, the activity named here is the logical parent of this activity.
+     */
+    public String parentActivityName;
 
     public ActivityInfo() {
     }

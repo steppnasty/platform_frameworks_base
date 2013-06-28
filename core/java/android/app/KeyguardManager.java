@@ -23,6 +23,7 @@ import android.os.IBinder;
 import android.os.ServiceManager;
 import android.view.IWindowManager;
 import android.view.IOnKeyguardExitResult;
+import android.view.WindowManagerGlobal;
 
 /**
  * Class that can be used to lock and unlock the keyboard. Get an instance of this 
@@ -105,7 +106,7 @@ public class KeyguardManager {
 
 
     KeyguardManager() {
-        mWM = IWindowManager.Stub.asInterface(ServiceManager.getService(Context.WINDOW_SERVICE));
+        mWM = WindowManagerGlobal.getWindowManagerService();
     }
 
     /**
