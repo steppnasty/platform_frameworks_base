@@ -34,32 +34,32 @@ LOCAL_SRC_FILES:= \
 	com_google_android_gles_jni_EGLImpl.cpp \
 	com_google_android_gles_jni_GLImpl.cpp.arm \
 	android_app_NativeActivity.cpp \
+        android_opengl_EGL14.cpp \
 	android_opengl_GLES10.cpp \
 	android_opengl_GLES10Ext.cpp \
 	android_opengl_GLES11.cpp \
 	android_opengl_GLES11Ext.cpp \
 	android_opengl_GLES20.cpp \
 	android_database_CursorWindow.cpp \
-	android_database_SQLiteCompiledSql.cpp \
+	android_database_SQLiteCommon.cpp \
+	android_database_SQLiteConnection.cpp \
+	android_database_SQLiteGlobal.cpp \
 	android_database_SQLiteDebug.cpp \
-	android_database_SQLiteDatabase.cpp \
-	android_database_SQLiteProgram.cpp \
-	android_database_SQLiteQuery.cpp \
-	android_database_SQLiteStatement.cpp \
 	android_emoji_EmojiFactory.cpp \
-	android_view_Display.cpp \
 	android_view_Surface.cpp \
+        android_view_SurfaceSession.cpp \
 	android_view_TextureView.cpp \
 	android_view_InputChannel.cpp \
-	android_view_InputQueue.cpp \
+        android_view_InputDevice.cpp  \
+        android_view_InputEventReceiver.cpp \
 	android_view_KeyEvent.cpp \
-	android_view_KeyCharacterMap.cpp \
-	android_view_HardwareRenderer.cpp \
+	android_view_KeyCharacterMap.cpp   \
+	android_view_HardwareRenderer.cpp  \
+        android_view_GLES20DisplayList.cpp \
 	android_view_GLES20Canvas.cpp \
 	android_view_MotionEvent.cpp \
 	android_view_PointerIcon.cpp \
 	android_view_VelocityTracker.cpp \
-	android_view_VideoTextureView.cpp \
 	android_text_AndroidCharacter.cpp \
 	android_text_AndroidBidi.cpp \
 	android_os_Debug.cpp \
@@ -67,10 +67,12 @@ LOCAL_SRC_FILES:= \
 	android_os_MemoryFile.cpp \
 	android_os_MessageQueue.cpp \
 	android_os_ParcelFileDescriptor.cpp \
+        android_os_Parcel.cpp               \
 	android_os_Power.cpp \
 	android_os_StatFs.cpp \
 	android_os_SystemClock.cpp \
 	android_os_SystemProperties.cpp \
+        android_os_Trace.cpp \
 	android_os_UEventObserver.cpp \
 	android_net_LocalSocketImpl.cpp \
 	android_net_NetUtils.cpp \
@@ -162,7 +164,8 @@ LOCAL_SRC_FILES:= \
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
         LOCAL_CFLAGS += -DQCOM_HARDWARE
-	LOCAL_SRC_FILES += org_codeaurora_Performance.cpp
+	LOCAL_SRC_FILES += org_codeaurora_Performance.cpp \
+            com_android_internal_app_ActivityTrigger.cpp
 endif
 
 LOCAL_C_INCLUDES += \
@@ -178,6 +181,7 @@ LOCAL_C_INCLUDES += \
 	external/skia/include/core \
 	external/skia/include/effects \
 	external/skia/include/images \
+        external/skia/include/ports \
 	external/skia/src/ports \
 	external/skia/include/utils \
 	external/sqlite/dist \
@@ -195,6 +199,7 @@ LOCAL_C_INCLUDES += \
 	libcore/include
 
 LOCAL_SHARED_LIBRARIES := \
+        libandroidfw \
 	libexpat \
 	libnativehelper \
 	libcutils \
@@ -228,14 +233,6 @@ LOCAL_SHARED_LIBRARIES := \
 
 ifeq ($(USE_OPENGL_RENDERER),true)
 	LOCAL_SHARED_LIBRARIES += libhwui
-endif
-
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-ifeq ($(USE_OPENGL_RENDERER),true)
-LOCAL_SHARED_LIBRARIES += libtilerenderer
-endif
-LOCAL_C_INCLUDES += hardware/qcom/display/libtilerenderer
-LOCAL_CFLAGS += -DQCOM_HARDWARE
 endif
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)

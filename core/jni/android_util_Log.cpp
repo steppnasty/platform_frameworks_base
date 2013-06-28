@@ -27,6 +27,7 @@
 #include "JNIHelp.h"
 #include "utils/misc.h"
 #include "android_runtime/AndroidRuntime.h"
+#include "android_util_Log.h"
 
 #define MIN(a,b) ((a<b)?a:b)
 
@@ -54,6 +55,20 @@ static int toLevel(const char* value)
         case 'S': return -1; // SUPPRESS
     }
     return levels.info;
+}
+
+static jboolean isLoggable(const char* tag, jint level) {
+    String8 key;
+    key.append(LOG_NAMESPACE);
+    key.append(tag);
+
+    char buf[PROPERTY_VALUE_MAX];
+    if (property_get(key.string(), buf, "") <= 0) {
+        buf[0] = '\0';
+    }
+
+    int logLevel = toLevel(buf);
+    return logLevel >= 0 && level >= logLevel;
 }
 
 static jboolean android_util_Log_isLoggable(JNIEnv* env, jobject clazz, jstring tag, jint level)
@@ -90,6 +105,10 @@ static jboolean android_util_Log_isLoggable(JNIEnv* env, jobject clazz, jstring 
     len = property_get(key, buf, "");
     int logLevel = toLevel(buf);
     return (logLevel >= 0 && level >= logLevel) ? true : false;
+}
+
+bool android_util_Log_isVerboseLogEnabled(const char* tag) {
+    return isLoggable(tag, levels.verbose);
 }
 
 /*

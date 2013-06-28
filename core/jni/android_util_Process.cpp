@@ -71,7 +71,7 @@ static void signalExceptionForPriorityError(JNIEnv* env, jobject obj, int err)
     }
 }
 
-static void signalExceptionForGroupError(JNIEnv* env, jobject obj, int err)
+static void signalExceptionForGroupError(JNIEnv* env, int err)
 {
     switch (err) {
         case EINVAL:
@@ -171,24 +171,32 @@ jint android_os_Process_getGidForName(JNIEnv* env, jobject clazz, jstring name)
 
 void android_os_Process_setThreadGroup(JNIEnv* env, jobject clazz, int pid, jint grp)
 {
-    int res = androidSetThreadSchedulingGroup(pid, grp);
+    ALOGV("%s pid=%d grp=%d", __func__, pid, grp);
+    SchedPolicy sp = (SchedPolicy) grp;
+    int res = set_sched_policy(pid, sp);
     if (res != NO_ERROR) {
-        signalExceptionForGroupError(env, clazz, res == BAD_VALUE ? EINVAL : errno);
-        return;
+        signalExceptionForGroupError(env, -res);
     }
 }
 
 void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jint grp)
 {
+    ALOGV("%s pid=%d grp%d", __func__, pid, grp);
     DIR *d;
     FILE *fp;
     char proc_path[255];
     struct dirent *de;
 
-    if (grp > ANDROID_TGROUP_MAX || grp < 0) {
-        signalExceptionForGroupError(env, clazz, EINVAL);
+    if ((grp == SP_FOREGROUND) || (grp > SP_MAX)) {
+        signalExceptionForGroupError(env, EINVAL);
         return;
     }
+    bool isDefault = false;
+    if (grp < 0) {
+        grp = SP_FOREGROUND;
+        isDefault = true;
+    }
+    SchedPolicy sp = (SchedPolicy) grp;
 
 #if POLICY_DEBUG
     char cmdline[32];
@@ -204,7 +212,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         close(fd);
     }
 
-    if (grp == ANDROID_TGROUP_BG_NONINTERACT) {
+    if (grp == SP_BACKGROUND) {
         ALOGD("setProcessGroup: vvv pid %d (%s)", pid, cmdline);
     } else {
         ALOGD("setProcessGroup: ^^^ pid %d (%s)", pid, cmdline);
@@ -214,7 +222,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
     if (!(d = opendir(proc_path))) {
         // If the process exited on us, don't generate an exception
         if (errno != ENOENT)
-            signalExceptionForGroupError(env, clazz, errno);
+            signalExceptionForGroupError(env, errno);
         return;
     }
 
@@ -233,14 +241,16 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
 
         t_pri = getpriority(PRIO_PROCESS, t_pid);
 
-        if (grp == ANDROID_TGROUP_DEFAULT &&
-            t_pri >= ANDROID_PRIORITY_BACKGROUND) {
-            // This task wants to stay at background
-            continue;
+        if (isDefault) {
+            if (t_pri >= ANDROID_PRIORITY_BACKGROUND) {
+                // This task wants to stay at background
+                continue;
+            }
         }
 
-        if (androidSetThreadSchedulingGroup(t_pid, grp) != NO_ERROR) {
-            signalExceptionForGroupError(env, clazz, errno);
+        int err = set_sched_policy(t_pid, sp);
+        if (err != NO_ERROR) {
+            signalExceptionForGroupError(env, -err);
             break;
         }
     }
@@ -287,7 +297,7 @@ void android_os_Process_setThreadPriority(JNIEnv* env, jobject clazz,
         if (rc == INVALID_OPERATION) {
             signalExceptionForPriorityError(env, clazz, errno);
         } else {
-            signalExceptionForGroupError(env, clazz, errno);
+            signalExceptionForGroupError(env, errno);
         }
     }
 
@@ -366,7 +376,7 @@ static int pid_compare(const void* v1, const void* v2)
     return *((const jint*)v1) - *((const jint*)v2);
 }
 
-static jlong android_os_Process_getFreeMemory(JNIEnv* env, jobject clazz)
+static jlong getFreeMemoryImpl(const char* const sums[], const int sumsLen[], int num)
 {
     int fd = open("/proc/meminfo", O_RDONLY);
 
@@ -388,11 +398,8 @@ static jlong android_os_Process_getFreeMemory(JNIEnv* env, jobject clazz)
     int numFound = 0;
     jlong mem = 0;
 
-    static const char* const sums[] = { "MemFree:", "Cached:", NULL };
-    static const int sumsLen[] = { strlen("MemFree:"), strlen("Cached:"), NULL };
-
     char* p = buffer;
-    while (*p && numFound < 2) {
+    while (*p && numFound < num) {
         int i = 0;
         while (sums[i]) {
             if (strncmp(p, sums[i], sumsLen[i]) == 0) {
@@ -415,6 +422,20 @@ static jlong android_os_Process_getFreeMemory(JNIEnv* env, jobject clazz)
     }
 
     return numFound > 0 ? mem : -1;
+}
+
+static jlong android_os_Process_getFreeMemory(JNIEnv* env, jobject clazz)
+{
+    static const char* const sums[] = { "MemFree:", "Cached:", NULL };
+    static const int sumsLen[] = { strlen("MemFree:"), strlen("Cached:"), 0 };
+    return getFreeMemoryImpl(sums, sumsLen, 2);
+}
+
+static jlong android_os_Process_getTotalMemory(JNIEnv* env, jobject clazz)
+{
+    static const char* const sums[] = { "MemTotal:", NULL };
+    static const int sumsLen[] = { strlen("MemTotal:"), 0 };
+    return getFreeMemoryImpl(sums, sumsLen, 1);
 }
 
 void android_os_Process_readProcLines(JNIEnv* env, jobject clazz, jstring fileStr,
@@ -845,6 +866,93 @@ static jlong android_os_Process_getPss(JNIEnv* env, jobject clazz, jint pid)
     return pss * 1024;
 }
 
+jintArray android_os_Process_getPidsForCommands(JNIEnv* env, jobject clazz,
+        jobjectArray commandNames)
+{
+    if (commandNames == NULL) {
+        jniThrowNullPointerException(env, NULL);
+        return NULL;
+    }
+
+    Vector<String8> commands;
+
+    jsize count = env->GetArrayLength(commandNames);
+
+    for (int i=0; i<count; i++) {
+        jobject obj = env->GetObjectArrayElement(commandNames, i);
+        if (obj != NULL) {
+            const char* str8 = env->GetStringUTFChars((jstring)obj, NULL);
+            if (str8 == NULL) {
+                jniThrowNullPointerException(env, "Element in commandNames");
+                return NULL;
+            }
+            commands.add(String8(str8));
+            env->ReleaseStringUTFChars((jstring)obj, str8);
+        } else {
+            jniThrowNullPointerException(env, "Element in commandNames");
+            return NULL;
+        }
+    }
+
+    Vector<jint> pids;
+
+    DIR *proc = opendir("/proc");
+    if (proc == NULL) {
+        fprintf(stderr, "/proc: %s\n", strerror(errno));
+        return NULL;
+    }
+
+    struct dirent *d;
+    while ((d = readdir(proc))) {
+        int pid = atoi(d->d_name);
+        if (pid <= 0) continue;
+
+        char path[PATH_MAX];
+        char data[PATH_MAX];
+        snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+
+        int fd = open(path, O_RDONLY);
+        if (fd < 0) {
+            continue;
+        }
+        const int len = read(fd, data, sizeof(data)-1);
+        close(fd);
+
+        if (len < 0) {
+            continue;
+        }
+        data[len] = 0;
+
+        for (int i=0; i<len; i++) {
+            if (data[i] == ' ') {
+                data[i] = 0;
+                break;
+            }
+        }
+
+        for (size_t i=0; i<commands.size(); i++) {
+            if (commands[i] == data) {
+                pids.add(pid);
+                break;
+            }
+        }
+    }
+
+    closedir(proc);
+
+    jintArray pidArray = env->NewIntArray(pids.size());
+    if (pidArray == NULL) {
+        jniThrowException(env, "java/lang/OutOfMemoryError", NULL);
+        return NULL;
+    }
+
+    if (pids.size() > 0) {
+        env->SetIntArrayRegion(pidArray, 0, pids.size(), pids.array());
+    }
+
+    return pidArray;
+}
+
 static const JNINativeMethod methods[] = {
     {"myPid",       "()I", (void*)android_os_Process_myPid},
     {"myTid",       "()I", (void*)android_os_Process_myTid},
@@ -864,12 +972,14 @@ static const JNINativeMethod methods[] = {
     {"sendSignal", "(II)V", (void*)android_os_Process_sendSignal},
     {"sendSignalQuiet", "(II)V", (void*)android_os_Process_sendSignalQuiet},
     {"getFreeMemory", "()J", (void*)android_os_Process_getFreeMemory},
+    {"getTotalMemory", "()J", (void*)android_os_Process_getTotalMemory},
     {"readProcLines", "(Ljava/lang/String;[Ljava/lang/String;[J)V", (void*)android_os_Process_readProcLines},
     {"getPids", "(Ljava/lang/String;[I)[I", (void*)android_os_Process_getPids},
     {"readProcFile", "(Ljava/lang/String;[I[Ljava/lang/String;[J[F)Z", (void*)android_os_Process_readProcFile},
     {"parseProcLine", "([BII[I[Ljava/lang/String;[J[F)Z", (void*)android_os_Process_parseProcLine},
     {"getElapsedCpuTime", "()J", (void*)android_os_Process_getElapsedCpuTime},
     {"getPss", "(I)J", (void*)android_os_Process_getPss},
+    {"getPidsForCommands", "([Ljava/lang/String;)[I", (void*)android_os_Process_getPidsForCommands},
     //{"setApplicationObject", "(Landroid/os/IBinder;)V", (void*)android_os_Process_setApplicationObject},
 };
 

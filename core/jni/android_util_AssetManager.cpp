@@ -439,7 +439,7 @@ static jint android_content_AssetManager_addAssetPath(JNIEnv* env, jobject clazz
 {
     ScopedUtfChars path8(env, path);
     if (path8.c_str() == NULL) {
-        return NULL;
+        return 0;
     }
 
     AssetManager* am = assetManagerForJavaObject(env, clazz);
@@ -714,7 +714,7 @@ static jint android_content_AssetManager_loadResourceValue(JNIEnv* env, jobject 
     }
 #endif
     if (resolve) {
-        block = res.resolveReference(&value, block, &ref);
+        block = res.resolveReference(&value, block, &ref, &typeSpecFlags, &config);
 #if THROW_ON_BAD_ID
         if (block == BAD_INDEX) {
             jniThrowException(env, "java/lang/IllegalStateException", "Bad resource!");

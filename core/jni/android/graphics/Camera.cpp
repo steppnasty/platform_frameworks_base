@@ -57,6 +57,11 @@ static void Camera_setLocation(JNIEnv* env, jobject obj, jfloat x, jfloat y, jfl
     v->setCameraLocation(SkFloatToScalar(x), SkFloatToScalar(y), SkFloatToScalar(z));
 }
 
+static jfloat Camera_getLocationZ(JNIEnv* env, jobject obj) {
+    Sk3DView* v = (Sk3DView*)env->GetIntField(obj, gNativeInstanceFieldID);
+    return SkScalarToFloat(v->getCameraLocationZ());
+}
+
 static void Camera_getMatrix(JNIEnv* env, jobject obj, int native_matrix) {
     Sk3DView* v = (Sk3DView*)env->GetIntField(obj, gNativeInstanceFieldID);
     v->getMatrix((SkMatrix*)native_matrix);
@@ -93,6 +98,7 @@ static JNINativeMethod gCameraMethods[] = {
     { "rotateZ",             "(F)V",   (void*)Camera_rotateZ       },
     { "rotate",              "(FFF)V", (void*)Camera_rotate        },
     { "setLocation",         "(FFF)V", (void*)Camera_setLocation   },
+    { "getLocationZ",        "()F",    (void*)Camera_getLocationZ  },
     { "nativeGetMatrix",     "(I)V",   (void*)Camera_getMatrix     },
     { "nativeApplyToCanvas", "(I)V",   (void*)Camera_applyToCanvas },
     { "dotWithNormal",       "(FFF)F", (void*)Camera_dotWithNormal }

@@ -22,7 +22,42 @@
 
 #include <EGL/egl_cache.h>
 
+#ifdef USE_OPENGL_RENDERER
+    EGLAPI void EGLAPIENTRY eglBeginFrame(EGLDisplay dpy, EGLSurface surface);
+#endif
+
 namespace android {
+
+/**
+ * Note: OpenGLRenderer JNI layer is generated and compiled only on supported
+ *       devices. This means all the logic must be compiled only when the
+ *       preprocessor variable USE_OPENGL_RENDERER is defined.
+ */
+
+// ----------------------------------------------------------------------------
+// Tracing and debugging
+// ----------------------------------------------------------------------------
+
+static void android_view_HardwareRenderer_beginFrame(JNIEnv* env, jobject clazz,
+        jintArray size) {
+    EGLDisplay display = eglGetCurrentDisplay();
+    EGLSurface surface = eglGetCurrentSurface(EGL_DRAW);
+
+    if (size) {
+        EGLint value;
+        jint* storage = env->GetIntArrayElements(size, NULL);
+
+        eglQuerySurface(display, surface, EGL_WIDTH, &value);
+        storage[0] = value;
+
+        eglQuerySurface(display, surface, EGL_HEIGHT, &value);
+        storage[1] = value;
+
+        env->ReleaseIntArrayElements(size, storage, 0);
+    }
+
+    eglBeginFrame(display, surface);
+}
 
 // ----------------------------------------------------------------------------
 // Misc
@@ -45,6 +80,7 @@ const char* const kClassPathName = "android/view/HardwareRenderer";
 static JNINativeMethod gMethods[] = {
     { "nSetupShadersDiskCache", "(Ljava/lang/String;)V",
             (void*) android_view_HardwareRenderer_setupShadersDiskCache },
+    { "nBeginFrame",            "([I)V", (void*) android_view_HardwareRenderer_beginFrame },
 };
 
 int register_android_view_HardwareRenderer(JNIEnv* env) {

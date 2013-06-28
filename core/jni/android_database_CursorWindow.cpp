@@ -31,8 +31,9 @@
 #include <unistd.h>
 
 #include "binder/CursorWindow.h"
-#include "sqlite3_exception.h"
+#include "android_os_Parcel.h"
 #include "android_util_Binder.h"
+#include "android_database_SQLiteCommon.h"
 
 namespace android {
 
