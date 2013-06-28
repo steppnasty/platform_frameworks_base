@@ -57,6 +57,7 @@ public final class Bitmap implements Parcelable {
 
     private final boolean mIsMutable;
     private byte[] mNinePatchChunk;   // may be null
+    private int[] mLayoutBounds;    // may be null
     private int mWidth = -1;
     private int mHeight = -1;
     private boolean mRecycled;
@@ -77,14 +78,27 @@ public final class Bitmap implements Parcelable {
         sDefaultDensity = density;
     }
     
-    /*package*/ static int getDefaultDensity() {
+    static int getDefaultDensity() {
         if (sDefaultDensity >= 0) {
             return sDefaultDensity;
         }
         sDefaultDensity = DisplayMetrics.DENSITY_DEVICE;
         return sDefaultDensity;
     }
-    
+
+    /**
+     * @noinspection UnusedDeclaration
+     */
+    /*  Private constructor that must receive an already allocated native
+        bitmap int (pointer).
+
+        This can be called from JNI code.
+    */
+    Bitmap(int nativeBitmap, byte[] buffer, boolean isMutable, byte[] ninePatchChunk,
+            int density) {
+        this(nativeBitmap, buffer, isMutable, ninePatchChunk, null, density);
+    }
+
     /**
      * @noinspection UnusedDeclaration
      */
@@ -94,7 +108,7 @@ public final class Bitmap implements Parcelable {
         This can be called from JNI code.
     */
     /*package*/ Bitmap(int nativeBitmap, byte[] buffer, boolean isMutable, byte[] ninePatchChunk,
-            int density) {
+            int[] layoutBounds, int density) {
         if (nativeBitmap == 0) {
             throw new RuntimeException("internal error: native bitmap is 0");
         }
@@ -106,6 +120,7 @@ public final class Bitmap implements Parcelable {
 
         mIsMutable = isMutable;
         mNinePatchChunk = ninePatchChunk;
+        mLayoutBounds = layoutBounds;
         if (density >= 0) {
             mDensity = density;
         }
@@ -458,14 +473,15 @@ public final class Bitmap implements Parcelable {
     /**
      * Returns an immutable bitmap from the specified subset of the source
      * bitmap. The new bitmap may be the same object as source, or a copy may
-     * have been made.  It is
-     * initialized with the same density as the original bitmap.
+     * have been made. It is initialized with the same density as the original
+     * bitmap.
      *
      * @param source   The bitmap we are subsetting
      * @param x        The x coordinate of the first pixel in source
      * @param y        The y coordinate of the first pixel in source
      * @param width    The number of pixels in each row
      * @param height   The number of rows
+     * @return A copy of a subset of the source bitmap or the source bitmap itself.
      */
     public static Bitmap createBitmap(Bitmap source, int x, int y, int width, int height) {
         return createBitmap(source, x, y, width, height, null, false);
@@ -473,8 +489,13 @@ public final class Bitmap implements Parcelable {
 
     /**
      * Returns an immutable bitmap from subset of the source bitmap,
-     * transformed by the optional matrix.  It is
+     * transformed by the optional matrix. The new bitmap may be the
+     * same object as source, or a copy may have been made. It is
      * initialized with the same density as the original bitmap.
+     * 
+     * If the source bitmap is immutable and the requested subset is the
+     * same as the source bitmap itself, then the source bitmap is
+     * returned and no new bitmap is created.
      *
      * @param source   The bitmap we are subsetting
      * @param x        The x coordinate of the first pixel in source
@@ -560,11 +581,11 @@ public final class Bitmap implements Parcelable {
                 paint.setAntiAlias(true);
             }
         }
-        
+
         // The new bitmap was created from a known bitmap source so assume that
         // they use the same density
         bitmap.mDensity = source.mDensity;
-        
+
         canvas.setBitmap(bitmap);
         canvas.drawBitmap(source, srcR, dstR, paint);
         canvas.setBitmap(null);
@@ -587,6 +608,22 @@ public final class Bitmap implements Parcelable {
 
     /**
      * Returns a mutable bitmap with the specified width and height.  Its
+     * initial density is determined from the given {@link DisplayMetrics}.
+     *
+     * @param display  Display metrics for the display this bitmap will be
+     *                 drawn on.
+     * @param width    The width of the bitmap
+     * @param height   The height of the bitmap
+     * @param config   The bitmap config to create.
+     * @throws IllegalArgumentException if the width or height are <= 0
+     */
+    public static Bitmap createBitmap(DisplayMetrics display, int width,
+            int height, Config config) {
+        return createBitmap(display, width, height, config, true);
+    }
+
+    /**
+     * Returns a mutable bitmap with the specified width and height.  Its
      * initial density is as per {@link #getDensity}.
      *
      * @param width    The width of the bitmap
@@ -599,10 +636,33 @@ public final class Bitmap implements Parcelable {
      * @throws IllegalArgumentException if the width or height are <= 0
      */
     private static Bitmap createBitmap(int width, int height, Config config, boolean hasAlpha) {
+        return createBitmap(null, width, height, config, hasAlpha);
+    }
+
+    /**
+     * Returns a mutable bitmap with the specified width and height.  Its
+     * initial density is determined from the given {@link DisplayMetrics}.
+     *
+     * @param display  Display metrics for the display this bitmap will be
+     *                 drawn on.
+     * @param width    The width of the bitmap
+     * @param height   The height of the bitmap
+     * @param config   The bitmap config to create.
+     * @param hasAlpha If the bitmap is ARGB_8888 this flag can be used to mark the
+     *                 bitmap as opaque. Doing so will clear the bitmap in black
+     *                 instead of transparent.  
+     * 
+     * @throws IllegalArgumentException if the width or height are <= 0
+     */
+    private static Bitmap createBitmap(DisplayMetrics display, int width, int height,
+            Config config, boolean hasAlpha) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("width and height must be > 0");
         }
         Bitmap bm = nativeCreate(null, 0, width, width, height, config.nativeInt, true);
+        if (display != null) {
+            bm.mDensity = display.densityDpi;
+        }
         if (config == Config.ARGB_8888 && !hasAlpha) {
             nativeErase(bm.mNativeBitmap, 0xff000000);
             nativeSetHasAlpha(bm.mNativeBitmap, hasAlpha);
@@ -635,6 +695,31 @@ public final class Bitmap implements Parcelable {
      */
     public static Bitmap createBitmap(int colors[], int offset, int stride,
             int width, int height, Config config) {
+        return createBitmap(null, colors, offset, stride, width, height, config);
+    }
+
+    /**
+     * Returns a immutable bitmap with the specified width and height, with each
+     * pixel value set to the corresponding value in the colors array.  Its
+     * initial density is determined from the given {@link DisplayMetrics}.
+     *
+     * @param display  Display metrics for the display this bitmap will be
+     *                 drawn on.
+     * @param colors   Array of {@link Color} used to initialize the pixels.
+     * @param offset   Number of values to skip before the first color in the
+     *                 array of colors.
+     * @param stride   Number of colors in the array between rows (must be >=
+     *                 width or <= -width).
+     * @param width    The width of the bitmap
+     * @param height   The height of the bitmap
+     * @param config   The bitmap config to create. If the config does not
+     *                 support per-pixel alpha (e.g. RGB_565), then the alpha
+     *                 bytes in the colors[] will be ignored (assumed to be FF)
+     * @throws IllegalArgumentException if the width or height are <= 0, or if
+     *         the color array's length is less than the number of pixels.
+     */
+    public static Bitmap createBitmap(DisplayMetrics display, int colors[],
+            int offset, int stride, int width, int height, Config config) {
 
         checkWidthHeight(width, height);
         if (Math.abs(stride) < width) {
@@ -649,8 +734,12 @@ public final class Bitmap implements Parcelable {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("width and height must be > 0");
         }
-        return nativeCreate(colors, offset, stride, width, height,
+        Bitmap bm = nativeCreate(colors, offset, stride, width, height,
                             config.nativeInt, false);
+        if (display != null) {
+            bm.mDensity = display.densityDpi;
+        }
+        return bm;
     }
 
     /**
@@ -669,7 +758,29 @@ public final class Bitmap implements Parcelable {
      *         the color array's length is less than the number of pixels.
      */
     public static Bitmap createBitmap(int colors[], int width, int height, Config config) {
-        return createBitmap(colors, 0, width, width, height, config);
+        return createBitmap(null, colors, 0, width, width, height, config);
+    }
+
+    /**
+     * Returns a immutable bitmap with the specified width and height, with each
+     * pixel value set to the corresponding value in the colors array.  Its
+     * initial density is determined from the given {@link DisplayMetrics}.
+     *
+     * @param display  Display metrics for the display this bitmap will be
+     *                 drawn on.
+     * @param colors   Array of {@link Color} used to initialize the pixels.
+     *                 This array must be at least as large as width * height.
+     * @param width    The width of the bitmap
+     * @param height   The height of the bitmap
+     * @param config   The bitmap config to create. If the config does not
+     *                 support per-pixel alpha (e.g. RGB_565), then the alpha
+     *                 bytes in the colors[] will be ignored (assumed to be FF)
+     * @throws IllegalArgumentException if the width or height are <= 0, or if
+     *         the color array's length is less than the number of pixels.
+     */
+    public static Bitmap createBitmap(DisplayMetrics display, int colors[],
+            int width, int height, Config config) {
+        return createBitmap(display, colors, 0, width, width, height, config);
     }
 
     /**
@@ -678,6 +789,14 @@ public final class Bitmap implements Parcelable {
      */
     public byte[] getNinePatchChunk() {
         return mNinePatchChunk;
+    }
+
+    /**
+     * @hide
+     * @return the layout padding [left, right, top, bottom]
+     */
+    public int[] getLayoutBounds() {
+        return mLayoutBounds;
     }
 
     /**

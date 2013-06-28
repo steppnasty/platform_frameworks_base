@@ -24,7 +24,6 @@ import android.content.res.TypedArray;
 import android.graphics.*;
 import android.view.Gravity;
 import android.util.AttributeSet;
-import android.view.View;
 
 import java.io.IOException;
 
@@ -222,7 +221,7 @@ public class ScaleDrawable extends Drawable implements Drawable.Callback {
             final int ih = min ? mScaleState.mDrawable.getIntrinsicHeight() : 0;
             h -= (int) ((h - ih) * (10000 - level) * mScaleState.mScaleHeight / 10000);
         }
-        final int layoutDirection = getResolvedLayoutDirectionSelf();
+        final int layoutDirection = getLayoutDirection();
         Gravity.apply(mScaleState.mGravity, w, h, bounds, r, layoutDirection);
 
         if (w > 0 && h > 0) {

@@ -575,6 +575,7 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
     @Override
     public Drawable mutate() {
         if (!mMutated && super.mutate() == this) {
+            mLayerState = new LayerState(mLayerState, this, null);
             final ChildDrawable[] array = mLayerState.mChildren;
             final int N = mLayerState.mNum;
             for (int i = 0; i < N; i++) {
@@ -583,6 +584,19 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
             mMutated = true;
         }
         return this;
+    }
+
+    /** @hide */
+    @Override
+    public void setLayoutDirection(int layoutDirection) {
+        if (getLayoutDirection() != layoutDirection) {
+            final ChildDrawable[] array = mLayerState.mChildren;
+            final int N = mLayerState.mNum;
+            for (int i = 0; i < N; i++) {
+                array[i].mDrawable.setLayoutDirection(layoutDirection);
+            }
+        }
+        super.setLayoutDirection(layoutDirection);
     }
 
     static class ChildDrawable {
@@ -694,7 +708,7 @@ public class LayerDrawable extends Drawable implements Drawable.Callback {
             return stateful;
         }
 
-        public synchronized boolean canConstantState() {
+        public boolean canConstantState() {
             if (!mCheckedConstantState && mChildren != null) {
                 mCanConstantState = true;
                 final int N = mNum;

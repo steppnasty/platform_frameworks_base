@@ -16,6 +16,7 @@
 
 package android.graphics.drawable;
 
+import android.graphics.Insets;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -36,7 +37,6 @@ import android.util.DisplayMetrics;
 import android.util.StateSet;
 import android.util.TypedValue;
 import android.util.Xml;
-import android.view.View;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -122,6 +122,8 @@ public abstract class Drawable {
     private Rect mBounds = ZERO_BOUNDS_RECT;  // lazily becomes a new Rect()
     private WeakReference<Callback> mCallback = null;
     private boolean mVisible = true;
+
+    private int mLayoutDirection;
 
     /**
      * Draw in its bounds (set via setBounds) respecting optional effects such
@@ -295,20 +297,6 @@ public abstract class Drawable {
     }
 
     /**
-     * Implement this interface if you want to create an drawable that is RTL aware
-     *
-     * @hide
-     */
-    public static interface Callback2 extends Callback {
-        /**
-         * A Drawable can call this to get the resolved layout direction of the <var>who</var>.
-         *
-         * @param who The drawable being queried.
-         */
-        public int getResolvedLayoutDirection(Drawable who);
-    }
-
-    /**
      * Bind a {@link Callback} object to this Drawable.  Required for clients
      * that want to support animated drawables.
      *
@@ -385,17 +373,30 @@ public abstract class Drawable {
     }
 
     /**
-     * Use the current {@link android.graphics.drawable.Drawable.Callback2} implementation to get
-     * the resolved layout direction of this Drawable.
+     * Returns the resolved layout direction for this Drawable.
+     *
+     * @return One of {@link android.view.View#LAYOUT_DIRECTION_LTR},
+     *   {@link android.view.View#LAYOUT_DIRECTION_RTL}
      *
      * @hide
      */
-    public int getResolvedLayoutDirectionSelf() {
-        final Callback callback = getCallback();
-        if (callback == null || !(callback instanceof Callback2)) {
-            return View.LAYOUT_DIRECTION_LTR;
+    public int getLayoutDirection() {
+        return mLayoutDirection;
+    }
+
+    /**
+     * Set the layout direction for this drawable. Should be a resolved direction as the
+     * Drawable as no capacity to do the resolution on his own.
+     *
+     * @param layoutDirection One of {@link android.view.View#LAYOUT_DIRECTION_LTR},
+     *   {@link android.view.View#LAYOUT_DIRECTION_RTL}
+     *
+     * @hide
+     */
+    public void setLayoutDirection(int layoutDirection) {
+        if (getLayoutDirection() != layoutDirection) {
+            mLayoutDirection = layoutDirection;
         }
-        return ((Callback2) callback).getResolvedLayoutDirection(this);
     }
 
     /**
@@ -709,6 +710,16 @@ public abstract class Drawable {
     }
 
     /**
+     * Return in insets the layout insets suggested by this Drawable for use with alignment
+     * operations during layout.
+     *
+     * @hide
+     */
+    public Insets getLayoutInsets() {
+        return Insets.NONE;
+    }
+
+    /**
      * Make this drawable mutable. This operation cannot be reversed. A mutable
      * drawable is guaranteed to not share its state with any other drawable.
      * This is especially useful when you need to modify properties of drawables
@@ -769,7 +780,8 @@ public abstract class Drawable {
         // to the compatibility density only to have them scaled back up when
         // drawn to the screen.
         if (opts == null) opts = new BitmapFactory.Options();
-        opts.inScreenDensity = DisplayMetrics.DENSITY_DEVICE;
+        opts.inScreenDensity = res != null
+                ? res.getDisplayMetrics().noncompatDensityDpi : DisplayMetrics.DENSITY_DEVICE;
         Bitmap  bm = BitmapFactory.decodeResourceStream(res, value, is, pad, opts);
         if (bm != null) {
             byte[] np = bm.getNinePatchChunk();
@@ -777,7 +789,13 @@ public abstract class Drawable {
                 np = null;
                 pad = null;
             }
-            return drawableFromBitmap(res, bm, np, pad, srcName);
+            int[] layoutBounds = bm.getLayoutBounds();
+            Rect layoutBoundsRect = null;
+            if (layoutBounds != null) {
+                layoutBoundsRect = new Rect(layoutBounds[0], layoutBounds[1],
+                                             layoutBounds[2], layoutBounds[3]);
+            }
+            return drawableFromBitmap(res, bm, np, pad, layoutBoundsRect, srcName);
         }
         return null;
     }
@@ -879,7 +897,7 @@ public abstract class Drawable {
 
         Bitmap bm = BitmapFactory.decodeFile(pathName);
         if (bm != null) {
-            return drawableFromBitmap(null, bm, null, null, pathName);
+            return drawableFromBitmap(null, bm, null, null, null, pathName);
         }
 
         return null;
@@ -960,10 +978,10 @@ public abstract class Drawable {
     }
 
     private static Drawable drawableFromBitmap(Resources res, Bitmap bm, byte[] np,
-            Rect pad, String srcName) {
+            Rect pad, Rect layoutBounds, String srcName) {
 
         if (np != null) {
-            return new NinePatchDrawable(res, bm, np, pad, srcName);
+            return new NinePatchDrawable(res, bm, np, pad, layoutBounds, srcName);
         }
 
         return new BitmapDrawable(res, bm);
