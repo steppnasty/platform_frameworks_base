@@ -1986,7 +1986,6 @@
    =============================================================== -->
   <eat-comment />
   <public type="attr" name="parentActivityName" id="0x010103a7" />
-  <public type="attr" name="permissionGroupFlags" id="0x010103a8" />
   <public type="attr" name="isolatedProcess" id="0x010103a9" />
   <public type="attr" name="importantForAccessibility" id="0x010103aa" />
   <public type="attr" name="keyboardLayout" id="0x010103ab" />
@@ -2010,4 +2009,32 @@
   <public type="layout" name="media_route_list_item" id="0x0109001b" />
   <public type="layout" name="media_route_list_item_checkable" id="0x0109001c" /> 
   <public type="layout" name="media_route_list_item_collapse_group" id="0x0109001d"      />
+
+<!-- ===============================================================
+     Resources added in version 17 of the platform (Jelly Bean MR1)
+     =============================================================== -->
+  <eat-comment />
+  <public type="attr" name="supportsRtl" id="0x010103af" />
+  <public type="attr" name="textDirection" id="0x010103b0" />
+  <public type="attr" name="textAlignment" id="0x010103b1" />
+  <public type="attr" name="layoutDirection" id="0x010103b2" />
+  <public type="attr" name="paddingStart" id="0x010103b3" />
+  <public type="attr" name="paddingEnd" id="0x010103b4" />
+  <public type="attr" name="layout_marginStart" id="0x010103b5" />
+  <public type="attr" name="layout_marginEnd" id="0x010103b6" />
+  <public type="attr" name="layout_toStartOf" id="0x010103b7" />
+  <public type="attr" name="layout_toEndOf" id="0x010103b8" />
+  <public type="attr" name="layout_alignStart" id="0x010103b9" />
+  <public type="attr" name="layout_alignEnd" id="0x010103ba" />
+  <public type="attr" name="layout_alignParentStart" id="0x010103bb" />
+  <public type="attr" name="layout_alignParentEnd" id="0x010103bc" />
+  <public type="attr" name="listPreferredItemPaddingStart" id="0x010103bd" />
+  <public type="attr" name="listPreferredItemPaddingEnd" id="0x010103be" />
+  <public type="attr" name="singleUser" id="0x010103bf" />
+  <public type="attr" name="subtypeId" id="0x010103c0" />
+  <public type="attr" name="initialKeyguardLayout" id="0x010103c1" />
+  <public type="attr" name="widgetCategory" id="0x010103c2" />
+  <public type="attr" name="permissionGroupFlags" id="0x010103c3" />
+  <public type="attr" name="permissionFlags" id="0x010103c4" />
+  <public type="attr" name="showOnLockScreen" id="0x010103c5" />
 </resources>

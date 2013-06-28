@@ -2,6 +2,7 @@
 <!--
 **
 ** Copyright 2009, The Android Open Source Project
+** Copyright 2012, The CyanogenMod Project (Weather, Calendar)
 **
 ** Licensed under the Apache License, Version 2.0 (the "License")
 ** you may not use this file except in compliance with the License.
@@ -26,13 +27,14 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:id="@+id/root"
     android:gravity="center_horizontal">
 
     <com.android.internal.widget.DigitalClock android:id="@+id/time"
         android:layout_marginTop="@dimen/keyguard_lockscreen_status_line_clockfont_top_margin"
         android:layout_marginBottom="12dip"
-        android:layout_marginRight="@dimen/keyguard_lockscreen_status_line_font_right_margin"
-        android:layout_gravity="right">
+        android:layout_marginEnd="@dimen/keyguard_lockscreen_status_line_font_right_margin"
+        android:layout_gravity="end">
 
         <!-- Because we can't have multi-tone fonts, we render two TextViews, one on
         top of the other. Hence the redundant layout... -->
@@ -56,7 +58,7 @@
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:layout_marginBottom="6dip"
             android:textColor="@color/lockscreen_clock_foreground"
-            android:layout_alignLeft="@id/timeDisplayBackground"
+            android:layout_alignStart="@id/timeDisplayBackground"
             android:layout_alignTop="@id/timeDisplayBackground"
             />
 
@@ -64,8 +66,8 @@
 
     <LinearLayout
         android:orientation="horizontal"
-        android:layout_gravity="right"
-        android:layout_marginRight="@dimen/keyguard_lockscreen_status_line_font_right_margin">
+        android:layout_gravity="end"
+        android:layout_marginEnd="@dimen/keyguard_lockscreen_status_line_font_right_margin">
 
         <TextView
             android:id="@+id/date"
@@ -81,7 +83,7 @@
             android:id="@+id/alarm_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="16dip"
+            android:layout_marginStart="16dip"
             android:singleLine="true"
             android:ellipsize="marquee"
             android:textAppearance="?android:attr/textAppearanceMedium"
@@ -93,8 +95,8 @@
 
     <TextView
         android:id="@+id/status1"
-        android:layout_gravity="right"
-        android:layout_marginRight="@dimen/keyguard_lockscreen_status_line_font_right_margin"
+        android:layout_gravity="end"
+        android:layout_marginEnd="@dimen/keyguard_lockscreen_status_line_font_right_margin"
         android:singleLine="true"
         android:ellipsize="marquee"
         android:textAppearance="?android:attr/textAppearanceMedium"
@@ -110,8 +112,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dip"
-        android:layout_marginRight="16dip"
-        android:layout_gravity="right"
+        android:layout_marginEnd="16dip"
+        android:layout_gravity="end"
         android:drawableLeft="@*android:drawable/lockscreen_emergency_button"
         style="?android:attr/buttonBarButtonStyle"
         android:drawablePadding="4dip"
@@ -123,26 +125,27 @@
         android:layout_width="match_parent"
         android:layout_height="302dip">
 
-        <com.android.internal.widget.multiwaveview.MultiWaveView
+        <com.android.internal.widget.multiwaveview.GlowPadView
             android:id="@+id/unlock_widget"
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_alignParentBottom="true"
+            android:gravity="top"
+            android:focusable="true"
 
             android:targetDrawables="@array/lockscreen_targets_with_camera"
             android:targetDescriptions="@array/lockscreen_target_descriptions_with_camera"
             android:directionDescriptions="@array/lockscreen_direction_descriptions"
             android:handleDrawable="@drawable/ic_lockscreen_handle"
-            android:waveDrawable="@drawable/ic_lockscreen_outerring"
-            android:outerRadius="@dimen/multiwaveview_target_placement_radius"
-            android:snapMargin="@dimen/multiwaveview_snap_margin"
-            android:hitRadius="@dimen/multiwaveview_hit_radius"
-            android:rightChevronDrawable="@drawable/ic_lockscreen_chevron_right"
-            android:horizontalOffset="0dip"
-            android:verticalOffset="60dip"
-            android:feedbackCount="3"
+            android:outerRingDrawable="@drawable/ic_lockscreen_outerring"
+            android:outerRadius="@dimen/glowpadview_target_placement_radius"
+            android:innerRadius="@dimen/glowpadview_inner_radius"
+            android:snapMargin="@dimen/glowpadview_snap_margin"
+            android:feedbackCount="1"
             android:vibrationDuration="20"
+            android:glowRadius="@dimen/glowpadview_glow_radius"
+            android:pointDrawable="@drawable/ic_lockscreen_glowdot"
             />
 
         <TextView
@@ -188,7 +191,7 @@
         layout="@layout/keyguard_transport_control"
         android:layout_row="0"
         android:layout_column="0"
-        android:layout_rowSpan="4"
+        android:layout_rowSpan="5"
         android:layout_columnSpan="1"
         android:layout_gravity="fill"
         android:layout_width="0dip"

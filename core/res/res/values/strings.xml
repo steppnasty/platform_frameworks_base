@@ -287,6 +287,17 @@
     <!-- Button to turn off the phone, within the Phone Options dialog -->
     <string name="power_off">Power off</string>
 
+    <!-- label for item that generates a bug report in the phone options dialog -->
+    <string name="global_action_bug_report">Bug report</string>
+
+    <!-- Take bug report menu title [CHAR LIMIT=NONE] -->
+    <string name="bugreport_title">Take bug report</string>
+    <!-- Message in bugreport dialog describing what it does [CHAR LIMIT=NONE] -->
+    <string name="bugreport_message">This will collect information about your
+        current device state, to send as an e-mail message.  It will take a little
+        time from starting the bug report until it is ready to be sent; please be
+        patient.</string>
+
     <!-- Button to reboot the phone, within the Phone Options dialog -->
     <string name="reboot_system" product="tablet">Reboot tablet</string>
     <string name="reboot_system" product="default">Reboot phone</string>
@@ -334,6 +345,15 @@
          shutdown_confirm when the system is configured to use long press to go directly to the
          power off dialog instead of the global actions menu. -->
     <string name="shutdown_confirm_question">Would you like to shut down?</string>
+
+    <!-- Title of dialog to confirm rebooting into safe mode. [CHAR LIMIT=50] -->
+    <string name="reboot_safemode_title">Reboot to safe mode</string>
+
+    <!-- Shutdown Confirmation Dialog.  Message in the confirmation dialog
+         when the user asks to reboot into safe mode. [CHAR LIMIT=NONE] -->
+    <string name="reboot_safemode_confirm">Do you want to reboot into safe mode?
+         This will disable all third party applications you have installed.
+         They will be restored when you reboot again.</string>
 
     <!-- Recent Tasks dialog: title
      TODO: this should move to SystemUI.apk, but the code for the old
@@ -411,6 +431,11 @@
     <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgroupdesc_personalInfo" product="default">Direct access to your contacts
         and calendar stored on the phone.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_socialInfo">Your social information</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_socialInfo">Direct access to information about your contacts and social connections.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_location">Your location</string>
@@ -556,6 +581,31 @@
         information about currently and recently running tasks. May allow
         malicious applications to discover private information about other applications.</string>
 
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permlab_interactAcrossUsers">interact across users</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_interactAcrossUsers">Allows the app to perform actions
+        across different users on the device.  Malicious apps may use this to violate
+        the protection between users.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permlab_interactAcrossUsersFull">full license to interact across users</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_interactAcrossUsersFull">Allows all possible interactions across
+        users.</string>
+
+    <!--  Title of an application permission, listed so the user can choose whether they want to allow the application to create/remove/query users. [CHAR LIMIT=none] -->
+    <string name="permlab_manageUsers">manage users</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to create/remove/query users. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_manageUsers">Allows apps to manage users on the device, including query, creation and deletion.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=50] -->
+    <string name="permlab_getDetailedTasks">retrieve details of running apps</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_getDetailedTasks">Allows the app to retrieve
+        detailed information about currently and recently running tasks. Malicious apps may
+        discover private information about other apps.</string>
+
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_reorderTasks">reorder running applications</string>
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
@@ -569,6 +619,18 @@
     <string name="permdesc_removeTasks">Allows an application to remove
         tasks and kill their applications. Malicious applications can disrupt
         the behavior of other applications.</string>
+
+    <!-- Title of an application permission, allowing an application to start any activity, regardless of permission protection or exported state. -->
+    <string name="permlab_startAnyActivity">start any activity</string>
+    <!-- Description of an application permission, allowing an application to start any activity, regardless of permission protection or exported state. -->
+    <string name="permdesc_startAnyActivity">Allows the app to start any activity, regardless of permission protection or exported state.</string>
+
+    <!-- Title of an application permission, allowing control of app screen compatibility mode -->
+    <string name="permlab_setScreenCompatibility">set screen compatibility</string>
+    <!-- Description of an application permission, allowing control of app screen compatibility mode -->
+    <string name="permdesc_setScreenCompatibility">Allows the app to control the
+        screen compatibility mode of other applications.  Malicious applications may
+        break the behavior of other applications.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_setDebugApp">enable application debugging</string>
@@ -624,6 +686,34 @@
     <string name="permdesc_retrieve_window_content">Allows application to retrieve
         the content of the active window. Malicious applications may retrieve
         the entire window content and examine all its text except passwords.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_temporary_enable_accessibility">temporary enable accessibility</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_temporary_enable_accessibility">Allows an application to temporarily
+         enable accessibility on the device. Malicious apps may enable accessibility without
+         user consent.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_retrieve_window_info">retrieve window info</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_retrieve_window_info">Allows an application to retrieve
+         information about the the windows from the window manager. Malicious apps may
+         retrieve information that is intended for internal system usage.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_filter_events">filter events</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_filter_events">Allows an application to register an input filter
+            which filters the stream of all user events before they are dispatched. Malicious app
+            may control the system UI whtout user intervention.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_magnify_display">magnify display</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_magnify_display">Allows an application to magnify the content of a
+        display. Malicious apps may transform the display content in a way that renders the
+        device unusable.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_shutdown">partial shutdown</string>
@@ -726,6 +816,12 @@
         create and manage their own tokens, bypassing their normal
         Z-ordering. Should never be needed for normal applications.</string>
 
+    <!-- [CHAR LIMIT=NONE] Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_freezeScreen">freeze screen</string>
+    <!-- [CHAR LIMIT=NONE] Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_freezeScreen">Allows the application to temporarily freeze
+        the screen for a full-screen transition.</string>
+
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_injectEvents">press keys and control buttons</string>
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
@@ -749,6 +845,12 @@
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permdesc_bindInputMethod">Allows the holder to bind to the top-level
         interface of an input method. Should never be needed for normal applications.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_bindAccessibilityService">bind to an accessibility service</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_bindAccessibilityService">Allows the holder to bind to the top-level
+        interface of an accessibility service. Should never be needed for normal apps.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_bindTextService">bind to a text service</string>
@@ -793,6 +895,12 @@
     <string name="permdesc_setPointerSpeed">Allows an application to change
         the mouse or trackpad pointer speed at any time. Should never be needed for
         normal applications.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=30] -->
+    <string name="permlab_setKeyboardLayout">change keyboard layout</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_setKeyboardLayout">Allows the app to change
+        the keyboard layout. Should never be needed for normal apps.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_signalPersistentProcesses">send Linux signals to applications</string>
@@ -899,6 +1007,14 @@
         possible to get application components into an unusable, inconsistent, or unstable state.
     </string>
 
+    <!-- Title of an application permission for granting or revoking other permissions [CHAR LIMIT=NONE] -->
+    <string name="permlab_grantRevokePermissions">grant or revoke permissions</string>
+    <!-- Description of an application permission for granting or revoking other permissions [CHAR LIMIT=NONE] -->
+    <string name="permdesc_grantRevokePermissions">Allows an application to grant or revoke
+        specific permissions for it or other applications.  Malicious applications may use this
+        to access features you have not granted them.
+    </string>
+
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_setPreferredApplications">set preferred applications</string>
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
@@ -971,6 +1087,28 @@
     <string name="permdesc_writeContacts" product="default">Allows an application to modify the
         contact (address) data stored on your phone. Malicious
         applications can use this to erase or modify your contact data.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_readCallLog">read call log</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_readCallLog" product="tablet">Allows the app to read
+     your tablet\'s call log, including data about incoming and outgoing calls.
+     This permission allows apps to save your call log data, and malicious apps
+     may share call log data without your knowledge.</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_readCallLog" product="default">Allows the app to read
+      your phone\'s call log, including data about incoming and outgoing calls.
+      This permission allows apps to save your call log data, and malicious apps
+      may share call log data without your knowledge.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_writeCallLog">write call log</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_writeCallLog" product="tablet">Allows the app to modify your tablet\'s call log, including data about incoming and outgoing calls.
+        Malicious apps may use this to erase or modify your call log.</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_writeCallLog" product="default">Allows the app to modify your phone\'s call log, including data about incoming and outgoing calls.
+        Malicious apps may use this to erase or modify your call log.</string>
 
     <!-- Title of the read profile permission, listed so the user can decide whether to allow the application to read the user's personal profile data. [CHAR LIMIT=30] -->
     <string name="permlab_readProfile">read your profile data</string>
@@ -1074,6 +1212,16 @@
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permdesc_readFrameBuffer">Allows application to
         read the content of the frame buffer.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_configureWifiDisplay">configure Wifi displays</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_configureWifiDisplay">Allows the app to configure and connect to Wifi displays.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_controlWifiDisplay">control Wifi displays</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_controlWifiDisplay">Allows the app to control low-level features of Wifi displays.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_modifyAudioSettings">change your audio settings</string>
@@ -1492,6 +1640,15 @@
       user dictionary.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=30] -->
+    <string name="permlab_sdcardRead" product="nosdcard">test access to protected storage</string>
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_sdcardRead" product="default">test access to protected storage</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=30] -->
+    <string name="permdesc_sdcardRead" product="nosdcard">Allows the app to test a permission for USB storage that will be available on future devices. </string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_sdcardRead" product="default">Allows the app to test a permission for the SD card that will be available on future devices.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=30] -->
     <string name="permlab_sdcardWrite" product="nosdcard">modify/delete USB storage contents</string>
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_sdcardWrite" product="default">modify/delete SD card contents</string>
@@ -1504,6 +1661,11 @@
     <string name="permlab_mediaStorageWrite" product="default">modify/delete internal media storage contents</string>
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=NONE] -->
     <string name="permdesc_mediaStorageWrite" product="default">Allows an application to modify the contents of the internal media storage.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. [CHAR LIMIT=30] -->
+    <string name="permlab_sdcardAccessAll">access external storage of all users</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_sdcardAccessAll">Allows the app to access external storage for all users.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_cache_filesystem">access the cache filesystem</string>
@@ -1855,10 +2017,13 @@
     <string name="lockscreen_pattern_wrong">Sorry, try again</string>
     <!-- On the unlock password screen, shown when the user enters the wrong lock password and must try again. -->
     <string name="lockscreen_password_wrong">Sorry, try again</string>
+    <!-- Shown when face unlock failed multiple times so we're just using the backup -->
+    <string name="faceunlock_multiple_failures">Maximum Face Unlock attempts exceeded</string>
 
     <!-- When the lock screen is showing and the phone plugged in, and the battery
          is not fully charged, show the current charge %.  -->
     <string name="lockscreen_plugged_in">Charging, <xliff:g id="number">%d</xliff:g><xliff:g id="percent">%%</xliff:g></string>
+    <string name="lockscreen_discharging">Discharging, <xliff:g id="number">%d</xliff:g><xliff:g id="percent">%%</xliff:g></string>
     <!-- When the lock screen is showing, the phone is plugged in and the battery is fully
          charged, say that it is charged. -->
     <string name="lockscreen_charged">Charged.</string>
@@ -1879,6 +2044,8 @@
     <string name="lockscreen_missing_sim_instructions">Please insert a SIM card.</string>
     <!-- Shown in the lock screen to ask the user to insert a SIM card when sim is missing or not readable. -->
     <string name="lockscreen_missing_sim_instructions_long">The SIM card is missing or not readable. Please insert a SIM card.</string>
+    <!-- Shown in the lock screen when SIM card is permanently disabled. -->
+    <string name="lockscreen_permanent_disabled_sim_message_short">Unusable SIM card.</string>
     <!-- Shown in the lock screen to inform the user to SIM card is permanently disabled. -->
     <string name="lockscreen_permanent_disabled_sim_instructions">Your SIM card is permanently disabled.\n
     Please contact your wireless service provider to obtain another SIM card.</string>
@@ -2030,6 +2197,47 @@
     <!-- Accessibility description sent when user completes drawing a pattern. [CHAR LIMIT=NONE] -->
     <string name="lockscreen_access_pattern_detected">Pattern completed</string>
 
+    <!-- Accessibility description of the add widget button. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_add_widget">Add widget.</string>
+    <!-- Accessibility description of the empty sidget slot (place holder for a new widget). [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_widget_empty_slot">Empty</string>
+    <!-- Accessibility description of the event of expanding an unlock area. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_unlock_area_expanded">Unlock area expanded.</string>
+    <!-- Accessibility description of the event of collapsing an unlock area. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_unlock_area_collapsed">Unlock area collapsed.</string>
+    <!-- Accessibility description of a lock screen widget. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_widget"><xliff:g id="widget_index">%1$s</xliff:g> widget.</string>
+    <!-- Accessibility description of the lock screen user selector widget. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_user_selector">User selector</string>
+    <!-- Accessibility description of the lock screen status widget. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_status">Status</string>
+    <!-- Accessibility description of the camera widget. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_camera">Camera</string>
+    <!-- Accessibility description of the lock media control widget. [CHAR_LIMIT=none] -->
+    <string name="keygaurd_accessibility_media_controls">Media controls</string>
+    <!-- Accessibility description of widget reordering start. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_widget_reorder_start">Widget reordering started.</string>
+    <!-- Accessibility description of widget reordering end. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_widget_reorder_end">Widget reordering ended.</string>
+    <!-- Accessibility description of the a widget deletion event. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_widget_deleted">Widget <xliff:g id="widget_index">%1$s</xliff:g> deleted.</string>
+    <!-- Accessibility description of the button to expand the lock area. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_expand_lock_area">Expand unlock area.</string>
+    <!-- Accessibility description of the slide unlock. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_slide_unlock">Slide unlock.</string>
+    <!-- Accessibility description of the pattern unlock. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_pattern_unlock">Pattern unlock.</string>
+    <!-- Accessibility description of the face unlock. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_face_unlock">Face unlock.</string>
+    <!-- Accessibility description of the pin lock. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_pin_unlock">Pin unlock.</string>
+    <!-- Accessibility description of the password lock. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_password_unlock">Password unlock.</string>
+    <!-- Accessibility description of the unlock pattern area. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_pattern_area">Pattern area.</string>
+    <!-- Accessibility description of the unlock slide area. [CHAR_LIMIT=none] -->
+    <string name="keyguard_accessibility_slide_area">Slide area.</string>
+    
     <!-- Password keyboard strings. Used by LockScreen and Settings --><skip />
     <!-- Label for "switch to symbols" key.  Must be short to fit on key! -->
     <string name="password_keyboard_label_symbol_key">\?123</string>
@@ -2317,6 +2525,14 @@
     <string name="permdesc_bindPackageVerifier">Allows the holder to make requests of
         package verifiers. Should never be needed for normal applications.</string>
 
+    <!-- Title of an application permission which allows the holder to access content
+         providers from outside an ApplicationThread. [CHAR LIMIT=40] -->
+    <string name="permlab_accessContentProvidersExternally">access content providers externally</string>
+    <!-- Description of an application permission which allows the holder to access
+         content providers from outside an ApplicationThread. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_accessContentProvidersExternally">Allows the holder to access content
+     providers from the shell. Should never be needed for normal apps.</string>
+
     <!-- If the user enters a password in a form on a website, a dialog will come up asking if they want to save the password. Text in the save password dialog, asking if the browser should remember a password. -->
     <string name="save_password_message">Do you want the browser to remember this password?</string>
     <!-- If the user enters a password in a form on a website, a dialog will come up asking if they want to save the password. Button in the save password dialog, saying not to remember this password. -->
@@ -2358,6 +2574,25 @@
     <string name="searchview_description_submit">Submit query</string>
     <!-- SearchView accessibility description for voice button [CHAR LIMIT=NONE] -->
     <string name="searchview_description_voice">Voice search</string>
+
+    <!-- Title for a warning message about the interaction model changes after allowing an accessibility
+         service to put the device into explore by touch mode, displayed as a dialog message when
+         the user selects to enables the service. (default). [CHAR LIMIT=45] -->
+    <string name="enable_explore_by_touch_warning_title">Enable Explore by Touch?</string>
+    <!-- Summary for a warning message about the interaction model changes after allowing an accessibility
+         service to put the device into explore by touch mode, displayed as a dialog message when
+         the user selects to enables the service. (tablet). [CHAR LIMIT=NONE] -->
+    <string name="enable_explore_by_touch_warning_message" product="tablet">
+            <xliff:g id="accessibility_service_name">%1$s</xliff:g> wants to enable Explore by Touch.
+            When Explore by Touch is turned on, you can hear or see descriptions of what\'s under
+            your finger or perform gestures to interact with the tablet.</string>
+    <!-- Summary for a warning message about the interaction model changes after allowing an accessibility
+         service to put the device into explore by touch mode, displayed as a dialog message when
+         the user selects to enables the service. (default). [CHAR LIMIT=NONE] -->
+    <string name="enable_explore_by_touch_warning_message" product="default">
+            <xliff:g id="accessibility_service_name">%1$s</xliff:g> wants to enable Explore by Touch.
+            When Explore by Touch is turned on, you can hear or see descriptions of what\'s under
+            your finger or perform gestures to interact with the phone.</string>
 
     <!-- String used to display the date. This is the string to say something happened 1 month ago. -->
     <string name="oneMonthDurationPast">1 month ago</string>
@@ -2503,6 +2738,21 @@
     <!-- Appened to express the value is this unit of time. -->
     <string name="years">years</string>
 
+    <!-- Phrase describing a time duration using seconds [CHAR LIMIT=16] -->
+    <plurals name="duration_seconds">
+        <item quantity="one">1 second</item>
+        <item quantity="other"><xliff:g id="count">%d</xliff:g> seconds</item>
+    </plurals>
+    <!-- Phrase describing a time duration using minutes [CHAR LIMIT=16] -->
+    <plurals name="duration_minutes">
+        <item quantity="one">1 minute</item>
+        <item quantity="other"><xliff:g id="count">%d</xliff:g> minutes</item>
+    </plurals>
+    <!-- Phrase describing a time duration using hours [CHAR LIMIT=16] -->
+    <plurals name="duration_hours">
+        <item quantity="one">1 hour</item>
+        <item quantity="other"><xliff:g id="count">%d</xliff:g> hours</item>
+    </plurals>
 
     <!-- Title for error alert when a video cannot be played.  it can be used by any app. -->
     <string name="VideoView_error_title">Cannot play video</string>
@@ -2649,6 +2899,8 @@
     <string name="report">Report</string>
     <!-- Button allowing the user to choose to wait for an application that is not responding to become responsive again. -->
     <string name="wait">Wait</string>
+    <!-- Text of the alert that is displayed when a web page is not responding. [CHAR-LIMIT=NONE] -->
+    <string name="webpage_unresponsive">The page has become unresponsive.\n\nDo you want to close it?</string>
     <!-- [CHAR LIMIT=25] Title of the alert when application launches on top of another. -->
     <string name="launch_warning_title">Application redirected</string>
     <!-- [CHAR LIMIT=50] Title of the alert when application launches on top of another. -->
@@ -2923,6 +3175,14 @@
     <string name="select_input_method">Select input method</string>
     <!-- Title of a button to open the settings for input methods [CHAR LIMIT=30] -->
     <string name="configure_input_methods">Configure input methods</string>
+    <!-- Summary text of a toggle switch to enable/disable use of the physical keyboard in the input method selector [CHAR LIMIT=25] -->
+    <string name="use_physical_keyboard">Physical keyboard</string>
+    <string name="hardware">Hardware</string>
+
+    <!-- Title of the notification to prompt the user to select a keyboard layout. -->
+    <string name="select_keyboard_layout_notification_title">Select keyboard layout</string>
+    <!-- Message of the notification to prompt the user to select a keyboard layout. -->
+    <string name="select_keyboard_layout_notification_message">Touch to select a keyboard layout.</string>
 
     <string name="fast_scroll_alphabet">\u0020ABCDEFGHIJKLMNOPQRSTUVWXYZ</string>
     <string name="fast_scroll_numeric_alphabet">\u00200123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ</string>
@@ -3305,6 +3565,8 @@
     <string name="description_target_silent">Silent</string>
     <!-- Description of the sound on target in the Slide unlock screen. [CHAR LIMIT=NONE] -->
     <string name="description_target_soundon">Sound on</string>
+    <!-- Description of the unlock target in the Slide unlock screen. [CHAR LIMIT=NONE] -->
+    <string name="description_target_search">Search</string>
 
     <!-- Description of the unlock handle in the Slide unlock screen for tablets. [CHAR LIMIT=NONE] -->
     <string name="description_target_unlock_tablet">Swipe to unlock.</string>
@@ -3446,4 +3708,153 @@
 
     <!-- "Done" button for MediaRouter chooser dialog when grouping routes. [CHAR LIMIT=NONE] -->
     <string name="media_route_chooser_grouping_done">Done</string>
+
+    <!-- Display manager service -->
+
+    <!-- Name of the built-in display.  [CHAR LIMIT=50] -->
+    <string name="display_manager_built_in_display_name">Built-in Screen</string>
+
+    <!-- Name of the HDMI display.  [CHAR LIMIT=50] -->
+    <string name="display_manager_hdmi_display_name">HDMI Screen</string>
+
+    <!-- Name of the N'th overlay display for testing.  [CHAR LIMIT=50] -->
+    <string name="display_manager_overlay_display_name">Overlay #<xliff:g id="id">%1$d</xliff:g></string>
+
+    <!-- Title text to show within the overlay.  [CHAR LIMIT=50] -->
+    <string name="display_manager_overlay_display_title"><xliff:g id="name">%1$s</xliff:g>: <xliff:g id="width">%2$d</xliff:g>x<xliff:g id="height">%3$d</xliff:g>, <xliff:g id="dpi">%4$d</xliff:g> dpi</string>
+
+    <!-- Title of the notification to indicate an active wifi display connection.  [CHAR LIMIT=50] -->
+    <string name="wifi_display_notification_title">Wireless display is connected</string>
+    <!-- Message of the notification to indicate an active wifi display connection.  [CHAR LIMIT=80] -->
+    <string name="wifi_display_notification_message">This screen is showing on another device</string>
+    <!-- Label of a button to disconnect an active wifi display connection.  [CHAR LIMIT=25] -->
+    <string name="wifi_display_notification_disconnect">Disconnect</string>
+
+    <!-- Keyguard strings -->
+    <!-- Label shown on emergency call button in keyguard -->
+    <string name="kg_emergency_call_label">Emergency call</string>
+    <!-- Message shown in pattern unlock after some number of unsuccessful attempts -->
+    <string name="kg_forgot_pattern_button_text">Forgot Pattern</string>
+    <!-- Message shown when user enters wrong pattern -->
+    <string name="kg_wrong_pattern">Wrong Pattern</string>
+    <!-- Message shown when user enters wrong password -->
+    <string name="kg_wrong_password">Wrong Password</string>
+    <!-- Message shown when user enters wrong PIN -->
+    <string name="kg_wrong_pin">Wrong PIN</string>
+    <!-- Countdown message shown after too many failed unlock attempts -->
+    <string name="kg_too_many_failed_attempts_countdown">Try again in <xliff:g id="number">%d</xliff:g> seconds.</string>
+    <!-- Instructions for using the pattern unlock screen -->
+    <string name="kg_pattern_instructions">Draw your pattern</string>
+    <!-- Instructions for using the SIM PIN unlock screen -->
+    <string name="kg_sim_pin_instructions">Enter SIM PIN</string>
+    <!-- Instructions for using the PIN unlock screen -->
+    <string name="kg_pin_instructions">Enter PIN</string>
+    <!-- Instructions for using the password unlock screen -->
+    <string name="kg_password_instructions">Enter Password</string>
+    <!-- Hint shown in the PUK screen that asks the user to enter the PUK code given to them by their provider -->
+    <string name="kg_puk_enter_puk_hint">SIM is now disabled. Enter PUK code to continue. Contact carrier for details.</string>
+    <!-- Hint shown in the PUK unlock screen PIN TextView -->
+    <string name="kg_puk_enter_pin_hint">Enter desired PIN code</string>
+    <!-- Message shown when the user needs to confirm the PIN they just entered in the PUK screen -->
+    <string name="kg_enter_confirm_pin_hint">Confirm desired PIN code</string>
+    <!-- Message shown in dialog while the device is unlocking the SIM card -->
+    <string name="kg_sim_unlock_progress_dialog_message">Unlocking SIM card\u2026</string>
+    <!-- Message shown when the user enters the wrong PIN code -->
+    <string name="kg_password_wrong_pin_code">Incorrect PIN code.</string>
+    <!-- Message shown when the user enters an invalid SIM pin password in PUK screen -->
+    <string name="kg_invalid_sim_pin_hint">Type a PIN that is 4 to 8 numbers.</string>
+    <!-- Message shown when the user enters an invalid PUK code in the PUK screen -->
+    <string name="kg_invalid_sim_puk_hint">PUK code should be 8 numbers or more.</string>
+    <!-- Message shown when the user enters an invalid PUK code -->
+    <string name="kg_invalid_puk">Re-enter the correct PUK code. Repeated attempts will permanently disable the SIM.</string>
+      <!-- String shown in PUK screen when PIN codes don't match -->
+    <string name="kg_invalid_confirm_pin_hint" product="default">PIN codes does not match</string>
+    <!-- Message shown when the user exceeds the maximum number of pattern attempts -->
+    <string name="kg_login_too_many_attempts">Too many pattern attempts</string>
+    <!-- Instructions show in account unlock screen allowing user to enter their email password -->
+    <string name="kg_login_instructions">To unlock, sign in with your Google account.</string>
+    <!-- Hint shown in TextView in account unlock screen of keyguard -->
+    <string name="kg_login_username_hint">Username (email)</string>
+    <!-- Hint shown in TextView in account unlock screen of keyguard -->
+    <string name="kg_login_password_hint">Password</string>
+    <!-- Label shown on sign in button on account unlock screen of keyguard -->
+    <string name="kg_login_submit_button">Sign in</string>
+    <!-- Message shown when the user enters an invalid username/password combination in account unlock screen of keyguard -->
+    <string name="kg_login_invalid_input">Invalid username or password.</string>
+    <!-- Hint text shown when user has too many failed password attempts in account unlock screen of keyguard -->
+    <string name="kg_login_account_recovery_hint">Forgot your username or password\?\nVisit <b>google.com/accounts/recovery</b>.</string>
+    <!-- Message shown while device checks username/password in account unlock screen of keyguard -->
+    <string name="kg_login_checking_password">Checking account\u2026</string>
+    <!-- Message shown in dialog when max number of attempts are reached for PIN screen of keyguard -->
+    <string name="kg_too_many_failed_pin_attempts_dialog_message">
+        You have incorrectly typed your PIN <xliff:g id="number">%d</xliff:g> times.
+        \n\nTry again in <xliff:g id="number">%d</xliff:g> seconds.
+    </string>
+    <!-- Message shown in dialog when max number of attempts are reached for password screen of keyguard -->
+    <string name="kg_too_many_failed_password_attempts_dialog_message">
+        You have incorrectly typed your password <xliff:g id="number">%d</xliff:g> times.
+        \n\nTry again in <xliff:g id="number">%d</xliff:g> seconds.
+    </string>
+    <string name="kg_too_many_failed_pattern_attempts_dialog_message">
+        You have incorrectly drawn your unlock pattern <xliff:g id="number">%d</xliff:g> times.
+        \n\nTry again in <xliff:g id="number">%d</xliff:g> seconds.
+    </string>
+    <!-- Message shown when user is almost at the limit of password attempts where the device will be wiped. -->
+    <string name="kg_failed_attempts_almost_at_wipe" product="tablet">
+       You have incorrectly attempted to unlock the tablet <xliff:g id="number">%d</xliff:g> times.
+       After <xliff:g id="number">%d</xliff:g> more unsuccessful attempts,
+       the tablet will be reset to factory default and all user data will be lost.
+    </string>
+    <!-- Message shown when user is almost at the limit of password attempts where the device will be wiped. -->
+    <string name="kg_failed_attempts_almost_at_wipe" product="default">
+       You have incorrectly attempted to unlock the phone <xliff:g id="number">%d</xliff:g> times.
+       After <xliff:g id="number">%d</xliff:g> more unsuccessful attempts,
+       the phone will be reset to factory default and all user data will be lost.
+    </string>
+    <!-- Message shown in dialog when user has exceeded the maximum attempts and the device will now be wiped -->
+    <string name="kg_failed_attempts_now_wiping" product="tablet">
+       You have incorrectly attempted to unlock the tablet <xliff:g id="number">%d</xliff:g> times.
+       The tablet will now be reset to factory default.
+    </string>
+    <!-- Message shown in dialog when user has exceeded the maximum attempts and the device will now be wiped -->
+    <string name="kg_failed_attempts_now_wiping" product="default">
+       You have incorrectly attempted to unlock the phone <xliff:g id="number">%d</xliff:g> times.
+       The phone will now be reset to factory default.
+    </string>
+    <!-- Message shown in dialog when user is almost at the limit where they will be
+    locked out and may have to enter an alternate username/password to unlock the phone -->
+    <string name="kg_failed_attempts_almost_at_login" product="tablet">
+       You have incorrectly drawn your unlock pattern <xliff:g id="number">%d</xliff:g> times.
+       After <xliff:g id="number">%d</xliff:g> more unsuccessful attempts,
+       you will be asked to unlock your tablet using an email account.\n\n
+       Try again in <xliff:g id="number">%d</xliff:g> seconds.
+    </string>
+    <!-- Message shown in dialog when user is almost at the limit where they will be
+    locked out and may have to enter an alternate username/password to unlock the phone -->
+    <string name="kg_failed_attempts_almost_at_login" product="default">
+       You have incorrectly drawn your unlock pattern <xliff:g id="number">%d</xliff:g> times.
+       After <xliff:g id="number">%d</xliff:g> more unsuccessful attempts,
+       you will be asked to unlock your phone using an email account.\n\n
+       Try again in <xliff:g id="number">%d</xliff:g> seconds.
+    </string>
+    <!-- Sequence of characters used to separate message strings in keyguard. Typically just em-dash
+         with spaces on either side. [CHAR LIMIT=3] -->
+    <string name="kg_text_message_separator" product="default">" \u2014 "</string>
+    <!-- The delete-widget drop target button text -->
+    <string name="kg_reordering_delete_drop_target_text">Remove</string>
+
+    <!-- Text spoken when the user is performing a gesture that will enable accessibility. [CHAR LIMIT=none] -->
+    <string name="continue_to_enable_accessibility">Keep holding down two fingers to enable accessibility.</string>
+    <!-- Text spoken when the user enabled accessibility. [CHAR LIMIT=none] -->
+    <string name="accessibility_enabled">Accessibility enabled.</string>
+    <!-- Text spoken when the user stops preforming a gesture that would enable accessibility. [CHAR LIMIT=none] -->
+    <string name="enable_accessibility_canceled">Accessibility canceled.</string>
+    <!-- Text spoken when the current user is switched if accessibility is enabled. [CHAR LIMIT=none] -->
+    <string name="user_switched">Current user <xliff:g id="name" example="Bob">%1$s</xliff:g>.</string>
+    <!-- Default name of the owner user [CHAR LIMIT=20] -->
+    <string name="owner_name" msgid="3879126011135546571">Owner</string>
+
+    <!-- Hardware Rotation lock string -->
+    <string name="toast_rotation_unlocked">Display rotation unlocked</string>
+    <string name="toast_rotation_locked">Display rotation locked</string>
 </resources>

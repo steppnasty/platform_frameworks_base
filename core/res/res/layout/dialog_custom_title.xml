@@ -15,7 +15,7 @@
 -->
 
 <!--
-This is an custom layout for a dialog.
+This is a custom layout for a dialog.
 -->
 
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" 
@@ -37,8 +37,8 @@ This is an custom layout for a dialog.
             android:layout_height="match_parent"
             android:paddingTop="6dip"
             android:paddingBottom="10dip"
-            android:paddingLeft="10dip"
-            android:paddingRight="10dip" />
+            android:paddingStart="10dip"
+            android:paddingEnd="10dip" />
     </FrameLayout>
 </LinearLayout>
 

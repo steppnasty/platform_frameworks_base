@@ -275,6 +275,11 @@
         <!-- The preferred item height for dropdown lists. -->
         <attr name="dropdownListPreferredItemHeight" format="dimension" />
 
+        <!-- The preferred padding along the start edge of list items. -->
+        <attr name="listPreferredItemPaddingStart" format="dimension" />
+        <!-- The preferred padding along the end edge of list items. -->
+        <attr name="listPreferredItemPaddingEnd" format="dimension" />
+
         <!-- ============= -->
         <!-- Window styles -->
         <!-- ============= -->
@@ -844,6 +849,9 @@
 
         <!-- Reference to the Pointer style -->
         <attr name="pointerStyle" format="reference" />
+
+        <!-- The drawable for accessibility focused views. -->
+        <attr name="accessibilityFocusedDrawable" format="reference" />
     </declare-styleable>
 
     <!-- **************************************************************** -->
@@ -1160,6 +1168,21 @@
              <p>Corresponds to
              {@link android.view.inputmethod.EditorInfo#IME_FLAG_NO_ENTER_ACTION}. -->
         <flag name="flagNoEnterAction" value="0x40000000" />
+        <!-- Used to request that the IME should be capable of inputting ASCII
+             characters.  The intention of this flag is to ensure that the user
+             can type Roman alphabet characters in a {@link android.widget.TextView}
+             used for, typically, account ID or password input.  It is expected that IMEs
+             normally are able to input ASCII even without being told so (such IMEs
+             already respect this flag in a sense), but there could be some cases they
+             aren't when, for instance, only non-ASCII input languagaes like Arabic,
+             Greek, Hebrew, Russian are enabled in the IME.  Applications need to be
+             aware that the flag is not a guarantee, and not all IMEs will respect it.
+             However, it is strongly recommended for IME authors to respect this flag
+             especially when their IME could end up with a state that has only non-ASCII
+             input languages enabled.
+             <p>Corresponds to
+             {@link android.view.inputmethod.EditorInfo#IME_FLAG_FORCE_ASCII}. -->
+        <flag name="flagForceAscii" value="0x80000000" />
     </attr>
 
     <!-- A coordinate in the X dimension. -->
@@ -1547,6 +1570,24 @@
              an absolute dimension or a fraction of the screen size in that
              dimension. -->
         <attr name="windowMinWidthMinor" format="dimension|fraction" />
+
+        <!-- A fixed width for the window along the major axis of the screen,
+             that is, when in landscape. Can be either an absolute dimension
+             or a fraction of the screen size in that dimension. -->
+        <attr name="windowFixedWidthMajor" format="dimension|fraction" />
+        <!-- A fixed height for the window along the minor axis of the screen,
+             that is, when in landscape. Can be either an absolute dimension
+             or a fraction of the screen size in that dimension. -->
+        <attr name="windowFixedHeightMinor" format="dimension|fraction" />
+
+        <!-- A fixed width for the window along the minor axis of the screen,
+             that is, when in portrait. Can be either an absolute dimension
+             or a fraction of the screen size in that dimension. -->
+        <attr name="windowFixedWidthMinor" format="dimension|fraction" />
+        <!-- A fixed height for the window along the major axis of the screen,
+             that is, when in portrait. Can be either an absolute dimension
+             or a fraction of the screen size in that dimension. -->
+        <attr name="windowFixedHeightMajor" format="dimension|fraction" />
     </declare-styleable>
 
     <!-- The set of attributes that describe a AlertDialog's theme. -->
@@ -2064,14 +2105,35 @@
                  it is LTR if it contains any strong LTR characters.  If there are neither, the
                  paragraph direction is the view’s resolved layout direction. -->
             <enum name="anyRtl" value="2" />
-            <!-- The paragraph direction is the same as the one held by a 60% majority of the
-                 characters. If there is no majority then the paragraph direction is the resolved
-                 layout direction of the View. -->
-            <enum name="charCount" value="3" />
             <!-- The paragraph direction is left to right. -->
-            <enum name="ltr" value="4" />
+            <enum name="ltr" value="3" />
             <!-- The paragraph direction is right to left. -->
-            <enum name="rtl" value="5" />
+            <enum name="rtl" value="4" />
+            <!-- The paragraph direction is coming from the system Locale. -->
+            <enum name="locale" value="5" />
+        </attr>
+
+        <!-- Defines the alignment of the text. A heuristic is used to determine the resolved
+            text alignment. -->
+        <attr name="textAlignment" format="integer">
+            <!-- Default -->
+            <enum name="inherit" value="0" />
+            <!-- Default for the root view. The gravity determines the alignment, ALIGN_NORMAL,
+                ALIGN_CENTER, or ALIGN_OPPOSITE, which are relative to each paragraph’s
+                text direction -->
+            <enum name="gravity" value="1" />
+            <!-- Align to the start of the paragraph, e.g. ALIGN_NORMAL. -->
+            <enum name="textStart" value="2" />
+            <!-- Align to the end of the paragraph, e.g. ALIGN_OPPOSITE. -->
+            <enum name="textEnd" value="3" />
+            <!-- Center the paragraph, e.g. ALIGN_CENTER. -->
+            <enum name="center" value="4" />
+            <!-- Align to the start of the view, which is ALIGN_LEFT if the view’s resolved
+                layoutDirection is LTR, and ALIGN_RIGHT otherwise. -->
+            <enum name="viewStart" value="5" />
+            <!-- Align to the end of the view, which is ALIGN_RIGHT if the view’s resolved
+                layoutDirection is LTR, and ALIGN_LEFT otherwise -->
+            <enum name="viewEnd" value="6" />
         </attr>
 
         <!-- Controls how this View is important for accessibility which is if it fires
@@ -2087,6 +2149,12 @@
             <!-- The view is not important for accessibility. -->
             <enum name="no" value="2" />
         </attr>
+
+        <!-- Specifies the id of a view for which this view serves as a label for
+             accessibility purposes. For example, a TextView before an EditText in
+             the UI usually specifies what infomation is contained in the EditText.
+             Hence, the TextView is a label for the EditText. -->
+        <attr name="labelFor" format="integer" />
 
     </declare-styleable>
 
@@ -2299,6 +2367,12 @@
         <!-- The extra value of the subtype. This string can be any string and will be passed to
              the IME when the framework calls the IME with the subtype.  -->
         <attr name="imeSubtypeExtraValue" format="string" />
+        <!-- The unique id for the subtype. The input method framework keeps track of enabled
+             subtypes by ID. When the IME package gets upgraded, enabled IDs will stay enabled even
+             if other attributes are different. If the ID is unspecified (by calling the other
+             constructor or 0. Arrays.hashCode(new Object[] {locale, mode, extraValue,
+             isAuxiliary, overridesImplicitlyEnabledSubtype}) will be used instead. -->
+        <attr name="subtypeId" format="integer"/>
     </declare-styleable>
 
     <!-- Use <code>spell-checker</code> as the root tag of the XML resource that
@@ -3554,6 +3628,24 @@
         <!-- If set to true, the parent will be used as the anchor when the anchor cannot be
              be found for layout_toLeftOf, layout_toRightOf, etc. -->
         <attr name="layout_alignWithParentIfMissing" format="boolean" />
+        <!-- Positions the end edge of this view to the start of the given anchor view ID.
+             Accommodates end margin of this view and start margin of anchor view. -->
+        <attr name="layout_toStartOf" format="reference" />
+        <!-- Positions the start edge of this view to the end of the given anchor view ID.
+             Accommodates start margin of this view and end margin of anchor view. -->
+        <attr name="layout_toEndOf" format="reference" />
+        <!-- Makes the start edge of this view match the start edge of the given anchor view ID.
+            Accommodates start margin. -->
+        <attr name="layout_alignStart" format="reference" />
+        <!-- Makes the end edge of this view match the end edge of the given anchor view ID.
+            Accommodates end margin. -->
+        <attr name="layout_alignEnd" format="reference" />
+        <!-- If true, makes the start edge of this view match the start edge of the parent.
+            Accommodates start margin. -->
+        <attr name="layout_alignParentStart" format="boolean" />
+        <!-- If true, makes the end edge of this view match the end edge of the parent.
+            Accommodates end margin. -->
+        <attr name="layout_alignParentEnd" format="boolean" />
     </declare-styleable>
     <declare-styleable name="VerticalSlider_Layout">
         <attr name="layout_scale" format="float" />
@@ -3964,6 +4056,10 @@
                  The clip will be based on the horizontal gravity: a left gravity will clip the right
                  edge, a right gravity will clip the left edge, and neither will clip both edges. -->
             <flag name="clip_horizontal" value="0x08" />
+            <!-- Push object to the beginning of its container, not changing its size. -->
+            <flag name="start" value="0x00800003" />
+            <!-- Push object to the end of its container, not changing its size. -->
+            <flag name="end" value="0x00800005" />
         </attr>
         <!-- Reference to a drawable resource to draw with the specified scale. -->
         <attr name="drawable" />
@@ -5057,6 +5153,8 @@
         <attr name="updatePeriodMillis" format="integer" />
         <!-- A resource id of a layout. -->
         <attr name="initialLayout" format="reference" />
+        <!-- A resource id of a layout. -->
+        <attr name="initialKeyguardLayout" format="reference" />
         <!-- A class name in the AppWidget's package to be launched to configure.
              If not supplied, then no activity will be launched. -->
         <attr name="configure" format="string" />
@@ -5072,6 +5170,13 @@
             <flag name="none" value="0x0" />
             <flag name="horizontal" value="0x1" />
             <flag name="vertical" value="0x2" />
+        </attr>
+        <!-- Optional parameter which indicates where this widget can be shown,
+             ie. home screen, keyguard or both.
+             resized. Supports combined values using | operator. -->
+        <attr name="widgetCategory" format="integer">
+            <flag name="home_screen" value="0x1" />
+            <flag name="keyguard" value="0x2" />
         </attr>
     </declare-styleable>
 
@@ -5158,6 +5263,19 @@
 
         <!-- Short description of the component's purpose or behavior. -->
         <attr name="description" />
+    </declare-styleable>
+
+    <!-- Use <code>dream</code> as the root tag of the XML resource that
+         describes an
+         {@link android.service.dreams.DreamService}, which is
+         referenced from its
+         {@link android.service.dreams.DreamService#DREAM_META_DATA}
+         meta-data entry.  Described here are the attributes that can be
+         included in that tag. -->
+    <declare-styleable name="Dream">
+        <!-- Component name of an activity that allows the user to modify
+             the settings for this dream. -->
+        <attr name="settingsActivity" />
     </declare-styleable>
 
     <!-- =============================== -->
@@ -5263,6 +5381,64 @@
     </declare-styleable>
 
     <!-- =============================== -->
+    <!-- GlowPadView class attributes -->
+    <!-- =============================== -->
+    <eat-comment />
+    <declare-styleable name="GlowPadView">
+        <!-- Reference to an array resource that be shown as targets around a circle. -->
+        <attr name="targetDrawables"/>
+
+        <!-- Reference to an array resource that be used as description for the targets around the circle. -->
+        <attr name="targetDescriptions"/>
+
+        <!-- Reference to an array resource that be used to announce the directions with targets around the circle. -->
+        <attr name="directionDescriptions"/>
+
+        <!-- Sets a drawable as the center. -->
+        <attr name="handleDrawable"/>
+
+        <!-- Drawable to use for wave ripple animation. -->
+        <attr name="outerRingDrawable" format="reference"/>
+
+        <!-- Drawble used for drawing points -->
+        <attr name="pointDrawable" format="reference" />
+
+        <!-- Inner radius of glow area. -->
+        <attr name="innerRadius"/>
+
+        <!-- Outer radius of glow area. Target icons will be drawn on this circle. -->
+        <attr name="outerRadius"/>
+
+        <!-- Radius of glow under finger. -->
+        <attr name="glowRadius" format="dimension" />
+
+        <!-- Tactile feedback duration for actions. Set to '0' for no vibration. -->
+        <attr name="vibrationDuration"/>
+
+        <!-- How close we need to be before snapping to a target. -->
+        <attr name="snapMargin"/>
+
+        <!-- Number of waves/chevrons to show in animation. -->
+        <attr name="feedbackCount"/>
+
+        <!-- Used when the handle shouldn't wait to be hit before following the finger -->
+        <attr name="alwaysTrackFinger"/>
+
+        <!-- Location along the circle of the first item, in degrees.-->
+        <attr name="firstItemOffset" format="float" />
+
+        <!-- Causes targets to snap to the finger location on activation. -->
+        <attr name="magneticTargets" format="boolean" />
+
+        <attr name="gravity" />
+
+        <!-- Determine whether the glow pad is allowed to scale to fit the bounds indicated
+            by its parent. If this is set to false, no scaling will occur. If this is set to true
+            scaling will occur to fit for any axis in which gravity is set to center. -->
+        <attr name="allowScaling" format="boolean" />
+    </declare-styleable>
+
+    <!-- =============================== -->
     <!-- MultiWaveView class attributes -->
     <!-- =============================== -->
     <eat-comment />
@@ -5278,6 +5454,9 @@
 
         <!-- Sets a drawable as the drag center. -->
         <attr name="handleDrawable" format="reference" />
+
+        <!-- Drawables to use for chevron animations. May be null. -->
+        <attr name="chevronDrawables" format="reference"/>
 
         <!-- Drawable to use for chevron animation on the left. May be null. -->
         <attr name="leftChevronDrawable" format="reference" />
@@ -5309,12 +5488,24 @@
         <!-- Number of waves/chevrons to show in animation. -->
         <attr name="feedbackCount" format="integer" />
 
-        <!-- Used to shift center of pattern vertically. -->
-        <attr name="verticalOffset" format="dimension" />
-
-        <!-- Used to shift center of pattern horizontally. -->
-        <attr name="horizontalOffset" format="dimension" />
+        <!-- Used when the handle shouldn't wait to be hit before following the finger -->
+        <attr name="alwaysTrackFinger" format="boolean" />
     </declare-styleable>
+
+    <!-- =============================== -->
+    <!-- SizeAdaptiveLayout class attributes -->
+    <!-- =============================== -->
+    <eat-comment />
+    <declare-styleable name="SizeAdaptiveLayout_Layout">
+      <!-- The maximum valid height for this item. -->
+      <attr name="layout_maxHeight" format="dimension">
+        <!-- Indicates that the view may be resized arbitrarily large. -->
+        <enum name="unbounded" value="-1" />
+      </attr>
+      <!-- The minimum valid height for this item. -->
+      <attr name="layout_minHeight" format="dimension" />
+    </declare-styleable>
+    <declare-styleable name="SizeAdaptiveLayout" />
 
     <!-- =============================== -->
     <!-- LockPatternView class attributes -->
@@ -5549,4 +5740,77 @@
         <attr name="minHeight" />
     </declare-styleable>
 
+    <!-- PagedView specific attributes. These attributes are used to customize
+         a PagedView view in XML files. -->
+    <declare-styleable name="PagedView">
+        <!-- The space between adjacent pages of the PagedView. -->
+        <attr name="pageSpacing" format="dimension" />
+        <!-- The padding for the scroll indicator area -->
+        <attr name="scrollIndicatorPaddingLeft" format="dimension" />
+        <attr name="scrollIndicatorPaddingRight" format="dimension" />
+    </declare-styleable>
+
+    <declare-styleable name="KeyguardGlowStripView">
+        <attr name="dotSize" format="dimension" />
+        <attr name="numDots" format="integer" />
+        <attr name="glowDot" format="reference" />
+        <attr name="leftToRight" format="boolean" />
+    </declare-styleable>
+
+    <!-- Some child types have special behavior. -->
+    <attr name="layout_childType">
+        <!-- No special behavior. Layout will proceed as normal. -->
+        <enum name="none" value="0" />
+        <!-- Widget container.
+             This will be resized in response to certain events. -->
+        <enum name="widget" value="1" />
+        <!-- Security challenge container.
+             This will be dismissed/shown in response to certain events,
+             possibly obscuring widget elements. -->
+        <enum name="challenge" value="2" />
+        <!-- User switcher.
+             This will consume space from the total layout area. -->
+        <enum name="userSwitcher" value="3" />
+        <!-- Scrim. This will block access to child views that
+             come before it in the child list in bouncer mode. -->
+        <enum name="scrim" value="4" />
+        <!-- The home for widgets. All widgets will be descendents of this. -->
+        <enum name="widgets" value="5" />
+        <!-- This is a handle that is used for expanding the
+             security challenge container when it is collapsed. -->
+        <enum name="expandChallengeHandle" value="6" />
+        <!-- Delete drop target.  This will be the drop target to delete pages. -->
+        <enum name="pageDeleteDropTarget" value="7" />
+    </attr>
+
+    <declare-styleable name="SlidingChallengeLayout_Layout">
+        <attr name="layout_childType" />
+        <attr name="layout_maxHeight" />
+    </declare-styleable>
+
+    <declare-styleable name="MultiPaneChallengeLayout">
+        <!-- Influences how layout_centerWithinArea behaves -->
+        <attr name="orientation" />
+    </declare-styleable>
+
+    <declare-styleable name="MultiPaneChallengeLayout_Layout">
+        <!-- Percentage of the screen this child should consume or center within.
+             If 0/default, the view will be measured by standard rules
+             as if this were a FrameLayout. -->
+        <attr name="layout_centerWithinArea" format="float" />
+        <attr name="layout_childType" />
+        <attr name="layout_gravity" />
+        <attr name="layout_maxWidth" format="dimension" />
+        <attr name="layout_maxHeight" />
+    </declare-styleable>
+
+    <declare-styleable name="KeyguardSecurityViewFlipper_Layout">
+        <attr name="layout_maxWidth" />
+        <attr name="layout_maxHeight" />
+    </declare-styleable>
+
+    <declare-styleable name="NumPadKey">
+        <attr name="digit" format="integer" />
+        <attr name="textView" format="reference" />
+    </declare-styleable>
 </resources>

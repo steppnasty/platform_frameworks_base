@@ -65,6 +65,25 @@
          master volume stream and nothing else . -->
     <bool name="config_useMasterVolume">false</bool>
 
+    <!-- Flag indicating that the media framework should support playing of sounds on volume
+         key usage.  This adds noticeable additional overhead to volume key processing, so
+         is disableable for products for which it is irrelevant. -->
+    <bool name="config_useVolumeKeySounds">true</bool>
+
+    <!-- Array of integer pairs controlling the rate at which the master volume changes
+         in response to volume up and down key events.
+         The first integer of each pair is compared against the current master volume
+         (in range 0 to 100).
+         The last pair with first integer <= the current volume is chosen,
+         and the second integer of the pair indicates the amount to increase the master volume
+         when volume up is pressed. -->
+    <integer-array name="config_masterVolumeRamp">
+        <item>0</item>  <item>5</item>  <!-- default: always increase volume by 5% -->
+    </integer-array>
+
+    <!-- The attenuation in dB applied to the lock/unlock sounds. -->
+    <integer name="config_lockSoundVolumeDb">-6</integer>
+
     <!-- The duration (in milliseconds) of a short animation. -->
     <integer name="config_shortAnimTime">200</integer>
 
@@ -295,6 +314,9 @@
 
     <!-- XXXXXX END OF RESOURCES USING WRONG NAMING CONVENTION -->
 
+    <!-- If this is true, key chords can be used to take a screenshot on the device. -->
+    <bool name="config_enableScreenshotChord">true</bool>
+
     <!-- If true, the screen can be rotated via the accelerometer in all 4
          rotations as the default behavior. -->
     <bool name="config_allowAllRotations">false</bool>
@@ -352,12 +374,23 @@
          closed.  The default is 0. -->
     <integer name="config_lidNavigationAccessibility">0</integer>
 
+    <!-- Indicate whether closing the lid causes the device to go to sleep and opening
+         it causes the device to wake up.
+         The default is false. -->
+    <bool name="config_lidControlsSleep">false</bool>
+
     <!-- Control the behavior when the user long presses the power button.
             0 - Nothing
             1 - Global actions menu
             2 - Power off (with confirmation)
     -->
     <integer name="config_longPressOnPowerBehavior">1</integer>
+
+    <!-- Package name for default keyguard appwidget [DO NOT TRANSLATE] -->
+    <string name="widget_default_package_name"></string>
+
+    <!-- Class name for default keyguard appwidget [DO NOT TRANSLATE] -->
+    <string name="widget_default_class_name"></string>
 
     <!-- Indicate whether the SD card is accessible without removing the battery. -->
     <bool name="config_batterySdCardAccessibility">false</bool>
@@ -497,6 +530,17 @@
     <integer-array name="config_autoBrightnessLevels">
     </integer-array>
 
+    <!-- Minimum screen brightness setting allowed by the power manager.
+         The user is forbidden from setting the brightness below this level. -->
+    <integer name="config_screenBrightnessSettingMinimum">10</integer>
+
+    <!-- Maximum screen brightness allowed by the power manager.
+         The user is forbidden from setting the brightness above this level. -->
+    <integer name="config_screenBrightnessSettingMaximum">255</integer>
+
+    <!-- Default screen brightness setting.
+         Must be in the range specified by minimum and maximum. -->
+    <integer name="config_screenBrightnessSettingDefault">102</integer>
 
     <!-- Minimum screen brightness allowed by the power manager. -->
     <integer name="config_screenBrightnessDim">20</integer>
@@ -544,6 +588,27 @@
     <!-- Component name of the default wallpaper. This will be ImageWallpaper if not
          specified -->
     <string name="default_wallpaper_component" translatable="false">@null</string>
+
+    <!-- True if WallpaperService is enabled -->
+    <bool name="config_enableWallpaperService">true</bool>
+
+    <!-- Package name(s) containing location provider support.
+         These packages can contain services implementing location providers,
+         such as the Geocode Provider, Network Location Provider, and
+         Fused Location Provider. They will each be searched for
+         service components implementing these providers.
+         It is strongly recommended that the packages explicitly named
+         below are on the system image, so that they will not map to
+         a 3rd party application.
+         The location framework also has support for installation
+         of new location providers at run-time. The new package does not
+         have to be explicitly listed here, however it must have a signature
+         that matches the signature of at least one package on this list.
+         -->
+    <string-array name="config_locationProviderPackageNames" translatable="false">
+        <!-- The standard AOSP fused location provider -->
+        <item>com.android.location.fused</item>
+    </string-array>
 
     <!-- Component name of the service providing network location support. -->
     <string name="config_networkLocationProvider" translatable="false">@null</string>
@@ -621,7 +686,44 @@
 
     <!-- Number of database connections opened and managed by framework layer
          to handle queries on each database. -->
-    <integer name="db_connection_pool_size">1</integer>
+    <integer name="db_connection_pool_size">4</integer>
+
+    <!-- The default journal mode to use use when Write-Ahead Logging is not active.
+         Choices are: OFF, DELETE, TRUNCATE, PERSIST and MEMORY.
+         PERSIST may improve performance by reducing how often journal blocks are
+         reallocated (compared to truncation) resulting in better data block locality
+         and less churn of the storage media. -->
+    <string name="db_default_journal_mode">PERSIST</string>
+
+    <!-- Maximum size of the persistent journal file in bytes.
+         If the journal file grows to be larger than this amount then SQLite will
+         truncate it after committing the transaction. -->
+    <integer name="db_journal_size_limit">524288</integer>
+
+    <!-- The database synchronization mode when using the default journal mode.
+         FULL is safest and preserves durability at the cost of extra fsyncs.
+         NORMAL also preserves durability in non-WAL modes and uses checksums to ensure
+         integrity although there is a small chance that an error might go unnoticed.
+         Choices are: FULL, NORMAL, OFF. -->
+    <string name="db_default_sync_mode">FULL</string>
+
+    <!-- The database synchronization mode when using Write-Ahead Logging.
+         FULL is safest and preserves durability at the cost of extra fsyncs.
+         NORMAL sacrifices durability in WAL mode because syncs are only performed before
+         and after checkpoint operations.  If checkpoints are infrequent and power loss
+         occurs, then committed transactions could be lost and applications might break.
+         Choices are: FULL, NORMAL, OFF. -->
+    <string name="db_wal_sync_mode">FULL</string>
+
+    <!-- The Write-Ahead Log auto-checkpoint interval in database pages (typically 1 to 4KB).
+         The log is checkpointed automatically whenever it exceeds this many pages.
+         When a database is reopened, its journal mode is set back to the default
+         journal mode, which may cause a checkpoint operation to occur.  Checkpoints
+         can also happen at other times when transactions are committed.
+         The bigger the WAL file, the longer a checkpoint operation takes, so we try
+         to keep the WAL file relatively small to avoid long delays.
+         The size of the WAL file is also constrained by 'db_journal_size_limit'. -->
+    <integer name="db_wal_autocheckpoint">100</integer>
 
     <!-- Max space (in MB) allocated to DownloadManager to store the downloaded
          files if they are to be stored in DownloadManager's data dir,
@@ -763,6 +865,17 @@
     <!-- Name of the wimax state tracker clas -->
     <string name="config_wimaxStateTrackerClassname" translatable="false"></string>
 
+    <!-- Is the dreams feature supported? -->
+    <bool name="config_dreamsSupported">true</bool>
+    <!-- If supported, are dreams enabled? (by default) -->
+    <bool name="config_dreamsEnabledByDefault">true</bool>
+    <!-- If supported and enabled, are dreams activated when docked? (by default) -->
+    <bool name="config_dreamsActivatedOnDockByDefault">true</bool>
+    <!-- If supported and enabled, are dreams activated when asleep and charging? (by default) -->
+    <bool name="config_dreamsActivatedOnSleepByDefault">false</bool>
+    <!-- ComponentName of the default dream (Settings.Secure.SCREENSAVER_COMPONENT) -->
+    <string name="config_dreamsDefaultComponent">com.google.android.deskclock/com.android.deskclock.Screensaver</string>
+
     <!-- Base "touch slop" value used by ViewConfiguration as a
          movement threshold where scrolling should begin. -->
     <dimen name="config_viewConfigurationTouchSlop">8dp</dimen>
@@ -783,4 +896,97 @@
 
     <!-- Set to true to add links to Cell Broadcast app from Settings and MMS app. -->
     <bool name="config_cellBroadcastAppLinks">true</bool>
+
+    <!-- The default value if the SyncStorageEngine should sync automatically or not -->
+    <bool name="config_syncstorageengine_masterSyncAutomatically">true</bool>
+
+    <!--  Maximum number of supported users -->
+    <integer name="config_multiuserMaximumUsers">1</integer>
+
+    <!-- Timeout in MS for how long you have to long-press the back key to
+         kill the foreground app. -->
+    <integer name="config_backKillTimeout">2000</integer>
+
+    <!-- Device has a h/w rotation lock switch -->
+    <bool name="config_hasRotationLockSwitch">false</bool>
+
+    <!-- Workaround for devices with broken keyboards -->
+    <bool name="config_forceDisableHardwareKeyboard">false</bool>
+
+    <!-- Whether WiFi display is supported by this device.
+         There are many prerequisites for this feature to work correctly.
+         Here are a few of them:
+         * The WiFi radio must support WiFi P2P.
+         * The WiFi radio must support concurrent connections to the WiFi display and
+           to an access point.
+         * The Audio Flinger audio_policy.conf file must specify a rule for the "r_submix"
+           remote submix module.  This module is used to record and stream system
+           audio output to the WiFi display encoder in the media server.
+         * The remote submix module "audio.r_submix.default" must be installed on the device.
+         * The device must be provisioned with HDCP keys (for protected content).
+    -->
+    <bool name="config_enableWifiDisplay">false</bool>
+
+    <!-- When true use the linux /dev/input/event subsystem to detect the switch changes
+         on the headphone/microphone jack. When false use the older uevent framework. -->
+    <bool name="config_useDevInputEventForAudioJack">false</bool>
+
+    <!-- Set to true if the wifi display supports compositing content stored
+         in gralloc protected buffers.  For this to be true, there must exist
+         a protected hardware path for surface flinger to composite and send
+         protected buffers to the wifi display video encoder.
+
+         If this flag is false, we advise applications not to use protected
+         buffers (if possible) when presenting content to a wifi display because
+         the content may be blanked.
+
+         This flag controls whether the {@link Display#FLAG_SUPPORTS_PROTECTED_BUFFERS}
+         flag is set for wifi displays.
+    -->
+    <bool name="config_wifiDisplaySupportsProtectedBuffers">false</bool>
+
+    <!-- Setting to false will disable CM's IME switcher implementation for tablets -->
+    <bool name="config_show_cmIMESwitcher">true</bool>
+
+    <!-- Hardware 'face' keys present on the device, stored as a bit field.
+         This integer should equal the sum of the corresponding value for each
+         of the following keys present:
+             1 - Home
+             2 - Back
+             4 - Menu
+             8 - Assistant (search)
+            16 - App switch
+         For example, a device with Home, Back and Menu keys would set this
+         config to 7. -->
+    <integer name="config_deviceHardwareKeys">15</integer>
+
+    
+    <!-- Maximum wallpaper width for devices with very high-res screen (1920x1200)
+         the wallpaper width suggestion by the launcher may be too large for
+         the GPU to handle. -->
+    <integer name="config_wallpaperMaxWidth">-1</integer>
+
+    <!-- Name of that dock battery handler class -->
+    <string name="config_deviceDockBatteryHandlerClass" translatable="false"></string>
+
+    <!-- If a dock provides a lid switch, that lid can be removed. This
+         setting is used to determine, whether lidOpenRotation has to be
+         applied. -->
+    <bool name="config_hasRemovableLid">false</bool>
+
+    <!-- Dock battery compatibility (disabled by default) -->
+    <bool name="config_hasDockBattery">false</bool>
+
+    <!-- The list absolute paths of jar/apk files containing the device specific handlers,
+         delimited by File.pathSeparator, which defaults to ":" on Android -->
+    <string name="config_deviceHandlersLib" translatable="false"></string>
+
+    <!-- Full qualified name of the class that implements
+         com.android.internal.os.DeviceKeyHandler interface. -->
+    <string name="config_deviceKeyHandlerClass" translatable="false"></string>
+
+    <!-- Full qualified name of the class that implements
+         com.android.internal.os.DeviceDockBatteryHandler interface.
+         Requires config_hasDockBattery set to true. -->
+    <string name="config_deviceDockBatteryHandlerLib" translatable="false"></string>
 </resources>
