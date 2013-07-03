@@ -1110,9 +1110,9 @@ public class WifiP2pService extends IWifiP2pManager.Stub {
         InterfaceConfiguration ifcg = null;
         try {
             ifcg = mNwService.getInterfaceConfig(intf);
-            ifcg.addr = new LinkAddress(NetworkUtils.numericToInetAddress(
-                        SERVER_ADDRESS), 24);
-            ifcg.interfaceFlags = "[up]";
+            ifcg.setLinkAddress(new LinkAddress(NetworkUtils.numericToInetAddress(
+                        SERVER_ADDRESS), 24));
+            ifcg.setInterfaceUp();
             mNwService.setInterfaceConfig(intf, ifcg);
             /* This starts the dnsmasq server */
             mNwService.startTethering(DHCP_RANGE);
@@ -1429,8 +1429,8 @@ public class WifiP2pService extends IWifiP2pManager.Stub {
     }
 
     private boolean isAirplaneModeOn() {
-        return isAirplaneSensitive() && Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.AIRPLANE_MODE_ON, 0) == 1;
+        return isAirplaneSensitive() && Settings.Global.getInt(mContext.getContentResolver(),
+                Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
     }
 
     }

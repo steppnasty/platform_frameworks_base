@@ -261,6 +261,9 @@ public class WifiP2pManager {
     public static final int REQUEST_GROUP_INFO                      = BASE + 26;
     /** @hide */
     public static final int RESPONSE_GROUP_INFO                     = BASE + 27;
+    
+    /** @hide */
+    public static final int SET_WFD_INFO                            = BASE + 28;
 
     /**
      * Create a new WifiP2pManager instance. Applications use
@@ -434,6 +437,10 @@ public class WifiP2pManager {
                 return mListenerMap.remove(key);
             }
         }
+    }
+
+    private static void checkChannel(Channel c) {
+        if (c == null) throw new IllegalArgumentException("Channel needs to be initialized");
     }
 
     /**
@@ -616,6 +623,14 @@ public class WifiP2pManager {
     public void requestGroupInfo(Channel c, GroupInfoListener listener) {
         if (c == null) return;
         c.mAsyncChannel.sendMessage(REQUEST_GROUP_INFO, 0, c.putListener(listener));
+    }
+
+    /** @hide */
+    public void setWFDInfo(
+            Channel c, WifiP2pWfdInfo wfdInfo,
+            ActionListener listener) {
+        checkChannel(c);
+        c.mAsyncChannel.sendMessage(SET_WFD_INFO, 0, c.putListener(listener), wfdInfo);
     }
 
     /**

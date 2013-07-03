@@ -1165,9 +1165,9 @@ public class WifiStateMachine extends StateMachine {
                         ifcg = mNwService.getInterfaceConfig(intf);
                         if (ifcg != null) {
                             /* IP/netmask: 192.168.43.1/255.255.255.0 */
-                            ifcg.addr = new LinkAddress(NetworkUtils.numericToInetAddress(
-                                    "192.168.43.1"), 24);
-                            ifcg.interfaceFlags = "[up]";
+                            ifcg.setLinkAddress(new LinkAddress(
+                                    NetworkUtils.numericToInetAddress("192.168.43.1"), 24));
+                            ifcg.setInterfaceUp();
 
                             mNwService.setInterfaceConfig(intf, ifcg);
                         }
@@ -1199,8 +1199,8 @@ public class WifiStateMachine extends StateMachine {
         try {
             ifcg = mNwService.getInterfaceConfig(mTetherInterfaceName);
             if (ifcg != null) {
-                ifcg.addr = new LinkAddress(NetworkUtils.numericToInetAddress(
-                            "0.0.0.0"), 0);
+                ifcg.setLinkAddress(
+                        new LinkAddress(NetworkUtils.numericToInetAddress("0.0.0.0"), 0));
                 mNwService.setInterfaceConfig(mTetherInterfaceName, ifcg);
             }
         } catch (Exception e) {
@@ -2943,8 +2943,8 @@ public class WifiStateMachine extends StateMachine {
                 DhcpInfoInternal dhcpInfoInternal = WifiConfigStore.getIpConfiguration(
                         mLastNetworkId);
                 InterfaceConfiguration ifcg = new InterfaceConfiguration();
-                ifcg.addr = dhcpInfoInternal.makeLinkAddress();
-                ifcg.interfaceFlags = "[up]";
+                ifcg.setLinkAddress(dhcpInfoInternal.makeLinkAddress());
+                ifcg.setInterfaceUp();
                 try {
                     mNwService.setInterfaceConfig(mInterfaceName, ifcg);
                     if (DBG) log("Static IP configuration succeeded");

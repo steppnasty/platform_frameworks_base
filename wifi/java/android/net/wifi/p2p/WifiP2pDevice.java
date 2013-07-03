@@ -117,6 +117,9 @@ public class WifiP2pDevice implements Parcelable {
     /** Device connection status */
     public int status = UNAVAILABLE;
 
+    /** @hide */
+    public WifiP2pWfdInfo wfdInfo;
+
     public WifiP2pDevice() {
     }
 
@@ -266,6 +269,7 @@ public class WifiP2pDevice implements Parcelable {
             deviceCapability = source.deviceCapability;
             groupCapability = source.groupCapability;
             status = source.status;
+            wfdInfo = source.wfdInfo;
         }
     }
 
