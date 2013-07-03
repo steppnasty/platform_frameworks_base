@@ -378,7 +378,7 @@ public abstract class DataConnectionTracker extends Handler {
         public void register(Context context) {
             final ContentResolver resolver = context.getContentResolver();
             resolver.registerContentObserver(
-                    Settings.Secure.getUriFor(Settings.Secure.DATA_ROAMING), false, this);
+                    Settings.Global.getUriFor(Settings.Global.DATA_ROAMING), false, this);
         }
 
         public void unregister(Context context) {
@@ -511,8 +511,8 @@ public abstract class DataConnectionTracker extends Handler {
         filter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
         filter.addAction(INTENT_SET_FAIL_DATA_SETUP_COUNTER);
 
-        mUserDataEnabled = Settings.Secure.getInt(
-                mPhone.getContext().getContentResolver(), Settings.Secure.MOBILE_DATA, 1) == 1;
+        mUserDataEnabled = Settings.Global.getInt(
+                mPhone.getContext().getContentResolver(), Settings.Global.MOBILE_DATA, 1) == 1;
 
         // TODO: Why is this registering the phone as the receiver of the intent
         //       and not its own handler?
@@ -530,7 +530,7 @@ public abstract class DataConnectionTracker extends Handler {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(mPhone.getContext());
         mAutoAttachOnCreation = sp.getBoolean(PhoneBase.DATA_DISABLED_ON_BOOT_KEY, false);
 
-        // watch for changes to Settings.Secure.DATA_ROAMING
+        // watch for changes to Settings.Global.DATA_ROAMING
         mDataRoamingSettingObserver = new DataRoamingSettingObserver(mPhone);
         mDataRoamingSettingObserver.register(mPhone.getContext());
     }
@@ -598,23 +598,23 @@ public abstract class DataConnectionTracker extends Handler {
     }
 
     /**
-     * Modify {@link Settings.Secure#DATA_ROAMING} value.
+     * Modify {@link Settings.Global#DATA_ROAMING} value.
      */
     public void setDataOnRoamingEnabled(boolean enabled) {
         if (getDataOnRoamingEnabled() != enabled) {
             final ContentResolver resolver = mPhone.getContext().getContentResolver();
-            Settings.Secure.putInt(resolver, Settings.Secure.DATA_ROAMING, enabled ? 1 : 0);
+            Settings.Global.putInt(resolver, Settings.Global.DATA_ROAMING, enabled ? 1 : 0);
             // will trigger handleDataOnRoamingChange() through observer
         }
     }
 
     /**
-     * Return current {@link Settings.Secure#DATA_ROAMING} value.
+     * Return current {@link Settings.Global#DATA_ROAMING} value.
      */
     public boolean getDataOnRoamingEnabled() {
         try {
             final ContentResolver resolver = mPhone.getContext().getContentResolver();
-            return Settings.Secure.getInt(resolver, Settings.Secure.DATA_ROAMING) != 0;
+            return Settings.Global.getInt(resolver, Settings.Global.DATA_ROAMING) != 0;
         } catch (SettingNotFoundException snfe) {
             return false;
         }
@@ -1130,8 +1130,8 @@ public abstract class DataConnectionTracker extends Handler {
             final boolean prevEnabled = getAnyDataEnabled();
             if (mUserDataEnabled != enabled) {
                 mUserDataEnabled = enabled;
-                Settings.Secure.putInt(mPhone.getContext().getContentResolver(),
-                        Settings.Secure.MOBILE_DATA, enabled ? 1 : 0);
+                Settings.Global.putInt(mPhone.getContext().getContentResolver(),
+                        Settings.Global.MOBILE_DATA, enabled ? 1 : 0);
                 if (prevEnabled != getAnyDataEnabled()) {
                     if (!prevEnabled) {
                         resetAllRetryCounts();

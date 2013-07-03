@@ -1720,12 +1720,12 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
         // If screen is on or data stall is currently suspected, set the alarm
         // with an aggresive timeout.
         if (mIsScreenOn || suspectedStall || RecoveryAction.isAggressiveRecovery(nextAction)) {
-            delayInMs = Settings.Secure.getInt(mResolver,
-                                       Settings.Secure.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
+            delayInMs = Settings.Global.getInt(mResolver,
+                                       Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
                                        DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
         } else {
-            delayInMs = Settings.Secure.getInt(mResolver,
-                                       Settings.Secure.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
+            delayInMs = Settings.Global.getInt(mResolver,
+                                       Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
                                        DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS_DEFAULT);
         }
 

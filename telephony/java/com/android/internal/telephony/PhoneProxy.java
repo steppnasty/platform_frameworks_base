@@ -24,6 +24,7 @@ import android.net.LinkCapabilities;
 import android.net.LinkProperties;
 import android.os.Handler;
 import android.os.Message;
+import android.os.UserHandle;
 import android.os.SystemProperties;
 import android.telephony.CellLocation;
 import android.telephony.ServiceState;
@@ -135,7 +136,7 @@ public class PhoneProxy extends Handler implements Phone {
             Intent intent = new Intent(TelephonyIntents.ACTION_RADIO_TECHNOLOGY_CHANGED);
             intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
             intent.putExtra(Phone.PHONE_NAME_KEY, mActivePhone.getPhoneName());
-            ActivityManagerNative.broadcastStickyIntent(intent, null);
+            ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
             break;
         default:
             Log.e(LOG_TAG,"Error! This handler was not registered for this message type. Message: "

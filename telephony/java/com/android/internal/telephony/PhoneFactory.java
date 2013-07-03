@@ -102,8 +102,8 @@ public class PhoneFactory {
                 if (BaseCommands.getLteOnCdmaModeStatic() == Phone.LTE_ON_CDMA_TRUE) {
                     preferredNetworkMode = Phone.NT_MODE_GLOBAL;
                 }
-                int networkMode = Settings.Secure.getInt(context.getContentResolver(),
-                        Settings.Secure.PREFERRED_NETWORK_MODE, preferredNetworkMode);
+                int networkMode = Settings.Global.getInt(context.getContentResolver(),
+                        Settings.Global.PREFERRED_NETWORK_MODE, preferredNetworkMode);
                 Log.i(LOG_TAG, "Network Mode set to " + Integer.toString(networkMode));
 
                 // Get cdmaSubscription
