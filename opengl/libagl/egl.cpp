@@ -383,6 +383,7 @@ EGLBoolean egl_window_surface_v2_t::connect()
             GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN);
 
     // dequeue a buffer
+    int fenceFd = -1;
     if (nativeWindow->dequeueBuffer(nativeWindow, &buffer) != NO_ERROR) {
         return setError(EGL_BAD_ALLOC, EGL_FALSE);
     }
@@ -403,8 +404,6 @@ EGLBoolean egl_window_surface_v2_t::connect()
     // keep a reference on the buffer
     buffer->common.incRef(&buffer->common);
 
-    // Lock the buffer
-    nativeWindow->lockBuffer(nativeWindow, buffer);
     // pin the buffer down
     if (lock(buffer, GRALLOC_USAGE_SW_READ_OFTEN | 
             GRALLOC_USAGE_SW_WRITE_OFTEN, &bits) != NO_ERROR) {
@@ -533,10 +532,6 @@ EGLBoolean egl_window_surface_v2_t::swapBuffers()
 
     // dequeue a new buffer
     if (nativeWindow->dequeueBuffer(nativeWindow, &buffer) == NO_ERROR) {
-
-        // TODO: lockBuffer should rather be executed when the very first
-        // direct rendering occurs.
-        nativeWindow->lockBuffer(nativeWindow, buffer);
 
         // reallocate the depth-buffer if needed
         if ((width != buffer->width) || (height != buffer->height)) {

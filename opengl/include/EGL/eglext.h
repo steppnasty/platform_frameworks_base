@@ -277,6 +277,29 @@ typedef void (EGLAPIENTRYP PFNEGLSETBLOBCACHEFUNCSANDROIDPROC) (EGLDisplay dpy,
         EGLSetBlobFuncANDROID set, EGLGetBlobFuncANDROID get);
 #endif
 
+/* EGL_ANDROID_native_fence_sync
+ */
+#ifndef EGL_ANDROID_native_fence_sync
+#define EGL_ANDROID_native_fence_sync 1
+#define EGL_SYNC_NATIVE_FENCE_ANDROID                 0x3144
+#define EGL_SYNC_NATIVE_FENCE_FD_ANDROID              0x3145
+#define EGL_NO_NATIVE_FENCE_FD_ANDROID                -1
+#define EGL_SYNC_NATIVE_FENCE_SIGNALED_ANDROID        0x3146
+#ifdef EGL_EGLEXT_PROTOTYPES
+EGLAPI EGLint EGLAPIENTRY eglDupNativeFenceFDANDROID(EGLDisplay dpy, EGLSyncKHR sync);
+#endif
+#endif
+
+/* EGL_ANDROID_wait_sync
+ */
+#ifndef EGL_ANDROID_wait_sync
+#define EGL_ANDROID_wait_sync
+#ifdef EGL_EGLEXT_PROTOTYPES
+EGLAPI EGLint EGLAPIENTRY eglWaitSyncANDROID(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags);
+#endif
+typedef EGLint (EGLAPIENTRYP PFNEGLWAITSYNCANDROID) (EGLDisplay dpy, EGLSyncKHR sync, EGLint flags);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
