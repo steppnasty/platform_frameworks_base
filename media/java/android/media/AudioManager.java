@@ -51,6 +51,7 @@ public class AudioManager {
     private final Context mContext;
     private long mVolumeKeyUpTime;
     private final boolean mUseMasterVolume;
+    private final boolean mUseVolumeKeySounds;
     private int  mVolumeControlStream = -1;
     private static String TAG = "AudioManager";
     private static boolean localLOGV = false;
@@ -403,6 +404,8 @@ public class AudioManager {
         mContext = context;
         mUseMasterVolume = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_useMasterVolume);
+        mUseVolumeKeySounds = mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_useVolumeKeySounds);
     }
 
     private static IAudioService getService()
@@ -418,11 +421,12 @@ public class AudioManager {
     /**
      * @hide
      */
-    public void preDispatchKeyEvent(int keyCode, int stream) {
+    public void preDispatchKeyEvent(KeyEvent event, int stream) {
         /*
          * If the user hits another key within the play sound delay, then
          * cancel the sound
          */
+        int keyCode = event.getKeyCode();
         if (keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && keyCode != KeyEvent.KEYCODE_VOLUME_UP
                 && keyCode != KeyEvent.KEYCODE_VOLUME_MUTE
                 && mVolumeKeyUpTime + VolumePanel.PLAY_SOUND_DELAY
@@ -431,15 +435,20 @@ public class AudioManager {
              * The user has hit another key during the delay (e.g., 300ms)
              * since the last volume key up, so cancel any sounds.
              */
-            adjustSuggestedStreamVolume(AudioManager.ADJUST_SAME,
+            if (mUseMasterVolume) {
+                adjustMasterVolume(ADJUST_SAME, AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE);
+            } else {
+                adjustSuggestedStreamVolume(ADJUST_SAME,
                         stream, AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE);
+            }
         }
     }
 
     /**
      * @hide
      */
-    public void handleKeyDown(int keyCode, int stream) {
+    public void handleKeyDown(KeyEvent event, int stream) {
+        int keyCode = event.getKeyCode();
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
             case KeyEvent.KEYCODE_VOLUME_DOWN:
@@ -448,19 +457,30 @@ public class AudioManager {
                  * responsive to the user.
                  */
                 int flags = FLAG_SHOW_UI | FLAG_VIBRATE;
-                if (mVolumeControlStream != -1) {
-                    stream = mVolumeControlStream;
-                    flags |= FLAG_FORCE_STREAM;
+
+                if (mUseMasterVolume) {
+                    adjustMasterVolume(
+                            keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                                    ? ADJUST_RAISE
+                                    : ADJUST_LOWER,
+                            flags);
+                } else {
+                    adjustSuggestedStreamVolume(
+                            keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                                    ? ADJUST_RAISE
+                                    : ADJUST_LOWER,
+                            stream,
+                            flags);
                 }
-                adjustSuggestedStreamVolume(
-                        keyCode == KeyEvent.KEYCODE_VOLUME_UP
-                                ? ADJUST_RAISE
-                                : ADJUST_LOWER,
-                        stream,
-                        flags);
                 break;
             case KeyEvent.KEYCODE_VOLUME_MUTE:
-                toggleMute(stream);
+                if (event.getRepeatCount() == 0) {
+                    if (mUseMasterVolume) {
+                        setMasterMute(!isMasterMute());
+                    } else {
+                        // TODO: Actually handle MUTE.
+                    }
+                }
                 break;
         }
     }
@@ -468,7 +488,8 @@ public class AudioManager {
     /**
      * @hide
      */
-    public void handleKeyUp(int keyCode, int stream) {
+    public void handleKeyUp(KeyEvent event, int stream) {
+        int keyCode = event.getKeyCode();
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
             case KeyEvent.KEYCODE_VOLUME_DOWN:
@@ -476,19 +497,18 @@ public class AudioManager {
                  * Play a sound. This is done on key up since we don't want the
                  * sound to play when a user holds down volume down to mute.
                  */
-                int flags = FLAG_PLAY_SOUND;
-                if (mVolumeControlStream != -1) {
-                    stream = mVolumeControlStream;
-                    flags |= FLAG_FORCE_STREAM;
+                if (mUseVolumeKeySounds) {
+                    if (mUseMasterVolume) {
+                        adjustMasterVolume(ADJUST_SAME, FLAG_PLAY_SOUND);
+                    } else {
+                        int flags = FLAG_PLAY_SOUND;
+                        adjustSuggestedStreamVolume(
+                                ADJUST_SAME,
+                                stream,
+                                flags);
+                    }
                 }
-                adjustSuggestedStreamVolume(
-                        ADJUST_SAME,
-                        stream,
-                        flags);
-
                 mVolumeKeyUpTime = SystemClock.uptimeMillis();
-                break;
-            case KeyEvent.KEYCODE_VOLUME_MUTE:
                 break;
         }
     }
@@ -590,6 +610,24 @@ public class AudioManager {
             service.adjustSuggestedStreamVolume(direction, suggestedStreamType, flags);
         } catch (RemoteException e) {
             Log.e(TAG, "Dead object in adjustVolume", e);
+        }
+    }
+
+    /**
+     * Adjusts the master volume for the device's audio amplifier.
+     * <p>
+     *
+     * @param steps The number of volume steps to adjust. A positive
+     *            value will raise the volume.
+     * @param flags One or more flags.
+     * @hide
+     */
+    public void adjustMasterVolume(int steps, int flags) {
+        IAudioService service = getService();
+        try {
+            service.adjustMasterVolume(steps, flags);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Dead object in adjustMasterVolume", e);
         }
     }
 
@@ -1264,6 +1302,19 @@ public class AudioManager {
     }
 
     /**
+     * @hide
+     * Signals whether remote submix audio rerouting is enabled.
+     */
+    public void setRemoteSubmixOn(boolean on, int address) {
+        IAudioService service = getService();
+        try {
+            service.setRemoteSubmixOn(on, address);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Dead object in setRemoteSubmixOn", e);
+        }
+    }
+
+    /**
      * Sets audio routing to the wired headset on or off.
      *
      * @param on set <var>true</var> to route audio to/from wired
@@ -1466,6 +1517,24 @@ public class AudioManager {
      */
     public boolean isMusicActive() {
         return AudioSystem.isStreamActive(STREAM_MUSIC, 0);
+    }
+
+    /**
+     * @hide
+     * If the stream is active locally or remotely, adjust its volume according to the enforced
+     * priority rules.
+     * Note: only AudioManager.STREAM_MUSIC is supported at the moment
+     */
+    public void adjustLocalOrRemoteStreamVolume(int streamType, int direction) {
+        if (streamType != STREAM_MUSIC) {
+            Log.w(TAG, "adjustLocalOrRemoteStreamVolume() doesn't support stream " + streamType);
+        }
+        IAudioService service = getService();
+        try {
+            service.adjustLocalOrRemoteStreamVolume(streamType, direction);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Dead object in adjustLocalOrRemoteStreamVolume", e);
+        }
     }
 
     /*

@@ -127,7 +127,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_ii(
         int inputSource,
         uint32_t sampleRate,
         int format,
-        uint32_t channelMask,
+        uint32_t channels,
         int frameCount,
         uint32_t flags,
         AudioRecord::callback_t cbf,
@@ -139,7 +139,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_i(
         int inputSource,
         uint32_t sampleRate,
         int format,
-        uint32_t channelMask,
+        uint32_t channels,
         int frameCount,
         uint32_t flags,
         AudioRecord::callback_t cbf,
@@ -147,7 +147,7 @@ extern "C" AudioRecord *_ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_i(
         int notificationFrames)
 {
     return _ZN7android11AudioRecordC1EijijijPFviPvS1_ES1_ii(This,
-        inputSource, sampleRate, format, channelMask,
+        inputSource, sampleRate, format, channels,
         frameCount, flags, cbf, user, notificationFrames, 0);
 }
 #endif
@@ -199,7 +199,7 @@ status_t AudioRecord::set(
         sampleRate = DEFAULT_SAMPLE_RATE;
     }
     // these below should probably come from the audioFlinger too...
-    if (format == 0) {
+    if (format == AUDIO_FORMAT_DEFAULT) {
         format = AUDIO_FORMAT_PCM_16_BIT;
     }
     // validate parameters

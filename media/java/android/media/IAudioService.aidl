@@ -25,6 +25,7 @@ import android.media.IAudioRoutesObserver;
 import android.media.IRemoteControlClient;
 import android.media.IRemoteControlDisplay;
 import android.media.IRemoteVolumeObserver;
+import android.view.KeyEvent;
 
 /**
  * {@hide}
@@ -33,10 +34,14 @@ interface IAudioService {
     
     void adjustVolume(int direction, int flags);
 
+    oneway void adjustLocalOrRemoteStreamVolume(int streamType, int direction);
+
     void adjustSuggestedStreamVolume(int direction, int suggestedStreamType, int flags);
     
     void adjustStreamVolume(int streamType, int direction, int flags);
-    
+
+    void adjustMasterVolume(int direction, int flags);
+
     void setStreamVolume(int streamType, int index, int flags);
 
     void setMasterVolume(int index, int flags);
@@ -101,12 +106,17 @@ interface IAudioService {
 
     boolean isBluetoothA2dpOn();
 
+    oneway void setRemoteSubmixOn(boolean on, int address);
+
     int requestAudioFocus(int mainStreamType, int durationHint, IBinder cb, IAudioFocusDispatcher l,
             String clientId, String callingPackageName);
 
     int abandonAudioFocus(IAudioFocusDispatcher l, String clientId);
     
     void unregisterAudioFocusClient(String clientId);
+
+    oneway void dispatchMediaKeyEvent(in KeyEvent keyEvent);
+    void dispatchMediaKeyEventUnderWakelock(in KeyEvent keyEvent);
 
     oneway void registerMediaButtonIntent(in PendingIntent pi, in ComponentName c);
     oneway void unregisterMediaButtonIntent(in PendingIntent pi,  in ComponentName c);

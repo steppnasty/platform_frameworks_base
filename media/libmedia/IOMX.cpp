@@ -24,7 +24,7 @@
 #include <media/IOMX.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <surfaceflinger/ISurface.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/Surface.h>
 
 namespace android {
 
@@ -418,7 +418,9 @@ status_t BnOMX::onTransact(
         case LIVES_LOCALLY:
         {
             CHECK_INTERFACE(IOMX, data, reply);
-            reply->writeInt32(livesLocally((pid_t)data.readInt32()));
+            node_id node = (void *)data.readIntPtr();
+            pid_t pid = (pid_t)data.readInt32();
+            reply->writeInt32(livesLocally(pid));
 
             return OK;
         }
