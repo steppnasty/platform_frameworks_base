@@ -28,6 +28,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
@@ -37,6 +38,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserHandle;
+import android.view.CompatibilityInfoHolder;
+import android.view.Display;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -251,8 +255,20 @@ public class MockContext extends Context {
     }
 
     @Override
+    public void startActivity(Intent intent, Bundle options) {
+        startActivity(intent);
+    }
+
+    
+
+    @Override
     public void startActivities(Intent[] intents) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void startActivities(Intent[] intents, Bundle options) {
+        startActivities(intents);
     }
 
     @Override
@@ -260,6 +276,13 @@ public class MockContext extends Context {
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
             throws IntentSender.SendIntentException {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void startIntentSender(IntentSender intent,
+            Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags,
+            Bundle options) throws IntentSender.SendIntentException {
+        startIntentSender(intent, fillInIntent, flagsMask, flagsValues, extraFlags);
     }
     
     @Override
@@ -286,6 +309,24 @@ public class MockContext extends Context {
     }
 
     @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void sendOrderedBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission, BroadcastReceiver resultReceiver, Handler scheduler,
+            int initialCode, String initialData, Bundle initialExtras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void sendStickyBroadcast(Intent intent) {
         throw new UnsupportedOperationException();
     }
@@ -303,6 +344,16 @@ public class MockContext extends Context {
     }
 
     @Override
+    public void sendStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
         throw new UnsupportedOperationException();
     }
@@ -310,6 +361,13 @@ public class MockContext extends Context {
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, Handler scheduler) {
+        throw new UnsupportedOperationException();
+    }
+
+    /** @hide */
+    @Override
+    public Intent registerReceiverAsUser(BroadcastReceiver receiver, UserHandle user,
+            IntentFilter filter, String broadcastPermission, Handler scheduler) {
         throw new UnsupportedOperationException();
     }
 
@@ -325,6 +383,18 @@ public class MockContext extends Context {
 
     @Override
     public boolean stopService(Intent service) {
+        throw new UnsupportedOperationException();
+    }
+
+    /** @hide */
+    @Override
+    public ComponentName startServiceAsUser(Intent service, UserHandle user) {
+        throw new UnsupportedOperationException();
+    }
+
+    /** @hide */
+    @Override
+    public boolean stopServiceAsUser(Intent service, UserHandle user) {
         throw new UnsupportedOperationException();
     }
 
@@ -441,8 +511,31 @@ public class MockContext extends Context {
         throw new UnsupportedOperationException();
     }
 
+    /** {@hide} */
+    @Override
+    public Context createPackageContextAsUser(String packageName, int flags, UserHandle user)
+            throws PackageManager.NameNotFoundException {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Context createConfigurationContext(Configuration overrideConfiguration) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Context createDisplayContext(Display display) {
+        throw new UnsupportedOperationException();
+    }
+
     @Override
     public boolean isRestricted() {
         throw new UnsupportedOperationException();        
+    }
+
+    /** @hide */
+    @Override
+    public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
+        throw new UnsupportedOperationException();
     }
 }
