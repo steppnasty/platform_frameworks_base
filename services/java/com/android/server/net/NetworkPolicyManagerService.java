@@ -30,6 +30,7 @@ import static android.net.ConnectivityManager.TYPE_ETHERNET;
 import static android.net.ConnectivityManager.TYPE_MOBILE;
 import static android.net.ConnectivityManager.TYPE_WIFI;
 import static android.net.ConnectivityManager.TYPE_WIMAX;
+import static android.net.ConnectivityManager.isNetworkTypeMobile;
 import static android.net.NetworkPolicy.LIMIT_DISABLED;
 import static android.net.NetworkPolicy.SNOOZE_NEVER;
 import static android.net.NetworkPolicy.WARNING_DISABLED;
@@ -95,6 +96,7 @@ import android.os.Message;
 import android.os.MessageQueue.IdleHandler;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.format.Formatter;
@@ -153,6 +155,11 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
     private static final int VERSION_INIT = 1;
     private static final int VERSION_ADDED_SNOOZE = 2;
     private static final int VERSION_ADDED_RESTRICT_BACKGROUND = 3;
+    private static final int VERSION_ADDED_METERED = 4;
+    private static final int VERSION_SPLIT_SNOOZE = 5;
+    private static final int VERSION_ADDED_TIMEZONE = 6;
+    private static final int VERSION_ADDED_INFERRED = 7;
+    private static final int VERSION_ADDED_NETWORK_ID = 9;
 
     private static final long KB_IN_BYTES = 1024;
     private static final long MB_IN_BYTES = KB_IN_BYTES * 1024;
@@ -171,10 +178,16 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
     private static final String ATTR_RESTRICT_BACKGROUND = "restrictBackground";
     private static final String ATTR_NETWORK_TEMPLATE = "networkTemplate";
     private static final String ATTR_SUBSCRIBER_ID = "subscriberId";
+    private static final String ATTR_NETWORK_ID = "networkId";
     private static final String ATTR_CYCLE_DAY = "cycleDay";
+    private static final String ATTR_CYCLE_TIMEZONE = "cycleTimezone";
     private static final String ATTR_WARNING_BYTES = "warningBytes";
     private static final String ATTR_LIMIT_BYTES = "limitBytes";
     private static final String ATTR_LAST_SNOOZE = "lastSnooze";
+    private static final String ATTR_LAST_WARNING_SNOOZE = "lastWarningSnooze";
+    private static final String ATTR_LAST_LIMIT_SNOOZE = "lastLimitSnooze";
+    private static final String ATTR_METERED = "metered";
+    private static final String ATTR_INFERRED = "inferred";
     private static final String ATTR_UID = "uid";
     private static final String ATTR_POLICY = "policy";
 
@@ -341,6 +354,10 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         }
 
         @Override
+        public void onImportanceChanged(int pid, int uid, int importance) {
+        }
+
+        @Override
         public void onProcessDied(int pid, int uid) {
             mHandler.obtainMessage(MSG_PROCESS_DIED, pid, uid).sendToTarget();
         }
@@ -456,7 +473,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
             final long totalBytes = getTotalBytes(policy.template, start, end);
 
             if (policy.isOverLimit(totalBytes)) {
-                if (policy.lastSnooze >= start) {
+                if (policy.lastLimitSnooze >= start) {
                     enqueueNotification(policy, TYPE_LIMIT_SNOOZED, totalBytes);
                 } else {
                     enqueueNotification(policy, TYPE_LIMIT, totalBytes);
@@ -623,7 +640,8 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
             final String packageName = mContext.getPackageName();
             final int[] idReceived = new int[1];
             mNotifManager.enqueueNotificationWithTag(
-                    packageName, tag, 0x0, builder.getNotification(), idReceived);
+                    packageName, tag, 0x0, builder.getNotification(), idReceived,
+                    UserHandle.USER_OWNER);
             mActiveNotifs.add(tag);
         } catch (RemoteException e) {
             // ignored; service lives in system_server
@@ -653,11 +671,12 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                 PendingIntent.getBroadcast(mContext, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT));
 
         // TODO: move to NotificationManager once we can mock it
+        // XXX what to do about multi-user?
         try {
             final String packageName = mContext.getPackageName();
             final int[] idReceived = new int[1];
             mNotifManager.enqueueNotificationWithTag(packageName, tag,
-                    0x0, builder.getNotification(), idReceived);
+                    0x0, builder.getNotification(), idReceived, UserHandle.USER_OWNER);
             mActiveNotifs.add(tag);
         } catch (RemoteException e) {
             // ignored; service lives in system_server
@@ -669,7 +688,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         try {
             final String packageName = mContext.getPackageName();
             mNotifManager.cancelNotificationWithTag(
-                    packageName, tag, 0x0);
+                    packageName, tag, 0x0, UserHandle.USER_OWNER);
         } catch (RemoteException e) {
             // ignored; service lives in system_server
         }
@@ -718,8 +737,9 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
             final long totalBytes = getTotalBytes(policy.template, start, end);
 
             // disable data connection when over limit and not snoozed
-            final boolean overLimit = policy.isOverLimit(totalBytes) && policy.lastSnooze < start;
-            final boolean enabled = !overLimit;
+            final boolean overLimitWithoutSnooze= policy.isOverLimit(totalBytes)
+                    && policy.lastLimitSnooze < start;
+            final boolean enabled = !overLimitWithoutSnooze;
 
             setNetworkTemplateEnabled(policy.template, enabled);
         }
@@ -818,10 +838,15 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                         + Arrays.toString(ifaces));
             }
 
+            final boolean hasWarning = policy.warningBytes != LIMIT_DISABLED;
             final boolean hasLimit = policy.limitBytes != LIMIT_DISABLED;
-            if (hasLimit) {
+            if (hasLimit || policy.metered) {
                 final long quotaBytes;
-                if (policy.lastSnooze >= start) {
+                if (!hasLimit) {
+                    // metered network, but no policy limit; we still need to
+                    // restrict apps, so push really high quota.
+                    quotaBytes = Long.MAX_VALUE;
+                } else if (policy.lastLimitSnooze >= start) {
                     // snoozing past quota, but we still need to restrict apps,
                     // so push really high quota.
                     quotaBytes = Long.MAX_VALUE;
@@ -888,10 +913,12 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
             final Time time = new Time(Time.TIMEZONE_UTC);
             time.setToNow();
             final int cycleDay = time.monthDay;
+            final String cycleTimezone = time.timezone;
 
             final NetworkTemplate template = buildTemplateMobileAll(subscriberId);
             mNetworkPolicy.put(template, new NetworkPolicy(
-                    template, cycleDay, warningBytes, LIMIT_DISABLED, SNOOZE_NEVER));
+                    template, cycleDay, cycleTimezone, warningBytes, LIMIT_DISABLED, SNOOZE_NEVER,
+                    SNOOZE_NEVER, true, true));
             writePolicyLocked();
         }
     }
@@ -926,20 +953,61 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                     } else if (TAG_NETWORK_POLICY.equals(tag)) {
                         final int networkTemplate = readIntAttribute(in, ATTR_NETWORK_TEMPLATE);
                         final String subscriberId = in.getAttributeValue(null, ATTR_SUBSCRIBER_ID);
+                        final String networkId;
+                        if (version >= VERSION_ADDED_NETWORK_ID) {
+                            networkId = in.getAttributeValue(null, ATTR_NETWORK_ID);
+                        } else {
+                            networkId = null;
+                        }
                         final int cycleDay = readIntAttribute(in, ATTR_CYCLE_DAY);
+                        final String cycleTimezone;
+                        if (version >= VERSION_ADDED_TIMEZONE) {
+                            cycleTimezone = in.getAttributeValue(null, ATTR_CYCLE_TIMEZONE);
+                        } else {
+                            cycleTimezone = Time.TIMEZONE_UTC;
+                        }
                         final long warningBytes = readLongAttribute(in, ATTR_WARNING_BYTES);
                         final long limitBytes = readLongAttribute(in, ATTR_LIMIT_BYTES);
-                        final long lastSnooze;
-                        if (version >= VERSION_ADDED_SNOOZE) {
-                            lastSnooze = readLongAttribute(in, ATTR_LAST_SNOOZE);
+                        final long lastLimitSnooze;
+                        if (version >= VERSION_SPLIT_SNOOZE) {
+                            lastLimitSnooze = readLongAttribute(in, ATTR_LAST_LIMIT_SNOOZE);
+                        } else if (version >= VERSION_ADDED_SNOOZE) {
+                            lastLimitSnooze = readLongAttribute(in, ATTR_LAST_SNOOZE);
                         } else {
-                            lastSnooze = SNOOZE_NEVER;
+                            lastLimitSnooze = SNOOZE_NEVER;
+                        }
+                        final boolean metered;
+                        if (version >= VERSION_ADDED_METERED) {
+                            metered = readBooleanAttribute(in, ATTR_METERED);
+                        } else {
+                            switch (networkTemplate) {
+                                case MATCH_MOBILE_3G_LOWER:
+                                case MATCH_MOBILE_4G:
+                                case MATCH_MOBILE_ALL:
+                                    metered = true;
+                                    break;
+                                default:
+                                    metered = false;
+                            }
+                        }
+                        final long lastWarningSnooze;
+                        if (version >= VERSION_SPLIT_SNOOZE) {
+                            lastWarningSnooze = readLongAttribute(in, ATTR_LAST_WARNING_SNOOZE);
+                        } else {
+                            lastWarningSnooze = SNOOZE_NEVER;
+                        }
+                        final boolean inferred;
+                        if (version >= VERSION_ADDED_INFERRED) {
+                            inferred = readBooleanAttribute(in, ATTR_INFERRED);
+                        } else {
+                            inferred = false;
                         }
 
                         final NetworkTemplate template = new NetworkTemplate(
-                                networkTemplate, subscriberId);
-                        mNetworkPolicy.put(template, new NetworkPolicy(
-                                template, cycleDay, warningBytes, limitBytes, lastSnooze));
+                                networkTemplate, subscriberId, networkId);
+                        mNetworkPolicy.put(template, new NetworkPolicy(template, cycleDay,
+                                cycleTimezone, warningBytes, limitBytes, lastWarningSnooze,
+                                lastLimitSnooze, metered, inferred));
 
                     } else if (TAG_UID_POLICY.equals(tag)) {
                         final int uid = readIntAttribute(in, ATTR_UID);
@@ -1010,7 +1078,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                 writeIntAttribute(out, ATTR_CYCLE_DAY, policy.cycleDay);
                 writeLongAttribute(out, ATTR_WARNING_BYTES, policy.warningBytes);
                 writeLongAttribute(out, ATTR_LIMIT_BYTES, policy.limitBytes);
-                writeLongAttribute(out, ATTR_LAST_SNOOZE, policy.lastSnooze);
+                writeLongAttribute(out, ATTR_LAST_SNOOZE, policy.lastLimitSnooze);
                 out.endTag(null, TAG_NETWORK_POLICY);
             }
 
@@ -1120,9 +1188,18 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
     }
 
     @Override
-    public void snoozePolicy(NetworkTemplate template) {
+    public void snoozeLimit(NetworkTemplate template) {
         mContext.enforceCallingOrSelfPermission(MANAGE_NETWORK_POLICY, TAG);
 
+        final long token = Binder.clearCallingIdentity();
+        try {
+            performSnooze(template, TYPE_LIMIT);
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
+    private void performSnooze(NetworkTemplate template, int type) {
         maybeRefreshTrustedTime();
         final long currentTime = currentTimeMillis();
         synchronized (mRulesLock) {
@@ -1132,7 +1209,16 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
                 throw new IllegalArgumentException("unable to find policy for " + template);
             }
 
-            policy.lastSnooze = currentTime;
+            switch (type) {
+                case TYPE_WARNING:
+                    policy.lastWarningSnooze = currentTime;
+                    break;
+                case TYPE_LIMIT:
+                    policy.lastLimitSnooze = currentTime;
+                    break;
+                default:
+                    throw new IllegalArgumentException("unexpected type");
+            }
 
             updateNetworkEnabledLocked();
             updateNetworkRulesLocked();
@@ -1216,6 +1302,31 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
     }
 
     @Override
+    public boolean isNetworkMetered(NetworkState state) {
+        final NetworkIdentity ident = NetworkIdentity.buildNetworkIdentity(mContext, state);
+
+        // roaming networks are always considered metered
+        if (ident.getRoaming()) {
+            return true;
+        }
+
+        final NetworkPolicy policy;
+        synchronized (mRulesLock) {
+            policy = findPolicyForNetworkLocked(ident);
+        }
+
+        if (policy != null) {
+            return policy.metered;
+        } else {
+            final int type = state.networkInfo.getType();
+            if (isNetworkTypeMobile(type) || type == TYPE_WIMAX) {
+                return true;
+            }
+            return false;
+        }
+    }
+
+    @Override
     protected void dump(FileDescriptor fd, PrintWriter fout, String[] args) {
         mContext.enforceCallingOrSelfPermission(DUMP, TAG);
 
@@ -1227,7 +1338,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         synchronized (mRulesLock) {
             if (argSet.contains("unsnooze")) {
                 for (NetworkPolicy policy : mNetworkPolicy.values()) {
-                    policy.lastSnooze = SNOOZE_NEVER;
+                    policy.clearSnooze();
                 }
                 writePolicyLocked();
                 fout.println("Wiped snooze timestamps");

@@ -16,6 +16,7 @@
 
 package com.android.server;
 
+import static android.Manifest.permission.CONNECTIVITY_INTERNAL;
 import static android.Manifest.permission.ACCESS_NETWORK_STATE;
 import static android.Manifest.permission.CHANGE_NETWORK_STATE;
 import static android.Manifest.permission.DUMP;
@@ -49,6 +50,7 @@ import android.util.Slog;
 import android.util.SparseBooleanArray;
 
 import com.android.internal.net.NetworkStatsFactory;
+import com.android.server.NativeDaemonConnector.Command;
 import com.google.android.collect.Sets;
 
 import java.io.BufferedReader;
@@ -161,7 +163,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         }
 
         mConnector = new NativeDaemonConnector(
-                new NetdCallbackReceiver(), "netd", 10, NETD_TAG);
+                new NetdCallbackReceiver(), "netd", 10, NETD_TAG, 160);
         mThread = new Thread(mConnector, NETD_TAG);
 
         // Add ourself to the Watchdog monitors.
@@ -188,7 +190,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         if (hasKernelSupport && shouldEnable) {
             Slog.d(TAG, "enabling bandwidth control");
             try {
-                mConnector.doCommand("bandwidth enable");
+                mConnector.execute("bandwidth", "enable");
                 mBandwidthControlEnabled = true;
             } catch (NativeDaemonConnectorException e) {
                 Log.wtf(TAG, "problem enabling bandwidth controls", e);
@@ -399,7 +401,7 @@ public class NetworkManagementService extends INetworkManagementService.Stub
             }
 
             cfg = new InterfaceConfiguration();
-            cfg.hwAddr = st.nextToken(" ");
+            cfg.setHardwareAddress(st.nextToken(" "));
             InetAddress addr = null;
             int prefixLength = 0;
             try {
@@ -414,57 +416,48 @@ public class NetworkManagementService extends INetworkManagementService.Stub
                 Slog.e(TAG, "Failed to parse prefixLength", nfe);
             }
 
-            cfg.addr = new LinkAddress(addr, prefixLength);
-            cfg.interfaceFlags = st.nextToken("]").trim() +"]";
+            cfg.setLinkAddress(new LinkAddress(addr, prefixLength));
+            while (st.hasMoreTokens()) {
+                cfg.setFlag(st.nextToken());
+            }
         } catch (NoSuchElementException nsee) {
             throw new IllegalStateException(
                     String.format("Invalid response from daemon (%s)", rsp));
         }
-        Slog.d(TAG, String.format("flags <%s>", cfg.interfaceFlags));
         return cfg;
     }
 
     public void setInterfaceConfig(
             String iface, InterfaceConfiguration cfg) throws IllegalStateException {
         mContext.enforceCallingOrSelfPermission(CHANGE_NETWORK_STATE, TAG);
-        LinkAddress linkAddr = cfg.addr;
+        LinkAddress linkAddr = cfg.getLinkAddress();
         if (linkAddr == null || linkAddr.getAddress() == null) {
             throw new IllegalStateException("Null LinkAddress given");
         }
-        String cmd = String.format("interface setcfg %s %s %d %s", iface,
+        final Command cmd = new Command("interface", "setcfg", iface,
                 linkAddr.getAddress().getHostAddress(),
-                linkAddr.getNetworkPrefixLength(),
-                cfg.interfaceFlags);
+                linkAddr.getNetworkPrefixLength());
         try {
-            mConnector.doCommand(cmd);
+            mConnector.execute(cmd);
         } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException(
-                    "Unable to communicate with native daemon to interface setcfg - " + e);
+            throw e.rethrowAsParcelableException();
         }
     }
 
-    public void setInterfaceDown(String iface) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(CHANGE_NETWORK_STATE, TAG);
-        try {
-            InterfaceConfiguration ifcg = getInterfaceConfig(iface);
-            ifcg.interfaceFlags = ifcg.interfaceFlags.replace("up", "down");
-            setInterfaceConfig(iface, ifcg);
-        } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException(
-                    "Unable to communicate with native daemon for interface down - " + e);
-        }
+    @Override
+    public void setInterfaceDown(String iface) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
+        final InterfaceConfiguration ifcg = getInterfaceConfig(iface);
+        ifcg.setInterfaceDown();
+        setInterfaceConfig(iface, ifcg);
     }
 
-    public void setInterfaceUp(String iface) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(CHANGE_NETWORK_STATE, TAG);
-        try {
-            InterfaceConfiguration ifcg = getInterfaceConfig(iface);
-            ifcg.interfaceFlags = ifcg.interfaceFlags.replace("down", "up");
-            setInterfaceConfig(iface, ifcg);
-        } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException(
-                    "Unable to communicate with native daemon for interface up - " + e);
-        }
+    @Override
+    public void setInterfaceUp(String iface) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
+        final InterfaceConfiguration ifcg = getInterfaceConfig(iface);
+        ifcg.setInterfaceUp();
+        setInterfaceConfig(iface, ifcg);
     }
 
     public void setInterfaceIpv6PrivacyExtensions(String iface, boolean enable)
@@ -506,14 +499,13 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         }
     }
 
-    public void disableIpv6(String iface) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(
-                android.Manifest.permission.CHANGE_NETWORK_STATE, "NetworkManagementService");
+    @Override
+    public void disableIpv6(String iface) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
         try {
-            mConnector.doCommand(String.format("interface ipv6 %s disable", iface));
+            mConnector.execute("interface", "ipv6", iface, "disable");
         } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException(
-                    "Unable to communicate to native daemon for disabling ipv6");
+            throw e.rethrowAsParcelableException();
         }
     }
 
@@ -734,10 +726,14 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         throw new IllegalStateException("Got an empty response");
     }
 
-    public void setIpForwardingEnabled(boolean enable) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(
-                android.Manifest.permission.CHANGE_NETWORK_STATE, "NetworkManagementService");
-        mConnector.doCommand(String.format("ipfwd %sable", (enable ? "en" : "dis")));
+    @Override
+    public void setIpForwardingEnabled(boolean enable) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
+        try {
+            mConnector.execute("ipfwd", enable ? "enable" : "disable");
+        } catch (NativeDaemonConnectorException e) {
+            throw e.rethrowAsParcelableException();
+        }   
     }
 
     public void startTethering(String[] dhcpRange)
@@ -897,7 +893,11 @@ public class NetworkManagementService extends INetworkManagementService.Stub
             }
         }
 
-        mConnector.doCommand(cmd);
+        try {
+            mConnector.execute(cmd);
+        } catch (NativeDaemonConnectorException e) {
+            throw e.rethrowAsParcelableException();
+        }
     }
 
     public void enableNat(String internalInterface, String externalInterface)

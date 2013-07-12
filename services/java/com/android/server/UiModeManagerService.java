@@ -45,6 +45,7 @@ import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.text.format.DateUtils;
 import android.text.format.Time;
@@ -56,6 +57,7 @@ import java.util.Iterator;
 
 import com.android.internal.R;
 import com.android.internal.app.DisableCarModeActivity;
+import com.android.server.TwilightService.TwilightState;
 import com.android.internal.app.ThemeUtils;
 
 class UiModeManagerService extends IUiModeManager.Stub {
@@ -82,6 +84,7 @@ class UiModeManagerService extends IUiModeManager.Stub {
     private static final String ACTION_UPDATE_NIGHT_MODE = "com.android.server.action.UPDATE_NIGHT_MODE";
 
     private final Context mContext;
+    private final TwilightService mTwilightService;
     private Context mUiContext;
 
     final Object mLock = new Object();
@@ -190,8 +193,8 @@ class UiModeManagerService extends IUiModeManager.Stub {
                     }
                     try {
                         ActivityManagerNative.getDefault().startActivityWithConfig(
-                                null, homeIntent, null, null, 0, null, null, 0, false, false,
-                                newConfig);
+                                null, homeIntent, null, null, null, 0, 0,
+                                newConfig, null, UserHandle.USER_CURRENT);
                         mHoldingConfiguration = false;
                     } catch (RemoteException e) {
                         Slog.w(TAG, e.getCause());
@@ -332,8 +335,17 @@ class UiModeManagerService extends IUiModeManager.Stub {
         }
     };
 
-    public UiModeManagerService(Context context) {
+    private final TwilightService.TwilightListener mTwilightListener =
+            new TwilightService.TwilightListener() {
+        @Override
+        public void onTwilightStateChanged() {
+            updateTwilight();
+        }
+    };
+
+    public UiModeManagerService(Context context, TwilightService twilight) {
         mContext = context;
+        mTwilightService = twilight;
 
         ServiceManager.addService(Context.UI_MODE_SERVICE, this);
 
@@ -365,6 +377,8 @@ class UiModeManagerService extends IUiModeManager.Stub {
         
         mNightMode = Settings.Secure.getInt(mContext.getContentResolver(),
                 Settings.Secure.UI_NIGHT_MODE, UiModeManager.MODE_NIGHT_AUTO);
+
+        mTwilightService.registerListener(mTwilightListener, mHandler);
     }
 
     public void disableCarMode(int flags) {
@@ -427,6 +441,10 @@ class UiModeManagerService extends IUiModeManager.Stub {
             updateLocked(0, 0);
             mHandler.sendEmptyMessage(MSG_ENABLE_LOCATION_UPDATES);
         }
+    }
+
+    private boolean isDoingNightModeLocked() {
+        return mCarModeEnabled || mDockState != Intent.EXTRA_DOCK_STATE_UNDOCKED;
     }
 
     boolean isDoingNightMode() {
@@ -652,6 +670,22 @@ class UiModeManagerService extends IUiModeManager.Stub {
             } else {
                 mNotificationManager.cancel(0);
             }
+        }
+    }
+
+    private void updateTwilight() {
+        synchronized (mLock) {
+            if (isDoingNightModeLocked() && mNightMode == UiModeManager.MODE_NIGHT_AUTO) {
+                updateComputedNightModeLocked();
+                updateLocked(0, 0);
+            }
+        }
+    }
+
+    private void updateComputedNightModeLocked() {
+        TwilightState state = mTwilightService.getCurrentState();
+        if (state != null) {
+            mComputedNightMode = state.isNight();
         }
     }
 

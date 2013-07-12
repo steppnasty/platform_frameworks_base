@@ -16,6 +16,7 @@
 
 package com.android.server.am;
 
+import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
 
@@ -54,7 +55,7 @@ class IntentBindRecord {
 
     void dumpInService(PrintWriter pw, String prefix) {
         pw.print(prefix); pw.print("intent={");
-                pw.print(intent.getIntent().toShortString(false, true, false));
+                pw.print(intent.getIntent().toShortString(false, true, false, false));
                 pw.println('}');
         pw.print(prefix); pw.print("binder="); pw.println(binder);
         pw.print(prefix); pw.print("requested="); pw.print(requested);
@@ -78,6 +79,20 @@ class IntentBindRecord {
         intent = _intent;
     }
 
+    int collectFlags() {
+        int flags = 0;
+        if (apps.size() > 0) {
+            for (AppBindRecord app : apps.values()) {
+                if (app.connections.size() > 0) {
+                    for (ConnectionRecord conn : app.connections) {
+                        flags |= conn.flags;
+                    }
+                }
+            }
+        }
+        return flags;
+    }
+
     public String toString() {
         if (stringName != null) {
             return stringName;
@@ -86,10 +101,13 @@ class IntentBindRecord {
         sb.append("IntentBindRecord{");
         sb.append(Integer.toHexString(System.identityHashCode(this)));
         sb.append(' ');
+        if ((collectFlags()&Context.BIND_AUTO_CREATE) != 0) {
+            sb.append("CR ");
+        }
         sb.append(service.shortName);
         sb.append(':');
         if (intent != null) {
-            intent.getIntent().toShortString(sb, false, false, false);
+            intent.getIntent().toShortString(sb, false, false, false, false);
         }
         sb.append('}');
         return stringName = sb.toString();

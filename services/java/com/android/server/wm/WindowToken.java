@@ -48,7 +48,7 @@ class WindowToken {
     AppWindowToken appWindowToken;
 
     // All of the windows associated with this token.
-    final ArrayList<WindowState> windows = new ArrayList<WindowState>();
+    final WindowList windows = new WindowList();
 
     // Is key dispatching paused for this token?
     boolean paused = false;
@@ -71,10 +71,6 @@ class WindowToken {
     // windows will be put to the bottom of the list.
     boolean sendingToBottom;
 
-    // Set to true when this token is in a pending transaction where its
-    // windows will be put to the top of the list.
-    boolean sendingToTop;
-
     WindowToken(WindowManagerService _service, IBinder _token, int type, boolean _explicit) {
         service = _service;
         token = _token;
@@ -83,16 +79,14 @@ class WindowToken {
     }
 
     void dump(PrintWriter pw, String prefix) {
-        pw.print(prefix); pw.print("token="); pw.println(token);
         pw.print(prefix); pw.print("windows="); pw.println(windows);
         pw.print(prefix); pw.print("windowType="); pw.print(windowType);
                 pw.print(" hidden="); pw.print(hidden);
                 pw.print(" hasVisible="); pw.println(hasVisible);
-        if (waitingToShow || waitingToHide || sendingToBottom || sendingToTop) {
+        if (waitingToShow || waitingToHide || sendingToBottom) {
             pw.print(prefix); pw.print("waitingToShow="); pw.print(waitingToShow);
                     pw.print(" waitingToHide="); pw.print(waitingToHide);
                     pw.print(" sendingToBottom="); pw.print(sendingToBottom);
-                    pw.print(" sendingToTop="); pw.println(sendingToTop);
         }
     }
 
@@ -102,7 +96,7 @@ class WindowToken {
             StringBuilder sb = new StringBuilder();
             sb.append("WindowToken{");
             sb.append(Integer.toHexString(System.identityHashCode(this)));
-            sb.append(" token="); sb.append(token); sb.append('}');
+            sb.append(" "); sb.append(token); sb.append('}');
             stringName = sb.toString();
         }
         return stringName;

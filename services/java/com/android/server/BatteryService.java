@@ -33,6 +33,7 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
 import android.os.UEventObserver;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.EventLog;
 import android.util.Slog;
@@ -68,7 +69,7 @@ import java.util.Arrays;
  * a degree Centigrade</p>
  * <p>&quot;technology&quot; - String, the type of battery installed, e.g. "Li-ion"</p>
  */
-class BatteryService extends Binder {
+public final class BatteryService extends Binder {
     private static final String TAG = BatteryService.class.getSimpleName();
 
     private static final boolean LOCAL_LOGV = false;
@@ -91,8 +92,11 @@ class BatteryService extends Binder {
     private final Context mContext;
     private final IBatteryStats mBatteryStats;
 
+    private final Object mLock = new Object();
+
     private boolean mAcOnline;
     private boolean mUsbOnline;
+    private boolean mWirelessOnline;
     private int mBatteryStatus;
     private int mBatteryHealth;
     private boolean mBatteryPresent;
@@ -148,32 +152,40 @@ class BatteryService extends Binder {
         update();
     }
 
-    final boolean isPowered() {
-        // assume we are powered if battery state is unknown so the "stay on while plugged in" option will work.
-        return (mAcOnline || mUsbOnline || mBatteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN);
+    /**
+     * Returns true if the device is plugged into any of the specified plug types.
+     */
+    public boolean isPowered(int plugTypeSet) {
+        synchronized (mLock) {
+            return isPoweredLocked(plugTypeSet);
+        }
     }
 
-    final boolean isPowered(int plugTypeSet) {
+    private boolean isPoweredLocked(int plugTypeSet) {
         // assume we are powered if battery state is unknown so
         // the "stay on while plugged in" option will work.
         if (mBatteryStatus == BatteryManager.BATTERY_STATUS_UNKNOWN) {
             return true;
         }
-        if (plugTypeSet == 0) {
-            return false;
+        if ((plugTypeSet & BatteryManager.BATTERY_PLUGGED_AC) != 0 && mAcOnline) {
+            return true;
         }
-        int plugTypeBit = 0;
-        if (mAcOnline) {
-            plugTypeBit |= BatteryManager.BATTERY_PLUGGED_AC;
+        if ((plugTypeSet & BatteryManager.BATTERY_PLUGGED_USB) != 0 && mUsbOnline) {
+            return true;
         }
-        if (mUsbOnline) {
-            plugTypeBit |= BatteryManager.BATTERY_PLUGGED_USB;
+        if ((plugTypeSet & BatteryManager.BATTERY_PLUGGED_WIRELESS) != 0 && mWirelessOnline) {
+            return true;
         }
-        return (plugTypeSet & plugTypeBit) != 0;
+        return false;
     }
 
-    final int getPlugType() {
-        return mPlugType;
+    /**
+     * Returns the current plug type.
+     */
+    public int getPlugType() {
+        synchronized (mLock) {
+            return mPlugType;
+        }
     }
 
     private UEventObserver mPowerSupplyObserver = new UEventObserver() {
@@ -194,9 +206,13 @@ class BatteryService extends Binder {
         }
     };
 
-    // returns battery level as a percentage
-    final int getBatteryLevel() {
-        return mBatteryLevel;
+    /**
+     * Returns battery level as a percentage.
+     */
+    public int getBatteryLevel() {
+        synchronized (mLock) {
+            return mBatteryLevel;
+        }
     }
 
     void systemReady() {
@@ -208,7 +224,7 @@ class BatteryService extends Binder {
     private final void shutdownIfNoPower() {
         // shut down gracefully if our battery is critically low and we are not powered.
         // wait until the system has booted before attempting to display the shutdown dialog.
-        if (mBatteryLevel == 0 && !isPowered() && ActivityManagerNative.isSystemReady()) {
+        if (mBatteryLevel == 0 && !isPoweredLocked(BatteryManager.BATTERY_PLUGGED_ANY)) {
             Intent intent = new Intent(Intent.ACTION_REQUEST_SHUTDOWN);
             intent.putExtra(Intent.EXTRA_KEY_CONFIRM, false);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -401,7 +417,7 @@ class BatteryService extends Binder {
                     " icon:" + icon  + " invalid charger:" + mInvalidCharger);
         }
 
-        ActivityManagerNative.broadcastStickyIntent(intent, null);
+        ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
     }
 
     private final void logBatteryStats() {
@@ -444,10 +460,10 @@ class BatteryService extends Binder {
 
     private final void logOutlier(long duration) {
         ContentResolver cr = mContext.getContentResolver();
-        String dischargeThresholdString = Settings.Secure.getString(cr,
-                Settings.Secure.BATTERY_DISCHARGE_THRESHOLD);
-        String durationThresholdString = Settings.Secure.getString(cr,
-                Settings.Secure.BATTERY_DISCHARGE_DURATION_THRESHOLD);
+        String dischargeThresholdString = Settings.Global.getString(cr,
+                Settings.Global.BATTERY_DISCHARGE_THRESHOLD);
+        String durationThresholdString = Settings.Global.getString(cr,
+                Settings.Global.BATTERY_DISCHARGE_DURATION_THRESHOLD);
 
         if (dischargeThresholdString != null && durationThresholdString != null) {
             try {
@@ -477,7 +493,7 @@ class BatteryService extends Binder {
             return com.android.internal.R.drawable.stat_sys_battery;
         } else if (mBatteryStatus == BatteryManager.BATTERY_STATUS_NOT_CHARGING
                 || mBatteryStatus == BatteryManager.BATTERY_STATUS_FULL) {
-            if (isPowered() && mBatteryLevel >= 100) {
+            if (isPoweredLocked(BatteryManager.BATTERY_PLUGGED_ANY) && mBatteryLevel >= 100) {
                 return com.android.internal.R.drawable.stat_sys_battery_charge;
             } else {
                 return com.android.internal.R.drawable.stat_sys_battery;

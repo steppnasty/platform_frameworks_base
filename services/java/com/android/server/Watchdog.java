@@ -17,6 +17,7 @@
 package com.android.server;
 
 import com.android.server.am.ActivityManagerService;
+import com.android.server.power.PowerManagerService;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -25,6 +26,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.Message;
@@ -66,6 +68,12 @@ public class Watchdog extends Thread {
     static final int REBOOT_DEFAULT_WINDOW = 60*60;                        // within 1 hour
 
     static final String REBOOT_ACTION = "com.android.service.Watchdog.REBOOT";
+
+    static final String[] NATIVE_STACKS_OF_INTEREST = new String[] {
+        "/system/bin/mediaserver",
+        "/system/bin/sdcard",
+        "/system/bin/surfaceflinger"
+    };
 
     static Watchdog sWatchdog;
 
@@ -308,7 +316,7 @@ public class Watchdog extends Thread {
     void rebootSystem(String reason) {
         Slog.i(TAG, "Rebooting system because: " + reason);
         PowerManagerService pms = (PowerManagerService) ServiceManager.getService("power");
-        pms.reboot(reason);
+        pms.reboot(false, reason, false);
     }
 
     /**
@@ -337,12 +345,12 @@ public class Watchdog extends Thread {
      * text of why it is not a good time.
      */
     String shouldWeBeBrutalLocked(long curTime) {
-        if (mBattery == null || !mBattery.isPowered()) {
+        if (mBattery == null || !mBattery.isPowered(BatteryManager.BATTERY_PLUGGED_ANY)) {
             return "battery";
         }
 
         if (mMinScreenOff >= 0 && (mPower == null ||
-                mPower.timeSinceScreenOn() < mMinScreenOff)) {
+                mPower.timeSinceScreenWasLastOn() < mMinScreenOff)) {
             return "screen";
         }
 
@@ -414,7 +422,8 @@ public class Watchdog extends Thread {
                     // trace and wait another half.
                     ArrayList<Integer> pids = new ArrayList<Integer>();
                     pids.add(Process.myPid());
-                    ActivityManagerService.dumpStackTraces(true, pids, null, null);
+                    ActivityManagerService.dumpStackTraces(true, pids, null, null,
+                            NATIVE_STACKS_OF_INTEREST);
                     waitedHalf = true;
                     continue;
                 }
@@ -434,7 +443,7 @@ public class Watchdog extends Thread {
             // Pass !waitedHalf so that just in case we somehow wind up here without having
             // dumped the halfway stacks, we properly re-initialize the trace file.
             final File stack = ActivityManagerService.dumpStackTraces(
-                    !waitedHalf, pids, null, null);
+                    !waitedHalf, pids, null, null, NATIVE_STACKS_OF_INTEREST);
 
             // Give some extra time to make sure the stack traces get written.
             // The system's been hanging for a minute, another second or two won't hurt much.

@@ -875,6 +875,28 @@ private NetworkStateTracker makeWimaxStateTracker() {
         return null;
     }
 
+    @Override
+    public boolean isActiveNetworkMetered() {
+        enforceAccessPermission();
+        final long token = Binder.clearCallingIdentity();
+        try {
+            return isNetworkMeteredUnchecked(mActiveDefaultNetwork);
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
+    private boolean isNetworkMeteredUnchecked(int networkType) {
+        final NetworkState state = getNetworkStateUnchecked(networkType);
+        if (state != null) {
+            try {
+                return mPolicyManager.isNetworkMetered(state);
+            } catch (RemoteException e) {
+            }
+        }
+        return false;
+    }
+
     public boolean setRadios(boolean turnOn) {
         boolean result = true;
         enforceChangePermission();
@@ -1365,8 +1387,8 @@ private NetworkStateTracker makeWimaxStateTracker() {
         //       which is where we store the value and maybe make this
         //       asynchronous.
         enforceAccessPermission();
-        boolean retVal = Settings.Secure.getInt(mContext.getContentResolver(),
-                Settings.Secure.MOBILE_DATA, 1) == 1;
+        boolean retVal = Settings.Global.getInt(mContext.getContentResolver(),
+                Settings.Global.MOBILE_DATA, 1) == 1;
         if (VDBG) log("getMobileDataEnabled returning " + retVal);
         return retVal;
     }

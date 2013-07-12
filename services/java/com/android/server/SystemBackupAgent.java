@@ -58,7 +58,7 @@ public class SystemBackupAgent extends BackupAgentHelper {
         WallpaperManagerService wallpaper = (WallpaperManagerService)ServiceManager.getService(
                 Context.WALLPAPER_SERVICE);
         String[] files = new String[] { WALLPAPER_IMAGE, WALLPAPER_INFO };
-        if (wallpaper != null && wallpaper.mName != null && wallpaper.mName.length() > 0) {
+        if (wallpaper != null && wallpaper.getName() != null && wallpaper.getName().length() > 0) {
             // When the wallpaper has a name, back up the info by itself.
             // TODO: Don't rely on the innards of the service object like this!
             // TODO: Send a delete for any stored wallpaper image in this case?

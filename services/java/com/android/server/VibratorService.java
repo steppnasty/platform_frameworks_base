@@ -21,6 +21,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
+import android.hardware.input.InputManager;
 import android.os.Handler;
 import android.os.IVibratorService;
 import android.os.PowerManager;
@@ -29,18 +31,33 @@ import android.os.RemoteException;
 import android.os.IBinder;
 import android.os.Binder;
 import android.os.SystemClock;
+import android.os.Vibrator;
 import android.os.WorkSource;
+import android.os.UserHandle;
+import android.provider.Settings;
+import android.provider.Settings.SettingNotFoundException;
 import android.util.Slog;
+import android.view.InputDevice;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.ListIterator;
 
-public class VibratorService extends IVibratorService.Stub {
+public class VibratorService extends IVibratorService.Stub 
+        implements InputManager.InputDeviceListener {
     private static final String TAG = "VibratorService";
 
     private final LinkedList<Vibration> mVibrations;
     private Vibration mCurrentVibration;
     private final WorkSource mTmpWorkSource = new WorkSource();
+
+    private InputManager mIm;
+
+    // mInputDeviceVibrators lock should be acquired after mVibrations lock, if both are
+    // to be acquired
+    private final ArrayList<Vibrator> mInputDeviceVibrators = new ArrayList<Vibrator>();
+    private boolean mVibrateInputDevicesSetting; // guarded by mInputDeviceVibrators
+    private boolean mInputDeviceListenerRegistered; // guarded by mInputDeviceVibrators
 
     private class Vibration implements IBinder.DeathRecipient {
         private final IBinder mToken;
@@ -110,6 +127,28 @@ public class VibratorService extends IVibratorService.Stub {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(mIntentReceiver, filter);
+    }
+
+    public void systemReady() {
+        mIm = (InputManager)mContext.getSystemService(Context.INPUT_SERVICE);
+
+        mContext.getContentResolver().registerContentObserver(
+                Settings.System.getUriFor(Settings.System.VIBRATE_INPUT_DEVICES), true,
+                new ContentObserver(mH) {
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        updateInputDeviceVibrators();
+                    }
+                }, UserHandle.USER_ALL);
+
+        mContext.registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                updateInputDeviceVibrators();
+            }
+        }, new IntentFilter(Intent.ACTION_USER_SWITCHED), null, mH);
+
+        updateInputDeviceVibrators();
     }
 
     public boolean hasVibrator() {
@@ -293,6 +332,63 @@ public class VibratorService extends IVibratorService.Stub {
             // the Vibration object has also been linkedToDeath.
             vib.mToken.unlinkToDeath(vib, 0);
         }
+    }
+
+    private void updateInputDeviceVibrators() {
+        synchronized (mVibrations) {
+            doCancelVibrateLocked();
+
+            synchronized (mInputDeviceVibrators) {
+                mVibrateInputDevicesSetting = false;
+                try {
+                    mVibrateInputDevicesSetting = Settings.System.getIntForUser(
+                            mContext.getContentResolver(),
+                            Settings.System.VIBRATE_INPUT_DEVICES, UserHandle.USER_CURRENT) > 0;
+                } catch (SettingNotFoundException snfe) {
+                }
+
+                if (mVibrateInputDevicesSetting) {
+                    if (!mInputDeviceListenerRegistered) {
+                        mInputDeviceListenerRegistered = true;
+                        mIm.registerInputDeviceListener(this, mH);
+                    }
+                } else {
+                    if (mInputDeviceListenerRegistered) {
+                        mInputDeviceListenerRegistered = false;
+                        mIm.unregisterInputDeviceListener(this);
+                    }
+                }
+
+                mInputDeviceVibrators.clear();
+                if (mVibrateInputDevicesSetting) {
+                    int[] ids = mIm.getInputDeviceIds();
+                    for (int i = 0; i < ids.length; i++) {
+                        InputDevice device = mIm.getInputDevice(ids[i]);
+                        Vibrator vibrator = device.getVibrator();
+                        if (vibrator.hasVibrator()) {
+                            mInputDeviceVibrators.add(vibrator);
+                        }
+                    }
+                }
+            }
+
+            startNextVibrationLocked();
+        }
+    }
+
+    @Override
+    public void onInputDeviceAdded(int deviceId) {
+        updateInputDeviceVibrators();
+    }
+
+    @Override
+    public void onInputDeviceChanged(int deviceId) {
+        updateInputDeviceVibrators();
+    }
+
+    @Override
+    public void onInputDeviceRemoved(int deviceId) {
+        updateInputDeviceVibrators();
     }
 
     private class VibrateThread extends Thread {

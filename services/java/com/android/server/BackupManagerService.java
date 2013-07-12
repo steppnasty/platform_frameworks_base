@@ -66,6 +66,7 @@ import android.os.ServiceManager;
 import android.os.SystemClock;
 import android.os.WorkSource;
 import android.os.storage.IMountService;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.EventLog;
 import android.util.Log;
@@ -775,7 +776,8 @@ class BackupManagerService extends IBackupManager.Stub {
             if ((info.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
                 if (DEBUG) Slog.v(TAG, "Binding to Google transport");
                 Intent intent = new Intent().setComponent(transportComponent);
-                context.bindService(intent, mGoogleConnection, Context.BIND_AUTO_CREATE);
+                context.bindService(intent, mGoogleConnection, Context.BIND_AUTO_CREATE,
+                        UserHandle.USER_OWNER);
             } else {
                 Slog.w(TAG, "Possible Google transport spoof: ignoring " + info);
             }
@@ -1650,7 +1652,7 @@ class BackupManagerService extends IBackupManager.Stub {
         synchronized(mClearDataLock) {
             mClearingData = true;
             try {
-                mActivityManager.clearApplicationUserData(packageName, observer);
+                mActivityManager.clearApplicationUserData(packageName, observer, 0);
             } catch (RemoteException e) {
                 // can't happen because the activity manager is in this process
             }
@@ -4862,7 +4864,7 @@ class BackupManagerService extends IBackupManager.Stub {
 
     boolean deviceIsProvisioned() {
         final ContentResolver resolver = mContext.getContentResolver();
-        return (Settings.Secure.getInt(resolver, Settings.Secure.DEVICE_PROVISIONED, 0) != 0);
+        return (Settings.Global.getInt(resolver, Settings.Global.DEVICE_PROVISIONED, 0) != 0);
     }
 
     // Run a *full* backup pass for the given package, writing the resulting data stream

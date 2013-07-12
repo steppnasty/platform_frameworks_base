@@ -460,9 +460,9 @@ public class WifiService extends IWifiManager.Stub {
         final ContentResolver cr = mContext.getContentResolver();
         int wifiSavedState = 0;
         try {
-            wifiSavedState = Settings.Secure.getInt(cr, Settings.Secure.WIFI_SAVED_STATE);
+            wifiSavedState = Settings.Global.getInt(cr, Settings.Global.WIFI_SAVED_STATE);
             if(wifiSavedState == 1)
-                Settings.Secure.putInt(cr, Settings.Secure.WIFI_SAVED_STATE, 0);
+                Settings.Global.putInt(cr, Settings.Global.WIFI_SAVED_STATE, 0);
         } catch (Settings.SettingNotFoundException e) {
             ;
         }
@@ -1132,8 +1132,8 @@ public class WifiService extends IWifiManager.Stub {
      * @return {@code true} if airplane mode is on.
      */
     private boolean isAirplaneModeOn() {
-        return isAirplaneSensitive() && Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.AIRPLANE_MODE_ON, 0) == 1;
+        return isAirplaneSensitive() && Settings.Global.getInt(mContext.getContentResolver(),
+                Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
     }
 
     @Override

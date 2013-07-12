@@ -26,6 +26,7 @@ import android.os.Message;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.os.UEventObserver;
+import android.os.UserHandle;
 import android.util.Slog;
 import android.media.AudioManager;
 import android.util.Log;
@@ -244,19 +245,19 @@ class WiredAccessoryObserver extends UEventObserver {
                     intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
                     intent.putExtra("state", state);
                     intent.putExtra("name", headsetName);
-                    ActivityManagerNative.broadcastStickyIntent(intent, null);
+                    ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
                 } else if (headset == BIT_USB_HEADSET_DGTL) {
                     intent = new Intent(Intent.ACTION_USB_DGTL_HEADSET_PLUG);
                     intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
                     intent.putExtra("state", state);
                     intent.putExtra("name", headsetName);
-                    ActivityManagerNative.broadcastStickyIntent(intent, null);
+                    ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
                 } else if (headset == BIT_HDMI_AUDIO) {
                     intent = new Intent(Intent.ACTION_HDMI_AUDIO_PLUG);
                     intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
                     intent.putExtra("state", state);
                     intent.putExtra("name", headsetName);
-                    ActivityManagerNative.broadcastStickyIntent(intent, null);
+                    ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
                 }
 
                 if (LOG) Slog.v(TAG, "Intent.ACTION_USB_HEADSET_PLUG: state: "+state+" name: "+headsetName);
@@ -280,7 +281,7 @@ class WiredAccessoryObserver extends UEventObserver {
 
                 if (LOG) Slog.v(TAG, "Intent.ACTION_HEADSET_PLUG: state: "+state+" name: "+headsetName+" mic: "+microphone);
                 // TODO: Should we require a permission?
-                ActivityManagerNative.broadcastStickyIntent(intent, null);
+                ActivityManagerNative.broadcastStickyIntent(intent, null, UserHandle.USER_ALL);
             }
         }
     }

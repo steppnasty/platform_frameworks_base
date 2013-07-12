@@ -27,12 +27,15 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.UEventObserver;
 import android.provider.Settings;
 import android.server.BluetoothService;
 import android.util.Log;
 import android.util.Slog;
+
+import com.android.server.power.PowerManagerService;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -47,7 +50,7 @@ class DockObserver extends UEventObserver {
     private static final String DOCK_UEVENT_MATCH = "DEVPATH=/devices/virtual/switch/dock";
     private static final String DOCK_STATE_PATH = "/sys/class/switch/dock/state";
 
-    private static final int MSG_DOCK_STATE = 0;
+    private static final int MSG_DOCK_STATE_CHANGED = 0;
 
     private int mDockState = Intent.EXTRA_DOCK_STATE_UNDOCKED;
     private int mPreviousDockState = Intent.EXTRA_DOCK_STATE_UNDOCKED;
@@ -55,14 +58,16 @@ class DockObserver extends UEventObserver {
     private boolean mSystemReady;
 
     private final Context mContext;
+    private final PowerManager mPowerManager;
+    private final PowerManager.WakeLock mWakeLock;
 
-    private PowerManagerService mPowerManager;
-
-    public DockObserver(Context context, PowerManagerService pm) {
+    public DockObserver(Context context) {
         mContext = context;
-        mPowerManager = pm;
-        init();  // set initial status
 
+        mPowerManager = (PowerManager)mContext.getSystemService(Context.POWER_SERVICE);
+        mWakeLock = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+
+        init();  // set initial status
         startObserving(DOCK_UEVENT_MATCH);
     }
 
@@ -79,16 +84,9 @@ class DockObserver extends UEventObserver {
                     mPreviousDockState = mDockState;
                     mDockState = newState;
                     if (mSystemReady) {
-                        // Don't force screen on when undocking from the desk dock.
-                        // The change in power state will do this anyway.
-                        // FIXME - we should be configurable.
-                        if ((mPreviousDockState != Intent.EXTRA_DOCK_STATE_DESK
-                                && mPreviousDockState != Intent.EXTRA_DOCK_STATE_LE_DESK
-                                && mPreviousDockState != Intent.EXTRA_DOCK_STATE_HE_DESK) ||
-                                mDockState != Intent.EXTRA_DOCK_STATE_UNDOCKED) {
-                            mPowerManager.userActivityWithForce(SystemClock.uptimeMillis(),
-                                    false, true);
-                        }
+                        // Wake up immediately when docked or undocked.
+                        mPowerManager.wakeUp(SystemClock.uptimeMillis());
+
                         update();
                     }
                 }
@@ -124,21 +122,22 @@ class DockObserver extends UEventObserver {
     }
 
     private final void update() {
-        mHandler.sendEmptyMessage(MSG_DOCK_STATE);
+        mWakeLock.acquire();
+        mHandler.sendEmptyMessage(MSG_DOCK_STATE_CHANGED);
     }
 
     private final Handler mHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
-                case MSG_DOCK_STATE:
+                case MSG_DOCK_STATE_CHANGED:
                     synchronized (this) {
                         Slog.i(TAG, "Dock state changed: " + mDockState);
 
                         final ContentResolver cr = mContext.getContentResolver();
 
-                        if (Settings.Secure.getInt(cr,
-                                Settings.Secure.DEVICE_PROVISIONED, 0) == 0) {
+                        if (Settings.Global.getInt(cr,
+                                Settings.Global.DEVICE_PROVISIONED, 0) == 0) {
                             Slog.i(TAG, "Device not provisioned, skipping dock broadcast");
                             return;
                         }

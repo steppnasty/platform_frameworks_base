@@ -25,6 +25,7 @@ import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.os.Binder;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.speech.RecognitionService;
 import android.text.TextUtils;
@@ -65,7 +66,7 @@ public class RecognitionManagerService extends Binder {
     RecognitionManagerService(Context context) {
         mContext = context;
         mMonitor = new MyPackageMonitor();
-        mMonitor.register(context, true);
+        mMonitor.register(context, null, UserHandle.ALL, true);
     }
     
     public void systemReady() {

@@ -25,7 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-class Installer {
+public final class Installer {
     private static final String TAG = "Installer";
 
     private static final boolean LOCAL_DEBUG = false;
@@ -243,10 +243,23 @@ class Installer {
         return execute(builder.toString());
     }
 
-    public int deleteCacheFiles(String name) {
+    public int fixUid(String name, int uid, int gid) {
+        StringBuilder builder = new StringBuilder("fixuid");
+        builder.append(' ');
+        builder.append(name);
+        builder.append(' ');
+        builder.append(uid);
+        builder.append(' ');
+        builder.append(gid);
+        return execute(builder.toString());
+    }
+
+    public int deleteCacheFiles(String name, int userId) {
         StringBuilder builder = new StringBuilder("rmcache");
         builder.append(' ');
         builder.append(name);
+        builder.append(' ');
+        builder.append(userId);
         return execute(builder.toString());
     }
 
@@ -306,11 +319,13 @@ class Installer {
         return execute(builder.toString());
     }
 
-    public int getSizeInfo(String pkgName, String apkPath, String fwdLockApkPath,
+    public int getSizeInfo(String pkgName, int persona, String apkPath, String fwdLockApkPath,
             String asecPath, PackageStats pStats) {
         StringBuilder builder = new StringBuilder("getsize");
         builder.append(' ');
         builder.append(pkgName);
+        builder.append(' ');
+        builder.append(persona);
         builder.append(' ');
         builder.append(apkPath);
         builder.append(' ');
@@ -339,7 +354,7 @@ class Installer {
         return execute("movefiles");
     }
 
-    public int linkNativeLibraryDirectory(String dataPath, String nativeLibPath) {
+    public int linkNativeLibraryDirectory(String dataPath, String nativeLibPath, int userId) {
         if (dataPath == null) {
             Slog.e(TAG, "unlinkNativeLibraryDirectory dataPath is null");
             return -1;
@@ -352,6 +367,8 @@ class Installer {
         builder.append(dataPath);
         builder.append(' ');
         builder.append(nativeLibPath);
+        builder.append(' ');
+        builder.append(userId);
 
         return execute(builder.toString());
     }
