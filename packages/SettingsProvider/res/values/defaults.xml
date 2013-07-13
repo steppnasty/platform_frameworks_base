@@ -35,6 +35,7 @@
 
     <bool name="def_bluetooth_on">false</bool>
     <bool name="def_install_non_market_apps">true</bool>
+    <bool name="def_package_verifier_enable">true</bool>
     <!-- Comma-separated list of location providers.
          Network location is off by default because it requires
          user opt-in via Setup Wizard or Settings.
@@ -70,6 +71,10 @@
     <integer name="def_lockscreen_sounds_enabled">1</integer>
     <string name="def_lock_sound" translatable="false">/system/media/audio/ui/Lock.ogg</string>
     <string name="def_unlock_sound" translatable="false">/system/media/audio/ui/Unlock.ogg</string>
+    <string name="def_wireless_charging_started_sound" translatable="false">/system/media/audio/ui/WirelessChargingStarted.ogg</string>
+
+    <bool name="def_lockscreen_disabled">false</bool>
+    <bool name="def_device_provisioned">false</bool>
 
     <!-- Notifications use ringer volume -->
     <bool name="def_notifications_use_ring_volume">true</bool>
@@ -115,8 +120,22 @@
             0x200000038=0x03000701:0x03010701:0x03020701;
     </string>
 
+    <!-- Default for Settings.Secure.ACCESSIBILITY_SCRIPT_INJECTION_URL -->
+    <string name="def_accessibility_screen_reader_url" translatable="false">
+        https://ssl.gstatic.com/accessibility/javascript/android/AndroidVox_v1.js
+    </string>
+
     <!-- Default for Settings.Secure.TOUCH_EXPLORATION_ENABLED -->
     <bool name="def_touch_exploration_enabled">false</bool>
+
+    <!-- Default value for Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE -->
+    <fraction name="def_accessibility_display_magnification_scale">200%</fraction>
+
+    <!-- Default value for Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED -->
+    <bool name="def_accessibility_display_magnification_enabled">false</bool>
+
+    <!-- Default value for Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE -->
+    <bool name="def_accessibility_display_magnification_auto_update">true</bool>
 
     <!-- Default for Settings.System.USER_ROTATION -->
     <integer name="def_user_rotation">0</integer>
@@ -136,4 +155,7 @@
     <bool name="def_dtmf_tones_enabled">true</bool>
     <!-- Default for UI touch sounds enabled -->
     <bool name="def_sound_effects_enabled">true</bool>
+
+    <!-- Development settings -->
+    <bool name="def_stay_on_while_plugged_in">false</bool>
 </resources>

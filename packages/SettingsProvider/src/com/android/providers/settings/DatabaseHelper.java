@@ -21,6 +21,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
 import android.content.res.XmlResourceParser;
 import android.database.Cursor;
@@ -30,9 +31,14 @@ import android.database.sqlite.SQLiteStatement;
 import android.media.AudioManager;
 import android.media.AudioService;
 import android.net.ConnectivityManager;
+import android.os.Environment;
+import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.provider.Settings.Secure;
+import android.provider.Settings.Global;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -47,6 +53,7 @@ import com.android.internal.widget.LockPatternView;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
@@ -62,16 +69,22 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // Please, please please. If you update the database version, check to make sure the
     // database gets upgraded properly. At a minimum, please confirm that 'upgradeVersion'
     // is properly propagated through your change.  Not doing so will result in a loss of user
-    // settings.
-    private static final int DATABASE_VERSION = 74;
+    // settings
+    private static final int DATABASE_VERSION = 88;
 
     private Context mContext;
+    private int mUserHandle;
 
     private static final HashSet<String> mValidTables = new HashSet<String>();
 
+    private static final String TABLE_SYSTEM = "system";
+    private static final String TABLE_SECURE = "secure";
+    private static final String TABLE_GLOBAL = "global";
+
     static {
-        mValidTables.add("system");
-        mValidTables.add("secure");
+        mValidTables.add(TABLE_SYSTEM);
+        mValidTables.add(TABLE_SECURE);
+        mValidTables.add(TABLE_GLOBAL);
         mValidTables.add("bluetooth_devices");
         mValidTables.add("bookmarks");
 
@@ -81,9 +94,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         mValidTables.add("old_favorites");
     }
 
-    public DatabaseHelper(Context context) {
-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+    static String dbNameForUser(final int userHandle) {
+        // The owner gets the unadorned db name;
+        if (userHandle == UserHandle.USER_OWNER) {
+            return DATABASE_NAME;
+        } else {
+            // Place the database in the user-specific data tree so that it's
+            // cleaned up automatically when the user is deleted.
+            File databaseFile = new File(
+                    Environment.getUserSystemDirectory(userHandle), DATABASE_NAME);
+            return databaseFile.getPath();
+        }
+    }
+
+    public DatabaseHelper(Context context, int userHandle) {
+        super(context, dbNameForUser(userHandle), null, DATABASE_VERSION);
         mContext = context;
+        mUserHandle = userHandle;
+        setWriteAheadLoggingEnabled(true);
     }
 
     public static boolean isValidTable(String name) {
@@ -99,6 +127,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX secureIndex1 ON secure (name);");
     }
 
+    private void createGlobalTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE global (" +
+                "_id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "name TEXT UNIQUE ON CONFLICT REPLACE," +
+                "value TEXT" +
+                ");");
+        db.execSQL("CREATE INDEX globalIndex1 ON global (name);");
+    }
+
     @Override
     public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE system (" +
@@ -109,6 +146,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX systemIndex1 ON system (name);");
 
         createSecureTable(db);
+
+        // Only create the global table for the singleton 'owner' user
+        if (mUserHandle == UserHandle.USER_OWNER) {
+            createGlobalTable(db);
+        }
 
         db.execSQL("CREATE TABLE bluetooth_devices (" +
                     "_id INTEGER PRIMARY KEY," +
@@ -131,7 +173,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX bookmarksIndex2 ON bookmarks (shortcut);");
 
         // Populate bookmarks table with initial bookmarks
-        loadBookmarks(db);
+        boolean onlyCore = false;
+        try {
+            onlyCore = IPackageManager.Stub.asInterface(ServiceManager.getService(
+                    "package")).isOnlyCoreApps();
+        } catch (RemoteException e) {
+        }
+        if (!onlyCore) {
+            loadBookmarks(db);
+        }
 
         // Load initial volume levels into DB
         loadVolumeLevels(db);
@@ -269,7 +319,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     Settings.Secure.WIFI_WATCHDOG_PING_DELAY_MS,
                     Settings.Secure.WIFI_WATCHDOG_PING_TIMEOUT_MS,
                 };
-            moveFromSystemToSecure(db, settingsToMove);
+            moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_SECURE, settingsToMove, false);
             upgradeVersion = 28;
         }
 
@@ -433,7 +483,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 String value =
                         mContext.getResources().getBoolean(R.bool.assisted_gps_enabled) ? "1" : "0";
                 db.execSQL("INSERT OR IGNORE INTO secure(name,value) values('" +
-                        Settings.Secure.ASSISTED_GPS_ENABLED + "','" + value + "');");
+                        Settings.Global.ASSISTED_GPS_ENABLED + "','" + value + "');");
                 db.setTransactionSuccessful();
             } finally {
                 db.endTransaction();
@@ -627,6 +677,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
            String[] settingsToMove = {
                    Secure.LOCK_PATTERN_ENABLED,
                    Secure.LOCK_PATTERN_VISIBLE,
+                   Secure.LOCK_SHOW_ERROR_PATH,
+                   Secure.LOCK_DOTS_VISIBLE,
                    Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED,
                    "lockscreen.password_type",
                    "lockscreen.lockoutattemptdeadline",
@@ -635,7 +687,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                    "lockscreen.lockedoutpermanently",
                    "lockscreen.password_salt"
            };
-           moveFromSystemToSecure(db, settingsToMove);
+           moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_SECURE, settingsToMove, false);
            upgradeVersion = 52;
        }
 
@@ -656,7 +708,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             upgradeVersion = 53;
         }
-        
+
         if (upgradeVersion == 53) {
             /*
              * New settings for set install location UI no longer initiated here.
@@ -683,16 +735,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             /* Move the install location settings. */
             String[] settingsToMove = {
                     Secure.SET_INSTALL_LOCATION,
-                    Secure.DEFAULT_INSTALL_LOCATION
+                    Global.DEFAULT_INSTALL_LOCATION
             };
-            moveFromSystemToSecure(db, settingsToMove);
+            moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_SECURE, settingsToMove, false);
             db.beginTransaction();
             SQLiteStatement stmt = null;
             try {
                 stmt = db.compileStatement("INSERT INTO system(name,value)"
                         + " VALUES(?,?);");
                 loadSetting(stmt, Secure.SET_INSTALL_LOCATION, 0);
-                loadSetting(stmt, Secure.DEFAULT_INSTALL_LOCATION,
+                loadSetting(stmt, Global.DEFAULT_INSTALL_LOCATION,
                         PackageHelper.APP_INSTALL_AUTO);
                 db.setTransactionSuccessful();
              } finally {
@@ -992,11 +1044,317 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             upgradeVersion = 74;
         }
 
+        if (upgradeVersion == 74) {
+            // URL from which WebView loads a JavaScript based screen-reader.
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT INTO secure(name,value) VALUES(?,?);");
+                loadStringSetting(stmt, Settings.Secure.ACCESSIBILITY_SCREEN_READER_URL,
+                        R.string.def_accessibility_screen_reader_url);
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 75;
+        }
+
+        if (upgradeVersion == 75) {
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            Cursor c = null;
+            try {
+                c = db.query(TABLE_SECURE, new String[] {"_id", "value"},
+                        "name='lockscreen.disabled'",
+                        null, null, null, null);
+                // only set default if it has not yet been set
+                if (c == null || c.getCount() == 0) {
+                    stmt = db.compileStatement("INSERT INTO system(name,value)"
+                            + " VALUES(?,?);");
+                    loadBooleanSetting(stmt, Settings.System.LOCKSCREEN_DISABLED,
+                            R.bool.def_lockscreen_disabled);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (c != null) c.close();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 76;
+        }
+
+        /************* The following are Jelly Bean changes ************/
+
+        if (upgradeVersion == 76) {
+            // Removed VIBRATE_IN_SILENT setting
+            db.beginTransaction();
+            try {
+                db.execSQL("DELETE FROM system WHERE name='"
+                                + Settings.System.VIBRATE_IN_SILENT + "'");
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+
+            upgradeVersion = 77;
+        }
+
+        if (upgradeVersion == 77) {
+            // Introduce "vibrate when ringing" setting
+            loadVibrateWhenRingingSetting(db);
+
+            upgradeVersion = 78;
+        }
+
+        if (upgradeVersion == 78) {
+            // The JavaScript based screen-reader URL changes in JellyBean.
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT OR REPLACE INTO secure(name,value)"
+                        + " VALUES(?,?);");
+                loadStringSetting(stmt, Settings.Secure.ACCESSIBILITY_SCREEN_READER_URL,
+                        R.string.def_accessibility_screen_reader_url);
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 79;
+        }
+
+        if (upgradeVersion == 79) {
+            // Before touch exploration was a global setting controlled by the user
+            // via the UI. However, if the enabled accessibility services do not
+            // handle touch exploration mode, enabling it makes no sense. Therefore,
+            // now the services request touch exploration mode and the user is
+            // presented with a dialog to allow that and if she does we store that
+            // in the database. As a result of this change a user that has enabled
+            // accessibility, touch exploration, and some accessibility services
+            // may lose touch exploration state, thus rendering the device useless
+            // unless sighted help is provided, since the enabled service(s) are
+            // not in the list of services to which the user granted a permission
+            // to put the device in touch explore mode. Here we are allowing all
+            // enabled accessibility services to toggle touch exploration provided
+            // accessibility and touch exploration are enabled and no services can
+            // toggle touch exploration. Note that the user has already manually
+            // enabled the services and touch exploration which means the she has
+            // given consent to have these services work in touch exploration mode.
+            final boolean accessibilityEnabled = getIntValueFromTable(db, TABLE_SECURE,
+                    Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1;
+            final boolean touchExplorationEnabled = getIntValueFromTable(db, TABLE_SECURE,
+                    Settings.Secure.TOUCH_EXPLORATION_ENABLED, 0) == 1;
+            if (accessibilityEnabled && touchExplorationEnabled) {
+                String enabledServices = getStringValueFromTable(db, TABLE_SECURE,
+                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, "");
+                String touchExplorationGrantedServices = getStringValueFromTable(db, TABLE_SECURE,
+                        Settings.Secure.TOUCH_EXPLORATION_GRANTED_ACCESSIBILITY_SERVICES, "");
+                if (TextUtils.isEmpty(touchExplorationGrantedServices)
+                        && !TextUtils.isEmpty(enabledServices)) {
+                    SQLiteStatement stmt = null;
+                    try {
+                        db.beginTransaction();
+                        stmt = db.compileStatement("INSERT OR REPLACE INTO secure(name,value)"
+                                + " VALUES(?,?);");
+                        loadSetting(stmt,
+                                Settings.Secure.TOUCH_EXPLORATION_GRANTED_ACCESSIBILITY_SERVICES,
+                                enabledServices);
+                        db.setTransactionSuccessful();
+                    } finally {
+                        db.endTransaction();
+                        if (stmt != null) stmt.close();
+                    }
+                }
+            }
+            upgradeVersion = 80;
+        }
+
+        // vvv Jelly Bean MR1 changes begin here vvv
+
+        if (upgradeVersion == 80) {
+            // update screensaver settings
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT OR REPLACE INTO secure(name,value)"
+                        + " VALUES(?,?);");
+                loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ENABLED,
+                        com.android.internal.R.bool.config_dreamsEnabledByDefault);
+                loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ACTIVATE_ON_DOCK,
+                        com.android.internal.R.bool.config_dreamsActivatedOnDockByDefault);
+                loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ACTIVATE_ON_SLEEP,
+                        com.android.internal.R.bool.config_dreamsActivatedOnSleepByDefault);
+                loadStringSetting(stmt, Settings.Secure.SCREENSAVER_COMPONENTS,
+                        com.android.internal.R.string.config_dreamsDefaultComponent);
+                loadStringSetting(stmt, Settings.Secure.SCREENSAVER_DEFAULT_COMPONENT,
+                        com.android.internal.R.string.config_dreamsDefaultComponent);
+
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 81;
+        }
+
+        if (upgradeVersion == 81) {
+            // Add package verification setting
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT OR REPLACE INTO secure(name,value)"
+                        + " VALUES(?,?);");
+                loadBooleanSetting(stmt, Settings.Global.PACKAGE_VERIFIER_ENABLE,
+                        R.bool.def_package_verifier_enable);
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 82;
+        }
+
+        if (upgradeVersion == 82) {
+            // Move to per-user settings dbs
+            if (mUserHandle == UserHandle.USER_OWNER) {
+
+                db.beginTransaction();
+                SQLiteStatement stmt = null;
+                try {
+                    // Migrate now-global settings. Note that this happens before
+                    // new users can be created.
+                    createGlobalTable(db);
+                    String[] settingsToMove = hashsetToStringArray(SettingsProvider.sSystemGlobalKeys);
+                    moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_GLOBAL, settingsToMove, false);
+                    settingsToMove = hashsetToStringArray(SettingsProvider.sSecureGlobalKeys);
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, false);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                    if (stmt != null) stmt.close();
+                }
+            }
+            upgradeVersion = 83;
+        }
+
+        if (upgradeVersion == 83) {
+            // 1. Setting whether screen magnification is enabled.
+            // 2. Setting for screen magnification scale.
+            // 3. Setting for screen magnification auto update.
+            db.beginTransaction();
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT INTO secure(name,value) VALUES(?,?);");
+                loadBooleanSetting(stmt,
+                        Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED,
+                        R.bool.def_accessibility_display_magnification_enabled);
+                stmt.close();
+                stmt = db.compileStatement("INSERT INTO secure(name,value) VALUES(?,?);");
+                loadFractionSetting(stmt, Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE,
+                        R.fraction.def_accessibility_display_magnification_scale, 1);
+                stmt.close();
+                stmt = db.compileStatement("INSERT INTO secure(name,value) VALUES(?,?);");
+                loadBooleanSetting(stmt,
+                        Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE,
+                        R.bool.def_accessibility_display_magnification_auto_update);
+
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 84;
+        }
+
+        if (upgradeVersion == 84) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                SQLiteStatement stmt = null;
+                try {
+                    // Patch up the slightly-wrong key migration from 82 -> 83 for those
+                    // devices that missed it, ignoring if the move is redundant
+                    String[] settingsToMove = {
+                            Settings.Secure.ADB_ENABLED,
+                            Settings.Secure.BLUETOOTH_ON,
+                            Settings.Secure.DATA_ROAMING,
+                            Settings.Secure.DEVICE_PROVISIONED,
+                            Settings.Secure.INSTALL_NON_MARKET_APPS,
+                            Settings.Secure.USB_MASS_STORAGE_ENABLED
+                    };
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, true);
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                    if (stmt != null) stmt.close();
+                }
+            }
+            upgradeVersion = 85;
+        }
+
+        if (upgradeVersion == 85) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    // Fix up the migration, ignoring already-migrated elements, to snap up to
+                    // date with new changes to the set of global versus system/secure settings
+                    String[] settingsToMove = { Settings.System.STAY_ON_WHILE_PLUGGED_IN };
+                    moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_GLOBAL, settingsToMove, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 86;
+        }
+
+        if (upgradeVersion == 86) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    String[] settingsToMove = {
+                            Settings.Global.PACKAGE_VERIFIER_ENABLE,
+                            Settings.Global.PACKAGE_VERIFIER_TIMEOUT,
+                            Settings.Global.PACKAGE_VERIFIER_DEFAULT_RESPONSE
+                    };
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 87;
+        }
+
+        if (upgradeVersion == 87) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    String[] settingsToMove = {
+                            Settings.Global.DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS,
+                            Settings.Global.DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS,
+                            Settings.Global.GPRS_REGISTER_CHECK_PERIOD_MS
+                    };
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 88;
+        }
+
         // *** Remember to update DATABASE_VERSION above!
 
         if (upgradeVersion != currentVersion) {
             Log.w(TAG, "Got stuck trying to upgrade from version " + upgradeVersion
                     + ", must wipe the settings provider");
+            db.execSQL("DROP TABLE IF EXISTS global");
+            db.execSQL("DROP TABLE IF EXISTS globalIndex1");
             db.execSQL("DROP TABLE IF EXISTS system");
             db.execSQL("DROP INDEX IF EXISTS systemIndex1");
             db.execSQL("DROP TABLE IF EXISTS secure");
@@ -1017,18 +1375,25 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    private void moveFromSystemToSecure(SQLiteDatabase db, String [] settingsToMove) {
-        // Copy settings values from 'system' to 'secure' and delete them from 'system'
+    private String[] hashsetToStringArray(HashSet<String> set) {
+        String[] array = new String[set.size()];
+        return set.toArray(array);
+    }
+
+    private void moveSettingsToNewTable(SQLiteDatabase db,
+            String sourceTable, String destTable,
+            String[] settingsToMove, boolean doIgnore) {
+        // Copy settings values from the source table to the dest, and remove from the source
         SQLiteStatement insertStmt = null;
         SQLiteStatement deleteStmt = null;
 
         db.beginTransaction();
         try {
-            insertStmt =
-                db.compileStatement("INSERT INTO secure (name,value) SELECT name,value FROM "
-                    + "system WHERE name=?");
-            deleteStmt = db.compileStatement("DELETE FROM system WHERE name=?");
-
+            insertStmt = db.compileStatement("INSERT "
+                    + (doIgnore ? " OR IGNORE " : "")
+                    + " INTO " + destTable + " (name,value) SELECT name,value FROM "
+                    + sourceTable + " WHERE name=?");
+            deleteStmt = db.compileStatement("DELETE FROM " + sourceTable + " WHERE name=?");
 
             for (String setting : settingsToMove) {
                 insertStmt.bindString(1, setting);
@@ -1060,7 +1425,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 try {
                     LockPatternUtils lpu = new LockPatternUtils(mContext);
                     List<LockPatternView.Cell> cellPattern =
-                            LockPatternUtils.stringToPattern(lockPattern);
+                            lpu.stringToPattern(lockPattern);
                     lpu.saveLockPattern(cellPattern);
                 } catch (IllegalArgumentException e) {
                     // Don't want corrupted lock pattern to hang the reboot process
@@ -1323,9 +1688,31 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
+    private void loadVibrateWhenRingingSetting(SQLiteDatabase db) {
+        // The default should be off. VIBRATE_SETTING_ONLY_SILENT should also be ignored here.
+        // Phone app should separately check whether AudioManager#getRingerMode() returns
+        // RINGER_MODE_VIBRATE, with which the device should vibrate anyway.
+        int vibrateSetting = getIntValueFromSystem(db, Settings.System.VIBRATE_ON,
+                AudioManager.VIBRATE_SETTING_OFF);
+        boolean vibrateWhenRinging = ((vibrateSetting & 3) == AudioManager.VIBRATE_SETTING_ON);
+
+        SQLiteStatement stmt = null;
+        try {
+            stmt = db.compileStatement("INSERT OR IGNORE INTO system(name,value)"
+                    + " VALUES(?,?);");
+            loadSetting(stmt, Settings.System.VIBRATE_WHEN_RINGING, vibrateWhenRinging ? 1 : 0);
+        } finally {
+            if (stmt != null) stmt.close();
+        }
+    }
+
     private void loadSettings(SQLiteDatabase db) {
         loadSystemSettings(db);
         loadSecureSettings(db);
+        // The global table only exists for the 'owner' user
+        if (mUserHandle == UserHandle.USER_OWNER) {
+            loadGlobalSettings(db);
+        }
     }
 
     private void loadSystemSettings(SQLiteDatabase db) {
@@ -1359,7 +1746,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // Set default noise suppression value
             loadSetting(stmt, Settings.System.NOISE_SUPPRESSION, 0);
     
-            loadBooleanSetting(stmt, Settings.System.AIRPLANE_MODE_ON,
+            loadBooleanSetting(stmt, Settings.Global.AIRPLANE_MODE_ON,
                     R.bool.def_airplane_mode_on);
     
             loadStringSetting(stmt, Settings.System.AIRPLANE_MODE_RADIOS,
@@ -1390,7 +1777,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadBooleanSetting(stmt, Settings.System.NOTIFICATION_LIGHT_PULSE,
                     R.bool.def_notification_pulse);
             loadSetting(stmt, Settings.Secure.SET_INSTALL_LOCATION, 0);
-            loadSetting(stmt, Settings.Secure.DEFAULT_INSTALL_LOCATION,
+            loadSetting(stmt, Settings.Global.DEFAULT_INSTALL_LOCATION,
                     PackageHelper.APP_INSTALL_AUTO);
 
             loadUISoundEffectsSettings(stmt);
@@ -1439,9 +1826,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private void loadDefaultAnimationSettings(SQLiteStatement stmt) {
         loadFractionSetting(stmt, Settings.System.WINDOW_ANIMATION_SCALE,
-                R.fraction.def_window_animation_scale, 0);
+                R.fraction.def_window_animation_scale, 1);
         loadFractionSetting(stmt, Settings.System.TRANSITION_ANIMATION_SCALE,
-                R.fraction.def_window_transition_scale, 0);
+                R.fraction.def_window_transition_scale, 1);
     }
 
     private void loadDefaultHapticSettings(SQLiteStatement stmt) {
@@ -1455,35 +1842,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             stmt = db.compileStatement("INSERT OR IGNORE INTO secure(name,value)"
                     + " VALUES(?,?);");
     
-            loadBooleanSetting(stmt, Settings.Secure.BLUETOOTH_ON,
-                    R.bool.def_bluetooth_on);
-    
-            // Data roaming default, based on build
-            loadSetting(stmt, Settings.Secure.DATA_ROAMING,
-                    "true".equalsIgnoreCase(
-                            SystemProperties.get("ro.com.android.dataroaming",
-                                    "false")) ? 1 : 0);
-
             // Mobile Data default, based on build
-            loadSetting(stmt, Settings.Secure.MOBILE_DATA,
-                    "true".equalsIgnoreCase(
-                            SystemProperties.get("ro.com.android.mobiledata",
-                                    "true")) ? 1 : 0);
-
-            loadBooleanSetting(stmt, Settings.Secure.INSTALL_NON_MARKET_APPS,
-                    R.bool.def_install_non_market_apps);
-    
             loadStringSetting(stmt, Settings.Secure.LOCATION_PROVIDERS_ALLOWED,
                     R.string.def_location_providers_allowed);
     
-            loadBooleanSetting(stmt, Settings.Secure.ASSISTED_GPS_ENABLED,
+            loadBooleanSetting(stmt, Settings.Global.ASSISTED_GPS_ENABLED,
                     R.bool.assisted_gps_enabled);
     
             loadIntegerSetting(stmt, Settings.Secure.NETWORK_PREFERENCE,
                     R.integer.def_network_preference);
-    
-            loadBooleanSetting(stmt, Settings.Secure.USB_MASS_STORAGE_ENABLED,
-                    R.bool.def_usb_mass_storage_enabled);
     
             loadBooleanSetting(stmt, Settings.Secure.WIFI_ON,
                     R.bool.def_wifi_on);
@@ -1576,6 +1943,75 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 R.string.def_backup_transport);
     }
 
+    private void loadGlobalSettings(SQLiteDatabase db) {
+        SQLiteStatement stmt = null;
+        try {
+            stmt = db.compileStatement("INSERT OR IGNORE INTO global(name,value)"
+                    + " VALUES(?,?);");
+
+            // --- Previously in 'system'
+            loadBooleanSetting(stmt, Settings.Global.AIRPLANE_MODE_ON,
+                    R.bool.def_airplane_mode_on);
+
+            loadBooleanSetting(stmt, Settings.Global.ASSISTED_GPS_ENABLED,
+                    R.bool.assisted_gps_enabled);
+
+            loadSetting(stmt, Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
+                    ("1".equals(SystemProperties.get("ro.kernel.qemu")) ||
+                        mContext.getResources().getBoolean(R.bool.def_stay_on_while_plugged_in))
+                     ? 1 : 0);
+
+            // --- Previously in 'secure'
+            loadBooleanSetting(stmt, Settings.Global.PACKAGE_VERIFIER_ENABLE,
+                    R.bool.def_package_verifier_enable);
+
+            loadBooleanSetting(stmt, Settings.Global.BLUETOOTH_ON,
+                    R.bool.def_bluetooth_on);
+
+            // Data roaming default, based on build
+            loadSetting(stmt, Settings.Global.DATA_ROAMING,
+                    "true".equalsIgnoreCase(
+                            SystemProperties.get("ro.com.android.dataroaming",
+                                    "false")) ? 1 : 0);
+
+            loadBooleanSetting(stmt, Settings.Global.DEVICE_PROVISIONED,
+                    R.bool.def_device_provisioned);
+
+            // Mobile Data default, based on build
+            loadSetting(stmt, Settings.Global.MOBILE_DATA,
+                    "true".equalsIgnoreCase(
+                            SystemProperties.get("ro.com.android.mobiledata",
+                                    "true")) ? 1 : 0);
+
+            loadBooleanSetting(stmt, Settings.Global.INSTALL_NON_MARKET_APPS,
+                    R.bool.def_install_non_market_apps);
+
+            loadBooleanSetting(stmt, Settings.Global.USB_MASS_STORAGE_ENABLED,
+                    R.bool.def_usb_mass_storage_enabled);
+
+            loadStringSetting(stmt, Settings.Global.LOCK_SOUND,
+                    R.string.def_lock_sound);
+            loadStringSetting(stmt, Settings.Global.UNLOCK_SOUND,
+                    R.string.def_unlock_sound);
+            loadStringSetting(stmt, Settings.Global.WIRELESS_CHARGING_STARTED_SOUND,
+                    R.string.def_wireless_charging_started_sound);
+
+            loadSetting(stmt, Settings.Global.DEFAULT_INSTALL_LOCATION,
+                    PackageHelper.APP_INSTALL_AUTO);
+
+            // Set the preferred network mode to 0 = Global, CDMA default
+            int type;
+                type = SystemProperties.getInt("ro.telephony.default_network",
+                        RILConstants.PREFERRED_NETWORK_MODE);
+            loadSetting(stmt, Settings.Global.PREFERRED_NETWORK_MODE, type);
+
+            // --- New global settings start here
+        } finally {
+            if (stmt != null) stmt.close();
+        }
+    }
+            
+
     private void loadSetting(SQLiteStatement stmt, String key, Object value) {
         stmt.bindString(1, key);
         stmt.bindString(2, value.toString());
@@ -1602,18 +2038,28 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private int getIntValueFromSystem(SQLiteDatabase db, String name, int defaultValue) {
-        int value = defaultValue;
+        return getIntValueFromTable(db, TABLE_SYSTEM, name, defaultValue);
+    }
+
+    private int getIntValueFromTable(SQLiteDatabase db, String table, String name,
+            int defaultValue) {
+        String value = getStringValueFromTable(db, table, name, null);
+        return (value != null) ? Integer.parseInt(value) : defaultValue;
+    }
+
+    private String getStringValueFromTable(SQLiteDatabase db, String table, String name,
+            String defaultValue) {
         Cursor c = null;
         try {
-            c = db.query("system", new String[] { Settings.System.VALUE }, "name='" + name + "'",
+            c = db.query(table, new String[] { Settings.System.VALUE }, "name='" + name + "'",
                     null, null, null, null);
             if (c != null && c.moveToFirst()) {
                 String val = c.getString(0);
-                value = val == null ? defaultValue : Integer.parseInt(val);
+                return val == null ? defaultValue : val;
             }
         } finally {
             if (c != null) c.close();
         }
-        return value;
+        return defaultValue;
     }
 }
