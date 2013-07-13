@@ -23,11 +23,14 @@ import android.animation.Animator.AnimatorListener;
 import android.animation.ValueAnimator;
 import android.animation.ValueAnimator.AnimatorUpdateListener;
 import android.graphics.RectF;
+import android.os.Handler;
 import android.util.Log;
+import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.LinearInterpolator;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 public class SwipeHelper {
     static final String TAG = "com.android.systemui.SwipeHelper";
@@ -56,6 +59,7 @@ public class SwipeHelper {
 
     private float mPagingTouchSlop;
     private Callback mCallback;
+    private Handler mHandler;
     private int mSwipeDirection;
     private VelocityTracker mVelocityTracker;
 
@@ -66,13 +70,24 @@ public class SwipeHelper {
     private boolean mCanCurrViewBeDimissed;
     private float mDensityScale;
 
+    private boolean mLongPressSent;
+    private View.OnLongClickListener mLongPressListener;
+    private Runnable mWatchLongPress;
+    private long mLongPressTimeout;
+
     public SwipeHelper(int swipeDirection, Callback callback, float densityScale,
             float pagingTouchSlop) {
         mCallback = callback;
+        mHandler = new Handler();
         mSwipeDirection = swipeDirection;
         mVelocityTracker = VelocityTracker.obtain();
         mDensityScale = densityScale;
         mPagingTouchSlop = pagingTouchSlop;
+        mLongPressTimeout = (long) (ViewConfiguration.getLongPressTimeout() * 1.5f); // extra long-press!
+    }
+
+    public void setLongPressListener(View.OnLongClickListener listener) {
+        mLongPressListener = listener;
     }
 
     public void setDensityScale(float densityScale) {
@@ -165,12 +180,20 @@ public class SwipeHelper {
         }
     }
 
+    public void removeLongPressCallback() {
+        if (mWatchLongPress != null) {
+            mHandler.removeCallbacks(mWatchLongPress);
+            mWatchLongPress = null;
+        }
+    }
+
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         final int action = ev.getAction();
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
                 mDragging = false;
+                mLongPressSent = false;
                 mCurrView = mCallback.getChildAtPosition(ev);
                 mVelocityTracker.clear();
                 if (mCurrView != null) {
@@ -178,10 +201,27 @@ public class SwipeHelper {
                     mCanCurrViewBeDimissed = mCallback.canChildBeDismissed(mCurrView);
                     mVelocityTracker.addMovement(ev);
                     mInitialTouchPos = getPos(ev);
+
+                    if (mLongPressListener != null) {
+                        if (mWatchLongPress == null) {
+                            mWatchLongPress = new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (mCurrView != null && !mLongPressSent) {
+                                        mLongPressSent = true;
+                                        mCurrView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
+                                        mLongPressListener.onLongClick(mCurrView);
+                                    }
+                                }
+                            };
+                        }
+                        mHandler.postDelayed(mWatchLongPress, mLongPressTimeout);
+                    }
+
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
-                if (mCurrView != null) {
+                if (mCurrView != null && !mLongPressSent) {
                     mVelocityTracker.addMovement(ev);
                     float pos = getPos(ev);
                     float delta = pos - mInitialTouchPos;
@@ -189,6 +229,7 @@ public class SwipeHelper {
                         mCallback.onBeginDrag(mCurrView);
                         mDragging = true;
                         mInitialTouchPos = getPos(ev) - getTranslation(mCurrAnimView);
+                        removeLongPressCallback();
                     }
                 }
                 break;
@@ -197,6 +238,8 @@ public class SwipeHelper {
                 mDragging = false;
                 mCurrView = null;
                 mCurrAnimView = null;
+                mLongPressSent = false;
+                removeLongPressCallback();
                 break;
         }
         return mDragging;
@@ -267,7 +310,12 @@ public class SwipeHelper {
     }
 
     public boolean onTouchEvent(MotionEvent ev) {
+        if (mLongPressSent) {
+            return true;
+        }
+
         if (!mDragging) {
+            removeLongPressCallback();
             return false;
         }
 

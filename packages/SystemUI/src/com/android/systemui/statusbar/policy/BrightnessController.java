@@ -27,6 +27,9 @@ import android.provider.Settings.SettingNotFoundException;
 import android.util.Slog;
 import android.view.IWindowManager;
 import android.widget.CompoundButton;
+import android.widget.ImageView;
+
+import java.util.ArrayList;
 
 public class BrightnessController implements ToggleSlider.Listener {
     private static final String TAG = "StatusBar.BrightnessController";
@@ -38,11 +41,20 @@ public class BrightnessController implements ToggleSlider.Listener {
     private static final int MAXIMUM_BACKLIGHT = android.os.Power.BRIGHTNESS_ON;
 
     private Context mContext;
+    private final ImageView mIcon;
     private ToggleSlider mControl;
     private IPowerManager mPower;
 
-    public BrightnessController(Context context, ToggleSlider control) {
+    private ArrayList<BrightnessStateChangeCallback> mChangeCallbacks =
+            new ArrayList<BrightnessStateChangeCallback>();
+
+    public interface BrightnessStateChangeCallback {
+        public void onBrightnessLevelChanged();
+    }
+
+    public BrightnessController(Context context, ImageView icon, ToggleSlider control) {
         mContext = context;
+        mIcon = icon;
         mControl = control;
 
         mScreenBrightnessDim = mContext.getResources().getInteger(
@@ -80,6 +92,10 @@ public class BrightnessController implements ToggleSlider.Listener {
         control.setOnChangedListener(this);
     }
 
+    public void addStateChangedCallback(BrightnessStateChangeCallback cb) {
+        mChangeCallbacks.add(cb);
+    }
+
     public void onChanged(ToggleSlider view, boolean tracking, boolean automatic, int value) {
         setMode(automatic ? Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
                 : Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
@@ -104,7 +120,7 @@ public class BrightnessController implements ToggleSlider.Listener {
 
     private void setBrightness(int brightness) {
         try {
-            mPower.setBacklightBrightness(brightness);
+            mPower.setTemporaryScreenBrightnessSettingOverride(brightness);
         } catch (RemoteException ex) {
         }
     }

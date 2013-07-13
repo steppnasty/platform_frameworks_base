@@ -16,12 +16,6 @@
 
 package com.android.systemui.recent;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -36,18 +30,21 @@ import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Process;
-import android.os.SystemClock;
-import android.util.DisplayMetrics;
 import android.util.Log;
-import android.util.LruCache;
+import android.view.MotionEvent;
+import android.view.View;
 
 import com.android.systemui.R;
 import com.android.systemui.statusbar.phone.PhoneStatusBar;
-import com.android.systemui.statusbar.tablet.TabletStatusBar;
 
-public class RecentTasksLoader {
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+public class RecentTasksLoader implements View.OnTouchListener {
     static final String TAG = "RecentTasksLoader";
-    static final boolean DEBUG = TabletStatusBar.DEBUG || PhoneStatusBar.DEBUG || false;
+    static final boolean DEBUG = PhoneStatusBar.DEBUG || false;
 
     private static final int DISPLAY_TASKS = 20;
     private static final int MAX_TASKS = DISPLAY_TASKS + 1; // allow extra for non-apps
@@ -55,84 +52,121 @@ public class RecentTasksLoader {
     private Context mContext;
     private RecentsPanelView mRecentsPanel;
 
-    private AsyncTask<Void, Integer, Void> mThumbnailLoader;
-    private final Handler mHandler;
+    private Object mFirstTaskLock = new Object();
+    private TaskDescription mFirstTask;
+    private boolean mFirstTaskLoaded;
+
+    private AsyncTask<Void, ArrayList<TaskDescription>, Void> mTaskLoader;
+    private AsyncTask<Void, TaskDescription, Void> mThumbnailLoader;
+    private Handler mHandler;
 
     private int mIconDpi;
     private Bitmap mDefaultThumbnailBackground;
+    private Bitmap mDefaultIconBackground;
+    private int mNumTasksInFirstScreenful = Integer.MAX_VALUE;
 
-    public RecentTasksLoader(Context context) {
+    private boolean mFirstScreenful;
+    private ArrayList<TaskDescription> mLoadedTasks;
+
+    private enum State { LOADING, LOADED, CANCELLED };
+    private State mState = State.CANCELLED;
+
+
+    private static RecentTasksLoader sInstance;
+    public static RecentTasksLoader getInstance(Context context) {
+        if (sInstance == null) {
+            sInstance = new RecentTasksLoader(context);
+        }
+        return sInstance;
+    }
+
+    private RecentTasksLoader(Context context) {
         mContext = context;
+        mHandler = new Handler();
 
         final Resources res = context.getResources();
 
         // get the icon size we want -- on tablets, we use bigger icons
         boolean isTablet = res.getBoolean(R.bool.config_recents_interface_for_tablets);
-        int density = res.getDisplayMetrics().densityDpi;
         if (isTablet) {
-            if (density == DisplayMetrics.DENSITY_LOW) {
-                mIconDpi = DisplayMetrics.DENSITY_MEDIUM;
-            } else if (density == DisplayMetrics.DENSITY_MEDIUM) {
-                mIconDpi = DisplayMetrics.DENSITY_HIGH;
-            } else if (density == DisplayMetrics.DENSITY_HIGH) {
-                mIconDpi = DisplayMetrics.DENSITY_XHIGH;
-            } else if (density == DisplayMetrics.DENSITY_XHIGH) {
-                // We'll need to use a denser icon, or some sort of a mipmap
-                mIconDpi = DisplayMetrics.DENSITY_XHIGH;
-            }
+            ActivityManager activityManager =
+                    (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            mIconDpi = activityManager.getLauncherLargeIconDensity();
         } else {
             mIconDpi = res.getDisplayMetrics().densityDpi;
         }
-        mIconDpi = isTablet ? DisplayMetrics.DENSITY_HIGH : res.getDisplayMetrics().densityDpi;
+
+        // Render default icon (just a blank image)
+        int defaultIconSize = res.getDimensionPixelSize(com.android.internal.R.dimen.app_icon_size);
+        int iconSize = (int) (defaultIconSize * mIconDpi / res.getDisplayMetrics().densityDpi);
+        mDefaultIconBackground = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888);
 
         // Render the default thumbnail background
-        int width = (int) res.getDimensionPixelSize(com.android.internal.R.dimen.thumbnail_width);
-        int height = (int) res.getDimensionPixelSize(com.android.internal.R.dimen.thumbnail_height);
+        int thumbnailWidth =
+                (int) res.getDimensionPixelSize(com.android.internal.R.dimen.thumbnail_width);
+        int thumbnailHeight =
+                (int) res.getDimensionPixelSize(com.android.internal.R.dimen.thumbnail_height);
         int color = res.getColor(R.drawable.status_bar_recents_app_thumbnail_background);
 
-        mDefaultThumbnailBackground = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        mDefaultThumbnailBackground =
+                Bitmap.createBitmap(thumbnailWidth, thumbnailHeight, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(mDefaultThumbnailBackground);
         c.drawColor(color);
-
-        // If we're using the cache, begin listening to the activity manager for
-        // updated thumbnails
-        final ActivityManager am = (ActivityManager)
-                mContext.getSystemService(Context.ACTIVITY_SERVICE);
-
-        mHandler = new Handler();
     }
 
-    public void setRecentsPanel(RecentsPanelView recentsPanel) {
-        mRecentsPanel = recentsPanel;
+    public void setRecentsPanel(RecentsPanelView newRecentsPanel, RecentsPanelView caller) {
+        // Only allow clearing mRecentsPanel if the caller is the current recentsPanel
+        if (newRecentsPanel != null || mRecentsPanel == caller) {
+            mRecentsPanel = newRecentsPanel;
+            if (mRecentsPanel != null) {
+                mNumTasksInFirstScreenful = mRecentsPanel.numItemsInOneScreenful();
+            }
+        }
     }
 
     public Bitmap getDefaultThumbnail() {
         return mDefaultThumbnailBackground;
     }
 
-    // Create an TaskDescription, returning null if the title or icon is null, or if it's the
-    // home activity
+    public Bitmap getDefaultIcon() {
+        return mDefaultIconBackground;
+    }
+
+    public ArrayList<TaskDescription> getLoadedTasks() {
+        return mLoadedTasks;
+    }
+
+    public boolean isFirstScreenful() {
+        return mFirstScreenful;
+    }
+
+    private boolean isCurrentHomeActivity(ComponentName component, ActivityInfo homeInfo) {
+        if (homeInfo == null) {
+            final PackageManager pm = mContext.getPackageManager();
+            homeInfo = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .resolveActivityInfo(pm, 0);
+        }
+        return homeInfo != null
+            && homeInfo.packageName.equals(component.getPackageName())
+            && homeInfo.name.equals(component.getClassName());
+    }
+
+    // Create an TaskDescription, returning null if the title or icon is null
     TaskDescription createTaskDescription(int taskId, int persistentTaskId, Intent baseIntent,
-            ComponentName origActivity, CharSequence description, ActivityInfo homeInfo) {
+            ComponentName origActivity, CharSequence description) {
         Intent intent = new Intent(baseIntent);
         if (origActivity != null) {
             intent.setComponent(origActivity);
         }
         final PackageManager pm = mContext.getPackageManager();
-        if (homeInfo == null) {
-            homeInfo = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            .resolveActivityInfo(pm, 0);
-        }
-
         intent.setFlags((intent.getFlags()&~Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                 | Intent.FLAG_ACTIVITY_NEW_TASK);
         final ResolveInfo resolveInfo = pm.resolveActivity(intent, 0);
         if (resolveInfo != null) {
             final ActivityInfo info = resolveInfo.activityInfo;
             final String title = info.loadLabel(pm).toString();
-            Drawable icon = getFullResIcon(resolveInfo, pm);
 
-            if (title != null && title.length() > 0 && icon != null) {
+            if (title != null && title.length() > 0) {
                 if (DEBUG) Log.v(TAG, "creating activity desc for id="
                         + persistentTaskId + ", label=" + title);
 
@@ -140,14 +174,6 @@ public class RecentTasksLoader {
                         persistentTaskId, resolveInfo, baseIntent, info.packageName,
                         description);
                 item.setLabel(title);
-                item.setIcon(icon);
-
-                // Don't load the current home activity.
-                if (homeInfo != null
-                        && homeInfo.packageName.equals(intent.getComponent().getPackageName())
-                        && homeInfo.name.equals(intent.getComponent().getClassName())) {
-                    return null;
-                }
 
                 return item;
             } else {
@@ -157,19 +183,25 @@ public class RecentTasksLoader {
         return null;
     }
 
-    void loadThumbnail(TaskDescription td) {
+    void loadThumbnailAndIcon(TaskDescription td) {
         final ActivityManager am = (ActivityManager)
                 mContext.getSystemService(Context.ACTIVITY_SERVICE);
-        ActivityManager.TaskThumbnails thumbs = am.getTaskThumbnails(td.persistentTaskId);
+        final PackageManager pm = mContext.getPackageManager();
+        Bitmap thumbnail = am.getTaskTopThumbnail(td.persistentTaskId);
+        Drawable icon = getFullResIcon(td.resolveInfo, pm);
 
         if (DEBUG) Log.v(TAG, "Loaded bitmap for task "
-                + td + ": " + thumbs.mainThumbnail);
+                + td + ": " + thumbnail);
         synchronized (td) {
-            if (thumbs != null && thumbs.mainThumbnail != null) {
-                td.setThumbnail(thumbs.mainThumbnail);
+            if (thumbnail != null) {
+                td.setThumbnail(thumbnail);
             } else {
                 td.setThumbnail(mDefaultThumbnailBackground);
             }
+            if (icon != null) {
+                td.setIcon(icon);
+            }
+            td.setLoaded(true);
         }
     }
 
@@ -203,111 +235,329 @@ public class RecentTasksLoader {
         return getFullResDefaultActivityIcon();
     }
 
-    public void cancelLoadingThumbnails() {
+    Runnable mPreloadTasksRunnable = new Runnable() {
+            public void run() {
+                loadTasksInBackground();
+            }
+        };
+
+    // additional optimization when we have software system buttons - start loading the recent
+    // tasks on touch down
+    @Override
+    public boolean onTouch(View v, MotionEvent ev) {
+        int action = ev.getAction() & MotionEvent.ACTION_MASK;
+        if (action == MotionEvent.ACTION_DOWN) {
+            preloadRecentTasksList();
+        } else if (action == MotionEvent.ACTION_CANCEL) {
+            cancelPreloadingRecentTasksList();
+        } else if (action == MotionEvent.ACTION_UP) {
+            // Remove the preloader if we haven't called it yet
+            mHandler.removeCallbacks(mPreloadTasksRunnable);
+            if (!v.isPressed()) {
+                cancelLoadingThumbnailsAndIcons();
+            }
+
+        }
+        return false;
+    }
+
+    public void preloadRecentTasksList() {
+        mHandler.post(mPreloadTasksRunnable);
+    }
+
+    public void cancelPreloadingRecentTasksList() {
+        cancelLoadingThumbnailsAndIcons();
+        mHandler.removeCallbacks(mPreloadTasksRunnable);
+    }
+
+    public void cancelLoadingThumbnailsAndIcons(RecentsPanelView caller) {
+        // Only oblige this request if it comes from the current RecentsPanel
+        // (eg when you rotate, the old RecentsPanel request should be ignored)
+        if (mRecentsPanel == caller) {
+            cancelLoadingThumbnailsAndIcons();
+        }
+    }
+
+
+    private void cancelLoadingThumbnailsAndIcons() {
+        if (mTaskLoader != null) {
+            mTaskLoader.cancel(false);
+            mTaskLoader = null;
+        }
         if (mThumbnailLoader != null) {
             mThumbnailLoader.cancel(false);
             mThumbnailLoader = null;
         }
+        mLoadedTasks = null;
+        if (mRecentsPanel != null) {
+            mRecentsPanel.onTaskLoadingCancelled();
+        }
+        mFirstScreenful = false;
+        mState = State.CANCELLED;
     }
 
-    // return a snapshot of the current list of recent apps
-    ArrayList<TaskDescription> getRecentTasks() {
-        cancelLoadingThumbnails();
+    private void clearFirstTask() {
+        synchronized (mFirstTaskLock) {
+            mFirstTask = null;
+            mFirstTaskLoaded = false;
+        }
+    }
 
-        ArrayList<TaskDescription> tasks = new ArrayList<TaskDescription>();
-        final PackageManager pm = mContext.getPackageManager();
-        final ActivityManager am = (ActivityManager)
+    public void preloadFirstTask() {
+        Thread bgLoad = new Thread() {
+            public void run() {
+                TaskDescription first = loadFirstTask();
+                synchronized(mFirstTaskLock) {
+                    if (mCancelPreloadingFirstTask) {
+                        clearFirstTask();
+                    } else {
+                        mFirstTask = first;
+                        mFirstTaskLoaded = true;
+                    }
+                    mPreloadingFirstTask = false;
+                }
+            }
+        };
+        synchronized(mFirstTaskLock) {
+            if (!mPreloadingFirstTask) {
+                clearFirstTask();
+                mPreloadingFirstTask = true;
+                bgLoad.start();
+            }
+        }
+    }
+
+    public void cancelPreloadingFirstTask() {
+        synchronized(mFirstTaskLock) {
+            if (mPreloadingFirstTask) {
+                mCancelPreloadingFirstTask = true;
+            } else {
+                clearFirstTask();
+            }
+        }
+    }
+
+    boolean mPreloadingFirstTask;
+    boolean mCancelPreloadingFirstTask;
+    public TaskDescription getFirstTask() {
+        while(true) {
+            synchronized(mFirstTaskLock) {
+                if (mFirstTaskLoaded) {
+                    return mFirstTask;
+                } else if (!mFirstTaskLoaded && !mPreloadingFirstTask) {
+                    mFirstTask = loadFirstTask();
+                    mFirstTaskLoaded = true;
+                    return mFirstTask;
+                }
+            }
+            try {
+                Thread.sleep(3);
+            } catch (InterruptedException e) {
+            }
+        }
+    }
+
+    public TaskDescription loadFirstTask() {
+        final ActivityManager am = (ActivityManager) mContext.getSystemService(Context.ACTIVITY_SERVICE);
+
+        final List<ActivityManager.RecentTaskInfo> recentTasks = am.getRecentTasks(
+                1, ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+        TaskDescription item = null;
+        if (recentTasks.size() > 0) {
+            ActivityManager.RecentTaskInfo recentInfo = recentTasks.get(0);
+
+            Intent intent = new Intent(recentInfo.baseIntent);
+            if (recentInfo.origActivity != null) {
+                intent.setComponent(recentInfo.origActivity);
+            }
+
+            // Don't load the current home activity.
+            if (isCurrentHomeActivity(intent.getComponent(), null)) {
+                return null;
+            }
+
+            // Don't load ourselves
+            if (intent.getComponent().getPackageName().equals(mContext.getPackageName())) {
+                return null;
+            }
+
+            item = createTaskDescription(recentInfo.id,
+                    recentInfo.persistentId, recentInfo.baseIntent,
+                    recentInfo.origActivity, recentInfo.description);
+            if (item != null) {
+                loadThumbnailAndIcon(item);
+            }
+            return item;
+        }
+        return null;
+    }
+
+    public void loadTasksInBackground() {
+        loadTasksInBackground(false);
+    }
+    public void loadTasksInBackground(final boolean zeroeth) {
+        if (mState != State.CANCELLED) {
+            return;
+        }
+        mState = State.LOADING;
+        mFirstScreenful = true;
+
+        final LinkedBlockingQueue<TaskDescription> tasksWaitingForThumbnails =
+                new LinkedBlockingQueue<TaskDescription>();
+        mTaskLoader = new AsyncTask<Void, ArrayList<TaskDescription>, Void>() {
+            @Override
+            protected void onProgressUpdate(ArrayList<TaskDescription>... values) {
+                if (!isCancelled()) {
+                    ArrayList<TaskDescription> newTasks = values[0];
+                    // do a callback to RecentsPanelView to let it know we have more values
+                    // how do we let it know we're all done? just always call back twice
+                    if (mRecentsPanel != null) {
+                        mRecentsPanel.onTasksLoaded(newTasks, mFirstScreenful);
+                    }
+                    if (mLoadedTasks == null) {
+                        mLoadedTasks = new ArrayList<TaskDescription>();
+                    }
+                    mLoadedTasks.addAll(newTasks);
+                    mFirstScreenful = false;
+                }
+            }
+            @Override
+            protected Void doInBackground(Void... params) {
+                // We load in two stages: first, we update progress with just the first screenful
+                // of items. Then, we update with the rest of the items
+                final int origPri = Process.getThreadPriority(Process.myTid());
+                Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+                final PackageManager pm = mContext.getPackageManager();
+                final ActivityManager am = (ActivityManager)
                 mContext.getSystemService(Context.ACTIVITY_SERVICE);
 
-        final List<ActivityManager.RecentTaskInfo> recentTasks =
-                am.getRecentTasks(MAX_TASKS, ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+                final List<ActivityManager.RecentTaskInfo> recentTasks =
+                        am.getRecentTasks(MAX_TASKS, ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+                int numTasks = recentTasks.size();
+                ActivityInfo homeInfo = new Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_HOME).resolveActivityInfo(pm, 0);
 
-        ActivityInfo homeInfo = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                    .resolveActivityInfo(pm, 0);
+                boolean firstScreenful = true;
+                ArrayList<TaskDescription> tasks = new ArrayList<TaskDescription>();
 
-        HashSet<Integer> recentTasksToKeepInCache = new HashSet<Integer>();
-        int numTasks = recentTasks.size();
+                // skip the first task - assume it's either the home screen or the current activity.
+                final int first = 0;
+                for (int i = first, index = 0; i < numTasks && (index < MAX_TASKS); ++i) {
+                    if (isCancelled()) {
+                        break;
+                    }
+                    final ActivityManager.RecentTaskInfo recentInfo = recentTasks.get(i);
 
-        // skip the first task - assume it's either the home screen or the current activity.
-        final int first = 1;
-        recentTasksToKeepInCache.add(recentTasks.get(0).persistentId);
-        for (int i = first, index = 0; i < numTasks && (index < MAX_TASKS); ++i) {
-            final ActivityManager.RecentTaskInfo recentInfo = recentTasks.get(i);
+                    Intent intent = new Intent(recentInfo.baseIntent);
+                    if (recentInfo.origActivity != null) {
+                        intent.setComponent(recentInfo.origActivity);
+                    }
 
-            TaskDescription item = createTaskDescription(recentInfo.id,
-                    recentInfo.persistentId, recentInfo.baseIntent,
-                    recentInfo.origActivity, recentInfo.description, homeInfo);
+                    // Don't load the current home activity.
+                    if (isCurrentHomeActivity(intent.getComponent(), homeInfo)) {
+                        continue;
+                    }
 
-            if (item != null) {
-                tasks.add(item);
-                ++index;
+                    // Don't load ourselves
+                    if (intent.getComponent().getPackageName().equals(mContext.getPackageName())) {
+                        continue;
+                    }
+
+                    TaskDescription item = createTaskDescription(recentInfo.id,
+                            recentInfo.persistentId, recentInfo.baseIntent,
+                            recentInfo.origActivity, recentInfo.description);
+
+                    if (item != null) {
+                        while (true) {
+                            try {
+                                tasksWaitingForThumbnails.put(item);
+                                break;
+                            } catch (InterruptedException e) {
+                            }
+                        }
+                        tasks.add(item);
+                        if (firstScreenful && tasks.size() == mNumTasksInFirstScreenful) {
+                            publishProgress(tasks);
+                            tasks = new ArrayList<TaskDescription>();
+                            firstScreenful = false;
+                            //break;
+                        }
+                        ++index;
+                    }
+                }
+
+                if (!isCancelled()) {
+                    publishProgress(tasks);
+                    if (firstScreenful) {
+                        // always should publish two updates
+                        publishProgress(new ArrayList<TaskDescription>());
+                    }
+                }
+
+                while (true) {
+                    try {
+                        tasksWaitingForThumbnails.put(new TaskDescription());
+                        break;
+                    } catch (InterruptedException e) {
+                    }
+                }
+
+                Process.setThreadPriority(origPri);
+                return null;
             }
-        }
-
-        // when we're not using the TaskDescription cache, we load the thumbnails in the
-        // background
-        loadThumbnailsInBackground(new ArrayList<TaskDescription>(tasks));
-        return tasks;
+        };
+        mTaskLoader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        loadThumbnailsAndIconsInBackground(tasksWaitingForThumbnails);
     }
 
-    private void loadThumbnailsInBackground(final ArrayList<TaskDescription> descriptions) {
-        if (descriptions.size() > 0) {
-            if (DEBUG) Log.v(TAG, "Showing " + descriptions.size() + " tasks");
-            loadThumbnail(descriptions.get(0));
-            if (descriptions.size() > 1) {
-                mThumbnailLoader = new AsyncTask<Void, Integer, Void>() {
-                    @Override
-                    protected void onProgressUpdate(Integer... values) {
-                        final TaskDescription td = descriptions.get(values[0]);
-                        if (!isCancelled()) {
+    private void loadThumbnailsAndIconsInBackground(
+            final BlockingQueue<TaskDescription> tasksWaitingForThumbnails) {
+        // continually read items from tasksWaitingForThumbnails and load
+        // thumbnails and icons for them. finish thread when cancelled or there
+        // is a null item in tasksWaitingForThumbnails
+        mThumbnailLoader = new AsyncTask<Void, TaskDescription, Void>() {
+            @Override
+            protected void onProgressUpdate(TaskDescription... values) {
+                if (!isCancelled()) {
+                    TaskDescription td = values[0];
+                    if (td.isNull()) { // end sentinel
+                        mState = State.LOADED;
+                    } else {
+                        if (mRecentsPanel != null) {
                             mRecentsPanel.onTaskThumbnailLoaded(td);
                         }
-                        // This is to prevent the loader thread from getting ahead
-                        // of our UI updates.
-                        mHandler.post(new Runnable() {
-                            @Override public void run() {
-                                synchronized (td) {
-                                    td.notifyAll();
-                                }
-                            }
-                        });
                     }
-
-                    @Override
-                    protected Void doInBackground(Void... params) {
-                        final int origPri = Process.getThreadPriority(Process.myTid());
-                        Process.setThreadPriority(Process.THREAD_GROUP_BG_NONINTERACTIVE);
-                        long nextTime = SystemClock.uptimeMillis();
-                        for (int i=1; i<descriptions.size(); i++) {
-                            TaskDescription td = descriptions.get(i);
-                            loadThumbnail(td);
-                            long now = SystemClock.uptimeMillis();
-                            nextTime += 0;
-                            if (nextTime > now) {
-                                try {
-                                    Thread.sleep(nextTime-now);
-                                } catch (InterruptedException e) {
-                                }
-                            }
-
-                            if (isCancelled()) {
-                                break;
-                            }
-                            synchronized (td) {
-                                publishProgress(i);
-                                try {
-                                    td.wait(500);
-                                } catch (InterruptedException e) {
-                                }
-                            }
-                        }
-                        Process.setThreadPriority(origPri);
-                        return null;
-                    }
-                };
-                mThumbnailLoader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+                }
             }
-        }
-    }
+            @Override
+            protected Void doInBackground(Void... params) {
+                final int origPri = Process.getThreadPriority(Process.myTid());
+                Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
+                while (true) {
+                    if (isCancelled()) {
+                        break;
+                    }
+                    TaskDescription td = null;
+                    while (td == null) {
+                        try {
+                            td = tasksWaitingForThumbnails.take();
+                        } catch (InterruptedException e) {
+                        }
+                    }
+                    if (td.isNull()) { // end sentinel
+                        publishProgress(td);
+                        break;
+                    }
+                    loadThumbnailAndIcon(td);
+
+                    publishProgress(td);
+                }
+
+                Process.setThreadPriority(origPri);
+                return null;
+            }
+        };
+        mThumbnailLoader.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+    }
 }

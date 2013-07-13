@@ -16,6 +16,8 @@
 
 package com.android.systemui.statusbar.policy;
 
+import com.android.internal.view.RotationPolicy;
+
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.ContentObserver;
@@ -37,9 +39,18 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
 
     private Context mContext;
     private CompoundButton mCheckBox;
+    private final RotationLockCallbacks mCallbacks;
 
     private boolean mAutoRotation;
     private boolean mSystemUpdate;
+
+    private final RotationPolicy.RotationPolicyListener mRotationPolicyListener =
+            new RotationPolicy.RotationPolicyListener() {
+        @Override
+        public void onChange() {
+            updateState();
+        }
+    };
 
     private ContentObserver mAccelerometerRotationObserver = new ContentObserver(new Handler()) {
         @Override
@@ -48,10 +59,12 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
         }
     };
 
-    public AutoRotateController(Context context, CompoundButton checkbox) {
+    public AutoRotateController(Context context, CompoundButton checkbox,
+            RotationLockCallbacks callbacks) {
         mContext = context;
         mAutoRotation = getAutoRotation();
         mCheckBox = checkbox;
+        mCallbacks = callbacks;
         checkbox.setChecked(mAutoRotation);
         checkbox.setOnCheckedChangeListener(this);
     }
@@ -63,6 +76,20 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
         if (checked != mAutoRotation) {
             setAutoRotation(checked);
         }
+    }
+
+    public void release() {
+        RotationPolicy.unregisterRotationPolicyListener(mContext,
+                mRotationPolicyListener);
+    }
+
+    private void updateState() {
+        mAutoRotation = !RotationPolicy.isRotationLocked(mContext);
+        mCheckBox.setChecked(mAutoRotation);
+
+        boolean visible = RotationPolicy.isRotationLockToggleVisible(mContext);
+        mCallbacks.setRotationLockControlVisibility(visible);
+        mCheckBox.setEnabled(visible);
     }
 
     private void updateAccelerometerRotationCheckbox() {
@@ -95,5 +122,9 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
                 }
             }
         });
+    }
+
+    public interface RotationLockCallbacks {
+        void setRotationLockControlVisibility(boolean show);
     }
 }

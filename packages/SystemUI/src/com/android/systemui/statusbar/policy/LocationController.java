@@ -26,6 +26,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.location.LocationManager;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.Slog;
 import android.view.View;
@@ -46,6 +47,13 @@ public class LocationController extends BroadcastReceiver {
 
     private INotificationManager mNotificationService;
 
+    private ArrayList<LocationGpsStateChangeCallback> mChangeCallbacks =
+            new ArrayList<LocationGpsStateChangeCallback>();
+
+    public interface LocationGpsStateChangeCallback {
+        public void onLocationGpsStateChanged(boolean inUse, String description);
+    }
+
     public LocationController(Context context) {
         mContext = context;
 
@@ -57,6 +65,10 @@ public class LocationController extends BroadcastReceiver {
         NotificationManager nm = (NotificationManager)context.getSystemService(
                 Context.NOTIFICATION_SERVICE);
         mNotificationService = nm.getService();
+    }
+
+    public void addStateChangedCallback(LocationGpsStateChangeCallback cb) {
+        mChangeCallbacks.add(cb);
     }
 
     @Override
@@ -101,17 +113,17 @@ public class LocationController extends BroadcastReceiver {
                 n.tickerText = null;
 
                 int[] idOut = new int[1];
-                mNotificationService.enqueueNotificationWithTagPriority(
+                mNotificationService.enqueueNotificationWithTag(
                         mContext.getPackageName(),
                         null, 
                         GPS_NOTIFICATION_ID, 
-                        StatusBarNotification.PRIORITY_SYSTEM, // !!!1!one!!!
                         n,
-                        idOut);
+                        idOut,
+                        UserHandle.USER_ALL);
             } else {
-                mNotificationService.cancelNotification(
-                        mContext.getPackageName(),
-                        GPS_NOTIFICATION_ID);
+                mNotificationService.cancelNotificationWithTag(
+                        mContext.getPackageName(), null,
+                        GPS_NOTIFICATION_ID, UserHandle.USER_ALL);
             }
         } catch (android.os.RemoteException ex) {
             // well, it was worth a shot

@@ -80,9 +80,11 @@ public class NetworkController extends BroadcastReceiver {
     String mNetworkNameDefault;
     String mNetworkNameSeparator;
     int mPhoneSignalIconId;
+    int mQSPhoneSignalIconId;
     int mDataDirectionIconId; // data + data direction on phones
     int mDataSignalIconId;
     int mDataTypeIconId;
+    int mQSDataTypeIconId;
     boolean mDataActive;
     int mMobileActivityIconId; // overlay arrows for data direction
     int mLastSignalLevel;
@@ -103,6 +105,7 @@ public class NetworkController extends BroadcastReceiver {
     int mWifiRssi, mWifiLevel;
     String mWifiSsid;
     int mWifiIconId = 0;
+    int mQSWifiIconId = 0;
     int mWifiActivityIconId = 0; // overlay arrows for wifi direction
     int mWifiActivity = WifiManager.DATA_ACTIVITY_NONE;
 
@@ -139,7 +142,10 @@ public class NetworkController extends BroadcastReceiver {
     ArrayList<TextView> mCombinedLabelViews = new ArrayList<TextView>();
     ArrayList<TextView> mMobileLabelViews = new ArrayList<TextView>();
     ArrayList<TextView> mWifiLabelViews = new ArrayList<TextView>();
+    ArrayList<TextView> mEmergencyLabelViews = new ArrayList<TextView>();
     ArrayList<SignalCluster> mSignalClusters = new ArrayList<SignalCluster>();
+    ArrayList<NetworkSignalChangedCallback> mSignalsChangedCallbacks = 
+            new ArrayList<NetworkSignalChangedCallback>();
     int mLastPhoneSignalIconId = -1;
     int mLastDataDirectionIconId = -1;
     int mLastDataDirectionOverlayIconId = -1;
@@ -162,6 +168,15 @@ public class NetworkController extends BroadcastReceiver {
         void setMobileDataIndicators(boolean visible, int strengthIcon, int activityIcon,
                 int typeIcon, String contentDescription, String typeContentDescription);
         void setIsAirplaneMode(boolean is);
+    }
+
+    public interface NetworkSignalChangedCallback {
+        void onWifiSignalChanged(boolean enabled, int wifiSignalIconId,
+                String wifitSignalContentDescriptionId, String description);
+        void onMobileDataSignalChanged(boolean enabled, int mobileSignalIconId,
+                String mobileSignalContentDescriptionId, int dataTypeIconId,
+                String dataTypeContentDescriptionId, String description);
+        void onAirplaneModeChanged(boolean enabled);
     }
 
     /**
@@ -235,6 +250,14 @@ public class NetworkController extends BroadcastReceiver {
         mBatteryStats = BatteryStatsService.getService();
     }
 
+    public boolean hasMobileDataFeature() {
+        return mHasMobileDataFeature;
+    }
+
+    public boolean isEmergencyOnly() {
+        return (mServiceState != null && mServiceState.isEmergencyOnly());
+    }
+
     public void addPhoneSignalIconView(ImageView v) {
         mPhoneSignalIconViews.add(v);
     }
@@ -274,9 +297,18 @@ public class NetworkController extends BroadcastReceiver {
         mWifiLabelViews.add(v);
     }
 
+    public void addEmergencyLabelView(TextView v) {
+        mEmergencyLabelViews.add(v);
+    }
+
     public void addSignalCluster(SignalCluster cluster) {
         mSignalClusters.add(cluster);
         refreshSignalCluster(cluster);
+    }
+
+    public void addNetworkSignalChangedCallback(NetworkSignalChangedCallback cb) {
+        mSignalsChangedCallbacks.add(cb);
+        notifySignalsChangedCallbacks(cb);
     }
 
     public void refreshSignalCluster(SignalCluster cluster) {
@@ -306,6 +338,26 @@ public class NetworkController extends BroadcastReceiver {
                     mContentDescriptionDataType);
         }
         cluster.setIsAirplaneMode(mAirplaneMode);
+    }
+
+    void notifySignalsChangedCallbacks(NetworkSignalChangedCallback cb) {
+        // only show wifi in the cluster if connected or if wifi-only
+        boolean wifiEnabled = mWifiEnabled && (mWifiConnected || !mHasMobileDataFeature);
+        String wifiDesc = wifiEnabled ?
+                mWifiSsid : null;
+        cb.onWifiSignalChanged(wifiEnabled, mQSWifiIconId, mContentDescriptionWifi, wifiDesc);
+
+        if (isEmergencyOnly()) {
+            cb.onMobileDataSignalChanged(false, mQSPhoneSignalIconId,
+                    mContentDescriptionPhoneSignal, mQSDataTypeIconId, mContentDescriptionDataType,
+                    null);
+        } else {
+            // Normal mobile data
+            cb.onMobileDataSignalChanged(mHasMobileDataFeature, mQSPhoneSignalIconId,
+                    mContentDescriptionPhoneSignal, mQSDataTypeIconId,
+                    mContentDescriptionDataType, mNetworkName);
+        }
+        cb.onAirplaneModeChanged(mAirplaneMode);
     }
 
     public void setStackedMode(boolean stacked) {
@@ -453,8 +505,8 @@ public class NetworkController extends BroadcastReceiver {
     }
 
     private void updateAirplaneMode() {
-        mAirplaneMode = (Settings.System.getInt(mContext.getContentResolver(),
-            Settings.System.AIRPLANE_MODE_ON, 0) == 1);
+        mAirplaneMode = (Settings.Global.getInt(mContext.getContentResolver(),
+            Settings.Global.AIRPLANE_MODE_ON, 0) == 1);
     }
 
     private final void updateTelephonySignalStrength() {

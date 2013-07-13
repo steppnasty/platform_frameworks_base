@@ -40,27 +40,34 @@ public class CommandQueue extends IStatusBar.Stub {
     private static final int MSG_MASK   = 0xffff << MSG_SHIFT;
 
 
-    private static final int MSG_ICON                   = 1 << MSG_SHIFT;
+    private static final int MSG_ICON                       = 1 << MSG_SHIFT;
     private static final int OP_SET_ICON    = 1;
     private static final int OP_REMOVE_ICON = 2;
 
-    private static final int MSG_ADD_NOTIFICATION       = 2 << MSG_SHIFT;
-    private static final int MSG_UPDATE_NOTIFICATION    = 3 << MSG_SHIFT;
-    private static final int MSG_REMOVE_NOTIFICATION    = 4 << MSG_SHIFT;
+    private static final int MSG_ADD_NOTIFICATION           = 2 << MSG_SHIFT;
+    private static final int MSG_UPDATE_NOTIFICATION        = 3 << MSG_SHIFT;
+    private static final int MSG_REMOVE_NOTIFICATION        = 4 << MSG_SHIFT;
 
-    private static final int MSG_DISABLE                = 5 << MSG_SHIFT;
+    private static final int MSG_DISABLE                    = 5 << MSG_SHIFT;
+    private static final int MSG_EXPAND_NOTIFICATIONS       = 6 << MSG_SHIFT;
+    private static final int MSG_COLLAPSE_PANELS            = 7 << MSG_SHIFT;
+    private static final int MSG_EXPAND_SETTINGS            = 8 << MSG_SHIFT;
+    private static final int MSG_SET_SYSTEMUI_VISIBILITY    = 9 << MSG_SHIFT;
 
-    private static final int MSG_SET_VISIBILITY         = 6 << MSG_SHIFT;
-    private static final int OP_EXPAND      = 1;
-    private static final int OP_COLLAPSE    = 2;
+    private static final int MSG_TOP_APP_WINDOW_CHANGED     = 10 << MSG_SHIFT;
+    private static final int MSG_SHOW_IME_BUTTON            = 11 << MSG_SHIFT;
+    private static final int MSG_SET_HARD_KEYBOARD_STATUS   = 12 << MSG_SHIFT;    
+    private static final int MSG_TOGGLE_RECENT_APPS         = 13 << MSG_SHIFT;
+    private static final int MSG_PRELOAD_RECENT_APPS        = 14 << MSG_SHIFT;
+    private static final int MSG_CANCEL_PRELOAD_RECENT_APPS = 15 << MSG_SHIFT;
+    private static final int MSG_SET_NAVIGATION_ICON_HINTS  = 16 << MSG_SHIFT;
 
-    private static final int MSG_SET_SYSTEMUI_VISIBILITY          = 7 << MSG_SHIFT;
-
-    private static final int MSG_TOP_APP_WINDOW_CHANGED = 8 << MSG_SHIFT;
-    private static final int MSG_SHOW_IME_BUTTON        = 9 << MSG_SHIFT;
-    private static final int MSG_SET_HARD_KEYBOARD_STATUS = 10 << MSG_SHIFT;
-    
-    private static final int MSG_TOGGLE_RECENT_APPS       = 11 << MSG_SHIFT;
+    public static final int FLAG_EXCLUDE_NONE = 0;    
+    public static final int FLAG_EXCLUDE_SEARCH_PANEL = 1 << 0;
+    public static final int FLAG_EXCLUDE_RECENTS_PANEL = 1 << 1;
+    public static final int FLAG_EXCLUDE_NOTIFICATION_PANEL = 1 << 2;
+    public static final int FLAG_EXCLUDE_INPUT_METHODS_PANEL = 1 << 3;
+    public static final int FLAG_EXCLUDE_COMPAT_MODE_PANEL = 1 << 4;
 
     private StatusBarIconList mList;
     private Callbacks mCallbacks;
@@ -83,13 +90,19 @@ public class CommandQueue extends IStatusBar.Stub {
         public void updateNotification(IBinder key, StatusBarNotification notification);
         public void removeNotification(IBinder key);
         public void disable(int state);
-        public void animateExpand();
-        public void animateCollapse();
-        public void setSystemUiVisibility(int vis);
+        public void animateExpandNotificationsPanel();
+        public void animateCollapsePanels(int flags);
+        public void animateExpandSettingsPanel();
+        public void setSystemUiVisibility(int vis, int mask);
         public void topAppWindowChanged(boolean visible);
         public void setImeWindowStatus(IBinder token, int vis, int backDisposition);
         public void setHardKeyboardStatus(boolean available, boolean enabled);
         public void toggleRecentApps();
+        public void preloadRecentApps();
+        public void showSearchPanel();
+        public void hideSearchPanel();
+        public void cancelPreloadRecentApps();
+        public void setNavigationIconHints(int hints);
     }
 
     public CommandQueue(Callbacks callbacks, StatusBarIconList list) {
@@ -144,24 +157,31 @@ public class CommandQueue extends IStatusBar.Stub {
         }
     }
 
-    public void animateExpand() {
+    public void animateExpandNotificationsPanel() {
         synchronized (mList) {
-            mHandler.removeMessages(MSG_SET_VISIBILITY);
-            mHandler.obtainMessage(MSG_SET_VISIBILITY, OP_EXPAND, 0, null).sendToTarget();
+            mHandler.removeMessages(MSG_EXPAND_NOTIFICATIONS);
+            mHandler.sendEmptyMessage(MSG_EXPAND_NOTIFICATIONS);
         }
     }
 
-    public void animateCollapse() {
+    public void animateCollapsePanels() {
         synchronized (mList) {
-            mHandler.removeMessages(MSG_SET_VISIBILITY);
-            mHandler.obtainMessage(MSG_SET_VISIBILITY, OP_COLLAPSE, 0, null).sendToTarget();
+            mHandler.removeMessages(MSG_COLLAPSE_PANELS);
+            mHandler.sendEmptyMessage(MSG_COLLAPSE_PANELS);
         }
     }
 
-    public void setSystemUiVisibility(int vis) {
+    public void animateExpandSettingsPanel() {
+        synchronized (mList) {
+            mHandler.removeMessages(MSG_EXPAND_SETTINGS);
+            mHandler.sendEmptyMessage(MSG_EXPAND_SETTINGS);
+        }
+    }
+
+    public void setSystemUiVisibility(int vis, int mask) {
         synchronized (mList) {
             mHandler.removeMessages(MSG_SET_SYSTEMUI_VISIBILITY);
-            mHandler.obtainMessage(MSG_SET_SYSTEMUI_VISIBILITY, vis, 0, null).sendToTarget();
+            mHandler.obtainMessage(MSG_SET_SYSTEMUI_VISIBILITY, vis, mask, null).sendToTarget();
         }
     }
 
@@ -193,6 +213,27 @@ public class CommandQueue extends IStatusBar.Stub {
         synchronized (mList) {
             mHandler.removeMessages(MSG_TOGGLE_RECENT_APPS);
             mHandler.obtainMessage(MSG_TOGGLE_RECENT_APPS, 0, 0, null).sendToTarget();
+        }
+    }
+
+    public void preloadRecentApps() {
+        synchronized (mList) {
+            mHandler.removeMessages(MSG_PRELOAD_RECENT_APPS);
+            mHandler.obtainMessage(MSG_PRELOAD_RECENT_APPS, 0, 0, null).sendToTarget();
+        }
+    }
+
+    public void cancelPreloadRecentApps() {
+        synchronized (mList) {
+            mHandler.removeMessages(MSG_CANCEL_PRELOAD_RECENT_APPS);
+            mHandler.obtainMessage(MSG_CANCEL_PRELOAD_RECENT_APPS, 0, 0, null).sendToTarget();
+        }
+    }
+
+    public void setNavigationIconHints(int hints) {
+        synchronized (mList) {
+            mHandler.removeMessages(MSG_SET_NAVIGATION_ICON_HINTS);
+            mHandler.obtainMessage(MSG_SET_NAVIGATION_ICON_HINTS, hints, 0, null).sendToTarget();
         }
     }
 
@@ -243,15 +284,17 @@ public class CommandQueue extends IStatusBar.Stub {
                 case MSG_DISABLE:
                     mCallbacks.disable(msg.arg1);
                     break;
-                case MSG_SET_VISIBILITY:
-                    if (msg.arg1 == OP_EXPAND) {
-                        mCallbacks.animateExpand();
-                    } else {
-                        mCallbacks.animateCollapse();
-                    }
+                case MSG_EXPAND_NOTIFICATIONS:
+                    mCallbacks.animateExpandNotificationsPanel();
+                    break;
+                case MSG_COLLAPSE_PANELS:
+                    mCallbacks.animateCollapsePanels(0);
+                    break;
+                case MSG_EXPAND_SETTINGS:
+                    mCallbacks.animateExpandSettingsPanel();
                     break;
                 case MSG_SET_SYSTEMUI_VISIBILITY:
-                    mCallbacks.setSystemUiVisibility(msg.arg1);
+                    mCallbacks.setSystemUiVisibility(msg.arg1, msg.arg2);
                     break;
                 case MSG_TOP_APP_WINDOW_CHANGED:
                     mCallbacks.topAppWindowChanged(msg.arg1 != 0);
@@ -264,6 +307,15 @@ public class CommandQueue extends IStatusBar.Stub {
                     break;
                 case MSG_TOGGLE_RECENT_APPS:
                     mCallbacks.toggleRecentApps();
+                    break;
+                case MSG_PRELOAD_RECENT_APPS:
+                    mCallbacks.preloadRecentApps();
+                    break;
+                case MSG_CANCEL_PRELOAD_RECENT_APPS:
+                    mCallbacks.cancelPreloadRecentApps();
+                    break;
+                case MSG_SET_NAVIGATION_ICON_HINTS:
+                    mCallbacks.setNavigationIconHints(msg.arg1);
                     break;
             }
         }

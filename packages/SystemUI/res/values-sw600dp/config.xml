@@ -25,4 +25,7 @@
     <!-- Whether recents thumbnails should stretch in both x and y to fill their
      ImageView -->
     <bool name="config_recents_thumbnail_image_fits_to_xy">true</bool>
+
+    <!-- Enable the "flip settings" panel -->
+    <bool name="config_hasFlipSettingsPanel">false</bool>
 </resources>

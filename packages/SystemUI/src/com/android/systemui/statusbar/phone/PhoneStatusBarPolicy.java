@@ -39,6 +39,7 @@ import android.telephony.TelephonyManager;
 import android.util.Slog;
 
 import com.android.internal.telephony.IccCard;
+import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.cdma.EriInfo;
 import com.android.internal.telephony.cdma.TtyIntent;
@@ -76,7 +77,7 @@ public class PhoneStatusBarPolicy {
 
     // Assume it's all good unless we hear otherwise.  We don't always seem
     // to get broadcasts that it *is* there.
-    IccCard.State mSimState = IccCard.State.READY;
+    IccCardConstants.State mSimState = IccCardConstants.State.READY;
 
     // ringer volume
     private boolean mVolumeVisible;
@@ -122,8 +123,7 @@ public class PhoneStatusBarPolicy {
                     action.equals(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)) {
                 updateBluetooth(intent);
             }
-            else if (action.equals(AudioManager.RINGER_MODE_CHANGED_ACTION) ||
-                    action.equals(AudioManager.VIBRATE_SETTING_CHANGED_ACTION)) {
+            else if (action.equals(AudioManager.RINGER_MODE_CHANGED_ACTION)) {
                 updateVolume();
             }
             else if (action.equals(TelephonyIntents.ACTION_SIM_STATE_CHANGED)) {
@@ -144,7 +144,6 @@ public class PhoneStatusBarPolicy {
         filter.addAction(Intent.ACTION_ALARM_CHANGED);
         filter.addAction(Intent.ACTION_SYNC_STATE_CHANGED);
         filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
-        filter.addAction(AudioManager.VIBRATE_SETTING_CHANGED_ACTION);
         filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         filter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
         filter.addAction(TelephonyIntents.ACTION_SIM_STATE_CHANGED);
@@ -207,26 +206,27 @@ public class PhoneStatusBarPolicy {
     }
 
     private final void updateSimState(Intent intent) {
-        String stateExtra = intent.getStringExtra(IccCard.INTENT_KEY_ICC_STATE);
-        if (IccCard.INTENT_VALUE_ICC_ABSENT.equals(stateExtra)) {
-            mSimState = IccCard.State.ABSENT;
+        String stateExtra = intent.getStringExtra(IccCardConstants.INTENT_KEY_ICC_STATE);
+        if (IccCardConstants.INTENT_VALUE_ICC_ABSENT.equals(stateExtra)) {
+            mSimState = IccCardConstants.State.ABSENT;
         }
-        else if (IccCard.INTENT_VALUE_ICC_READY.equals(stateExtra)) {
-            mSimState = IccCard.State.READY;
+        else if (IccCardConstants.INTENT_VALUE_ICC_READY.equals(stateExtra)) {
+            mSimState = IccCardConstants.State.READY;
         }
-        else if (IccCard.INTENT_VALUE_ICC_LOCKED.equals(stateExtra)) {
-            final String lockedReason = intent.getStringExtra(IccCard.INTENT_KEY_LOCKED_REASON);
-            if (IccCard.INTENT_VALUE_LOCKED_ON_PIN.equals(lockedReason)) {
-                mSimState = IccCard.State.PIN_REQUIRED;
+        else if (IccCardConstants.INTENT_VALUE_ICC_LOCKED.equals(stateExtra)) {
+            final String lockedReason =
+                    intent.getStringExtra(IccCardConstants.INTENT_KEY_LOCKED_REASON);
+            if (IccCardConstants.INTENT_VALUE_LOCKED_ON_PIN.equals(lockedReason)) {
+                mSimState = IccCardConstants.State.PIN_REQUIRED;
             }
-            else if (IccCard.INTENT_VALUE_LOCKED_ON_PUK.equals(lockedReason)) {
-                mSimState = IccCard.State.PUK_REQUIRED;
+            else if (IccCardConstants.INTENT_VALUE_LOCKED_ON_PUK.equals(lockedReason)) {
+                mSimState = IccCardConstants.State.PUK_REQUIRED;
             }
             else {
-                mSimState = IccCard.State.NETWORK_LOCKED;
+                mSimState = IccCardConstants.State.NETWORK_LOCKED;
             }
         } else {
-            mSimState = IccCard.State.UNKNOWN;
+            mSimState = IccCardConstants.State.UNKNOWN;
         }
     }
 
@@ -238,7 +238,7 @@ public class PhoneStatusBarPolicy {
 
         final int iconId;
         String contentDescription = null;
-        if (audioManager.shouldVibrate(AudioManager.VIBRATE_TYPE_RINGER)) {
+        if (ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
             iconId = R.drawable.stat_sys_ringer_vibrate;
             contentDescription = mContext.getString(R.string.accessibility_ringer_vibrate);
         } else {

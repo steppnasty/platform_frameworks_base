@@ -43,6 +43,8 @@ public class SettingsView extends LinearLayout implements View.OnClickListener {
     AutoRotateController mRotate;
     BrightnessController mBrightness;
     DoNotDisturbController mDoNotDisturb;
+    View mRotationLockContainer;
+    View mRotationLockSeparator;
 
     public SettingsView(Context context, AttributeSet attrs) {
         this(context, attrs, 0);
@@ -61,9 +63,21 @@ public class SettingsView extends LinearLayout implements View.OnClickListener {
         mAirplane = new AirplaneModeController(context,
                 (CompoundButton)findViewById(R.id.airplane_checkbox));
         findViewById(R.id.network).setOnClickListener(this);
+
+        mRotationLockContainer = findViewById(R.id.rotate);
+        mRotationLockSeparator = findViewById(R.id.rotate_separator);
         mRotate = new AutoRotateController(context,
-                (CompoundButton)findViewById(R.id.rotate_checkbox));
+                (CompoundButton)findViewById(R.id.rotate_checkbox),
+                new AutoRotateController.RotationLockCallbacks() {
+                    @Override
+                    public void setRotationLockControlVisibility(boolean show) {
+                        mRotationLockContainer.setVisibility(show ? View.VISIBLE : View.GONE);
+                        mRotationLockSeparator.setVisibility(show ? View.VISIBLE : View.GONE);
+                    }
+                });
+
         mBrightness = new BrightnessController(context,
+                (ImageView)findViewById(R.id.brightness_icon),
                 (ToggleSlider)findViewById(R.id.brightness));
         mDoNotDisturb = new DoNotDisturbController(context,
                 (CompoundButton)findViewById(R.id.do_not_disturb_checkbox));
@@ -75,6 +89,7 @@ public class SettingsView extends LinearLayout implements View.OnClickListener {
         super.onDetachedFromWindow();
         mAirplane.release();
         mDoNotDisturb.release();
+        mRotate.release();
     }
 
     public void onClick(View v) {
@@ -97,7 +112,7 @@ public class SettingsView extends LinearLayout implements View.OnClickListener {
     private void onClickNetwork() {
         getContext().startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        getStatusBarManager().collapse();
+        getStatusBarManager().collapsePanels();
     }
 
     // Settings
@@ -105,7 +120,7 @@ public class SettingsView extends LinearLayout implements View.OnClickListener {
     private void onClickSettings() {
         getContext().startActivity(new Intent(Settings.ACTION_SETTINGS)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        getStatusBarManager().collapse();
+        getStatusBarManager().collapsePanels();
     }
 }
 
