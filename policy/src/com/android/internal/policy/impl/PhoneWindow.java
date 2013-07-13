@@ -79,6 +79,7 @@ import android.view.SurfaceHolder;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewManager;
+import android.view.ViewParent;
 import android.view.ViewStub;
 import android.view.Window;
 import android.view.WindowManager;
@@ -115,6 +116,10 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
 
     final TypedValue mMinWidthMajor = new TypedValue();
     final TypedValue mMinWidthMinor = new TypedValue();
+    TypedValue mFixedWidthMajor;
+    TypedValue mFixedWidthMinor;
+    TypedValue mFixedHeightMajor;
+    TypedValue mFixedHeightMinor;
 
     // This is the top-level view of the window, containing the window decor.
     private DecorView mDecor;
@@ -186,6 +191,20 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
     private KeyguardManager mKeyguardManager;
 
     private int mUiOptions = 0;
+
+    private boolean mInvalidatePanelMenuPosted;
+    private int mInvalidatePanelMenuFeatures;
+    private final Runnable mInvalidatePanelMenuRunnable = new Runnable() {
+        @Override public void run() {
+            for (int i = 0; i <= FEATURE_MAX; i++) {
+                if ((mInvalidatePanelMenuFeatures & 1 << i) != 0) {
+                    doInvalidatePanelMenu(i);
+                }
+            }
+            mInvalidatePanelMenuPosted = false;
+            mInvalidatePanelMenuFeatures = 0;
+        }
+    };
 
     static class WindowManagerHolder {
         static final IWindowManager sWindowManager = IWindowManager.Stub.asInterface(
@@ -578,7 +597,10 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
             st.decorView.setWindowBackground(getContext().getResources().getDrawable(
                     backgroundResId));
 
-
+            ViewParent shownPanelParent = st.shownPanelView.getParent();
+            if (shownPanelParent != null && shownPanelParent instanceof ViewGroup) {
+                ((ViewGroup) shownPanelParent).removeView(st.shownPanelView);
+            }
             st.decorView.addView(st.shownPanelView, lp);
 
             /*
@@ -605,8 +627,7 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 width, WRAP_CONTENT,
                 st.x, st.y, WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG,
-                WindowManager.LayoutParams.FLAG_DITHER
-                | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
                 | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
                 st.decorView.mDefaultOpacity);
 
@@ -715,6 +736,15 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
 
     @Override
     public void invalidatePanelMenu(int featureId) {
+        mInvalidatePanelMenuFeatures |= 1 << featureId;
+
+        if (!mInvalidatePanelMenuPosted && mDecor != null) {
+            mDecor.postOnAnimation(mInvalidatePanelMenuRunnable);
+            mInvalidatePanelMenuPosted = true;
+        }
+    }
+
+    void doInvalidatePanelMenu(int featureId) {
         PanelFeatureState st = getPanelState(featureId, true);
         Bundle savedActionViewStates = null;
         if (st.menu != null) {
@@ -963,7 +993,11 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
             if (!mActionBar.isOverflowMenuShowing() || !toggleMenuMode) {
                 if (cb != null && !isDestroyed() && mActionBar.getVisibility() == View.VISIBLE) {
                     final PanelFeatureState st = getPanelState(FEATURE_OPTIONS_PANEL, true);
-                    if (cb.onPreparePanel(FEATURE_OPTIONS_PANEL, st.createdPanelView, st.menu)) {
+
+                    // If we don't have a menu or we're waiting for a full content refresh,
+                    // forget it. This is a lingering event that no longer matters.
+                    if (st.menu != null && !st.refreshMenuContent &&
+                            cb.onPreparePanel(FEATURE_OPTIONS_PANEL, st.createdPanelView, st.menu)) {
                         cb.onMenuOpened(FEATURE_ACTION_BAR, st.menu);
                         mActionBar.showOverflowMenu();
                     }
@@ -1416,7 +1450,7 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
                 // doesn't have one of these.  In this case, we execute it here and
                 // eat the event instead, because we have mVolumeControlStreamType
                 // and they don't.
-                getAudioManager().handleKeyDown(keyCode, mVolumeControlStreamType);
+                getAudioManager().handleKeyDown(event, mVolumeControlStreamType);
                 return true;
             }
 
@@ -1478,7 +1512,7 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
                 // doesn't have one of these.  In this case, we execute it here and
                 // eat the event instead, because we have mVolumeControlStreamType
                 // and they don't.
-                getAudioManager().handleKeyUp(keyCode, mVolumeControlStreamType);
+                getAudioManager().handleKeyUp(event, mVolumeControlStreamType);
                 return true;
             }
 
@@ -1622,7 +1656,12 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
         if (mActionBar != null) {
             SparseArray<Parcelable> actionBarStates =
                     savedInstanceState.getSparseParcelableArray(ACTION_BAR_TAG);
-            mActionBar.restoreHierarchyState(actionBarStates);
+            if (actionBarStates != null) {
+                mActionBar.restoreHierarchyState(actionBarStates);
+            } else {
+                Log.w(TAG, "Missing saved instance states for action bar views! " +
+                        "State will not be restored.");
+            }
         }
     }
 
@@ -2090,6 +2129,49 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
             final boolean isPortrait = metrics.widthPixels < metrics.heightPixels;
 
             final int widthMode = getMode(widthMeasureSpec);
+            final int heightMode = getMode(heightMeasureSpec);
+
+            boolean fixedWidth = false;
+            if (widthMode == AT_MOST) {
+                final TypedValue tvw = isPortrait ? mFixedWidthMinor : mFixedWidthMajor;
+                if (tvw != null && tvw.type != TypedValue.TYPE_NULL) {
+                    final int w;
+                    if (tvw.type == TypedValue.TYPE_DIMENSION) {
+                        w = (int) tvw.getDimension(metrics);
+                    } else if (tvw.type == TypedValue.TYPE_FRACTION) {
+                        w = (int) tvw.getFraction(metrics.widthPixels, metrics.widthPixels);
+                    } else {
+                        w = 0;
+                    }
+
+                    if (w > 0) {
+                        final int widthSize = MeasureSpec.getSize(widthMeasureSpec);
+                        widthMeasureSpec = MeasureSpec.makeMeasureSpec(
+                                Math.min(w, widthSize), EXACTLY);
+                        fixedWidth = true;
+                    }
+                }
+            }
+
+            if (heightMode == AT_MOST) {
+                final TypedValue tvh = isPortrait ? mFixedHeightMajor : mFixedHeightMinor;
+                if (tvh != null && tvh.type != TypedValue.TYPE_NULL) {
+                    final int h;
+                    if (tvh.type == TypedValue.TYPE_DIMENSION) {
+                        h = (int) tvh.getDimension(metrics);
+                    } else if (tvh.type == TypedValue.TYPE_FRACTION) {
+                        h = (int) tvh.getFraction(metrics.heightPixels, metrics.heightPixels);
+                    } else {
+                        h = 0;
+                    }
+
+                    if (h > 0) {
+                        final int heightSize = MeasureSpec.getSize(heightMeasureSpec);
+                        heightMeasureSpec = MeasureSpec.makeMeasureSpec(
+                                Math.min(h, heightSize), EXACTLY);
+                    }
+                }
+            }
 
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
@@ -2098,21 +2180,22 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
 
             widthMeasureSpec = MeasureSpec.makeMeasureSpec(width, EXACTLY);
 
-            final TypedValue tv = isPortrait ? mMinWidthMinor : mMinWidthMajor;
+            if (!fixedWidth && widthMode == AT_MOST) {
+                final TypedValue tv = isPortrait ? mMinWidthMinor : mMinWidthMajor;
+                if (tv.type != TypedValue.TYPE_NULL) {
+                    final int min;
+                    if (tv.type == TypedValue.TYPE_DIMENSION) {
+                        min = (int)tv.getDimension(metrics);
+                    } else if (tv.type == TypedValue.TYPE_FRACTION) {
+                        min = (int)tv.getFraction(metrics.widthPixels, metrics.widthPixels);
+                    } else {
+                        min = 0;
+                    }
 
-            if (widthMode == AT_MOST && tv.type != TypedValue.TYPE_NULL) {
-                final int min;
-                if (tv.type == TypedValue.TYPE_DIMENSION) {
-                    min = (int)tv.getDimension(metrics);
-                } else if (tv.type == TypedValue.TYPE_FRACTION) {
-                    min = (int)tv.getFraction(metrics.widthPixels, metrics.widthPixels);
-                } else {
-                    min = 0;
-                }
-
-                if (width < min) {
-                    widthMeasureSpec = MeasureSpec.makeMeasureSpec(min, EXACTLY);
-                    measure = true;
+                    if (width < min) {
+                        widthMeasureSpec = MeasureSpec.makeMeasureSpec(min, EXACTLY);
+                        measure = true;
+                    }
                 }
             }
 
@@ -2573,6 +2656,26 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
 
         a.getValue(com.android.internal.R.styleable.Window_windowMinWidthMajor, mMinWidthMajor);
         a.getValue(com.android.internal.R.styleable.Window_windowMinWidthMinor, mMinWidthMinor);
+        if (a.hasValue(com.android.internal.R.styleable.Window_windowFixedWidthMajor)) {
+            if (mFixedWidthMajor == null) mFixedWidthMajor = new TypedValue();
+            a.getValue(com.android.internal.R.styleable.Window_windowFixedWidthMajor,
+                    mFixedWidthMajor);
+        }
+        if (a.hasValue(com.android.internal.R.styleable.Window_windowFixedWidthMinor)) {
+            if (mFixedWidthMinor == null) mFixedWidthMinor = new TypedValue();
+            a.getValue(com.android.internal.R.styleable.Window_windowFixedWidthMinor,
+                    mFixedWidthMinor);
+        }
+        if (a.hasValue(com.android.internal.R.styleable.Window_windowFixedHeightMajor)) {
+            if (mFixedHeightMajor == null) mFixedHeightMajor = new TypedValue();
+            a.getValue(com.android.internal.R.styleable.Window_windowFixedHeightMajor,
+                    mFixedHeightMajor);
+        }
+        if (a.hasValue(com.android.internal.R.styleable.Window_windowFixedHeightMinor)) {
+            if (mFixedHeightMinor == null) mFixedHeightMinor = new TypedValue();
+            a.getValue(com.android.internal.R.styleable.Window_windowFixedHeightMinor,
+                    mFixedHeightMinor);
+        }
 
         final Context context = getContext();
         final int targetSdk = context.getApplicationInfo().targetSdkVersion;
@@ -2764,12 +2867,19 @@ public class PhoneWindow extends Window implements MenuBuilder.Callback {
             mDecor = generateDecor();
             mDecor.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             mDecor.setIsRootNamespace(true);
+            if (!mInvalidatePanelMenuPosted && mInvalidatePanelMenuFeatures != 0) {
+                mDecor.postOnAnimation(mInvalidatePanelMenuRunnable);
+            }
         }
         if (mContentParent == null) {
             mContentParent = generateLayout(mDecor);
 
+            // Set up decor part of UI to ignore fitsSystemWindows if appropriate.
+            mDecor.makeOptionalFitsSystemWindows();
+
             mTitleView = (TextView)findViewById(com.android.internal.R.id.title);
             if (mTitleView != null) {
+                mTitleView.setLayoutDirection(mDecor.getLayoutDirection());
                 if ((getLocalFeatures() & (1 << FEATURE_NO_TITLE)) != 0) {
                     View titleContainer = findViewById(com.android.internal.R.id.title_container);
                     if (titleContainer != null) {
