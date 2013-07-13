@@ -85,24 +85,35 @@ int compare_type( const ComposerState& lhs, const ComposerState& rhs) {
     return 0;
 }
 
+static inline
+int compare_type(const DisplayState& lhs, const DisplayState& rhs) {
+    return compare_type(lhs.token, rhs.token);
+}
+
 class Composer : public Singleton<Composer>
 {
     friend class Singleton<Composer>;
 
     mutable Mutex               mLock;
     SortedVector<ComposerState> mStates;
+    SortedVector<DisplayState > mDisplayStates;
     int                         mOrientation;
     uint32_t                    mForceSynchronous;
+    bool                        mAnimation;
 
     Composer() : Singleton<Composer>(),
         mOrientation(ISurfaceComposer::eOrientationUnchanged),
-        mForceSynchronous(0)
+        mForceSynchronous(0),
+        mAnimation(false)
     { }
 
     void closeGlobalTransactionImpl(bool synchronous);
+    void setAnimationTransactionImpl();
 
     layer_state_t* getLayerStateLocked(
             const sp<SurfaceComposerClient>& client, SurfaceID id);
+
+    DisplayState& getDisplayStateLocked(uint32_t token);
 
 public:
 
@@ -125,6 +136,20 @@ public:
             const sp<SurfaceComposerClient>& client, SurfaceID id,
             uint32_t tint);
     status_t setOrientation(int orientation);
+    status_t setCrop(const sp<SurfaceComposerClient>& client, SurfaceID id,
+            const Rect& crop);
+    status_t setLayerStack(const sp<SurfaceComposerClient>& client,
+            SurfaceID id, uint32_t layerStack);
+
+    void setDisplayLayerStack(uint32_t token, uint32_t layerStack);
+    void setDisplayProjection(uint32_t token,
+            uint32_t orientation,
+            const Rect& layerStackRect,
+            const Rect& displayRect);
+
+    static void setAnimationTransaction() {
+        Composer::getInstance().setAnimationTransactionImpl();
+    }
 
     static void closeGlobalTransaction(bool synchronous) {
         Composer::getInstance().closeGlobalTransactionImpl(synchronous);
@@ -153,10 +178,20 @@ void Composer::closeGlobalTransactionImpl(bool synchronous) {
         if (synchronous || mForceSynchronous) {
             flags |= ISurfaceComposer::eSynchronous;
         }
+        if (mAnimation) {
+            flags |= ISurfaceComposer::eAnimation;
+        }
+
         mForceSynchronous = false;
+        mAnimation = false;
     }
 
    sm->setTransactionState(transaction, orientation, flags);
+}
+
+void Composer::setAnimationTransactionImpl() {
+    Mutex::Autolock _l(mLock);
+    mAnimation = true;
 }
 
 layer_state_t* Composer::getLayerStateLocked(
@@ -252,6 +287,17 @@ status_t Composer::setAlpha(const sp<SurfaceComposerClient>& client,
     return NO_ERROR;
 }
 
+status_t Composer::setLayerStack(const sp<SurfaceComposerClient>& client,
+        SurfaceID id, uint32_t layerStack) {
+    Mutex::Autolock _l(mLock);
+    layer_state_t* s = getLayerStateLocked(client, id);
+    if (!s)
+        return BAD_INDEX;
+    s->what |= layer_state_t::eLayerStackChanged;
+    s->layerStack = layerStack;
+    return NO_ERROR;
+}
+
 status_t Composer::setMatrix(const sp<SurfaceComposerClient>& client,
         SurfaceID id, float dsdx, float dtdx,
         float dsdy, float dtdy) {
@@ -266,6 +312,17 @@ status_t Composer::setMatrix(const sp<SurfaceComposerClient>& client,
     matrix.dsdy = dsdy;
     matrix.dtdy = dtdy;
     s->matrix = matrix;
+    return NO_ERROR;
+}
+
+status_t Composer::setCrop(const sp<SurfaceComposerClient>& client,
+        SurfaceID id, const Rect& crop) {
+    Mutex::Autolock _l(mLock);
+    layer_state_t* s = getLayerStateLocked(client, id);
+    if (!s)
+        return BAD_INDEX;
+    s->what |= layer_state_t::eCropChanged;
+    s->crop = crop;
     return NO_ERROR;
 }
 
@@ -287,6 +344,41 @@ void SurfaceComposerClient::enableExternalDisplay(int disp_type, int enable)
     return sm->enableExternalDisplay(disp_type, enable);
 }
 #endif
+
+// ---------------------------------------------------------------------------
+
+DisplayState& Composer::getDisplayStateLocked(uint32_t token) {
+    DisplayState s;
+    s.token = token;
+    ssize_t index = mDisplayStates.indexOf(s);
+    if (index < 0) {
+        // we don't have it, add an initialized layer_state to our list
+        s.what = 0;
+        index = mDisplayStates.add(s);
+    }
+    return mDisplayStates.editItemAt(index);
+}
+
+void Composer::setDisplayLayerStack(uint32_t token,
+        uint32_t layerStack) {
+    Mutex::Autolock _l(mLock);
+    DisplayState& s(getDisplayStateLocked(token));
+    s.layerStack = layerStack;
+    s.what |= DisplayState::eLayerStackChanged;
+}
+
+void Composer::setDisplayProjection(uint32_t token,
+        uint32_t orientation,
+        const Rect& layerStackRect,
+        const Rect& displayRect) {
+    Mutex::Autolock _l(mLock);
+    DisplayState& s(getDisplayStateLocked(token));
+    s.orientation = orientation;
+    s.viewport = layerStackRect;
+    s.frame = displayRect;
+    s.what |= DisplayState::eDisplayProjectionChanged;
+    mForceSynchronous = true; // TODO: do we actually still need this?
+}
 
 status_t Composer::setOrientation(int orientation) {
     Mutex::Autolock _l(mLock);
@@ -347,23 +439,6 @@ void SurfaceComposerClient::dispose() {
 }
 
 sp<SurfaceControl> SurfaceComposerClient::createSurface(
-        DisplayID display,
-        uint32_t w,
-        uint32_t h,
-        PixelFormat format,
-        uint32_t flags)
-{
-    String8 name;
-    const size_t SIZE = 128;
-    char buffer[SIZE];
-    snprintf(buffer, SIZE, "<pid_%d>", getpid());
-    name.append(buffer);
-
-    return SurfaceComposerClient::createSurface(name, display,
-            w, h, format, flags);
-}
-
-sp<SurfaceControl> SurfaceComposerClient::createSurface(
         const String8& name,
         DisplayID display,
         uint32_t w,
@@ -404,7 +479,15 @@ void SurfaceComposerClient::closeGlobalTransaction(bool synchronous) {
     Composer::closeGlobalTransaction(synchronous);
 }
 
+void SurfaceComposerClient::setAnimationTransaction() {
+    Composer::setAnimationTransaction();
+}
+
 // ----------------------------------------------------------------------------
+
+status_t SurfaceComposerClient::setCrop(SurfaceID id, const Rect& crop) {
+    return getComposer().setCrop(this, id, crop);
+}
 
 status_t SurfaceComposerClient::setFreezeTint(SurfaceID id, uint32_t tint) {
     return getComposer().setFreezeTint(this, id, tint);
@@ -424,14 +507,14 @@ status_t SurfaceComposerClient::setLayer(SurfaceID id, int32_t z) {
 
 status_t SurfaceComposerClient::hide(SurfaceID id) {
     return getComposer().setFlags(this, id,
-            ISurfaceComposer::eLayerHidden,
-            ISurfaceComposer::eLayerHidden);
+            layer_state_t::eLayerHidden,
+            layer_state_t::eLayerHidden);
 }
 
 status_t SurfaceComposerClient::show(SurfaceID id, int32_t) {
     return getComposer().setFlags(this, id,
             0,
-            ISurfaceComposer::eLayerHidden);
+            layer_state_t::eLayerHidden);
 }
 
 status_t SurfaceComposerClient::freeze(SurfaceID id) {
@@ -460,6 +543,10 @@ status_t SurfaceComposerClient::setAlpha(SurfaceID id, float alpha) {
     return getComposer().setAlpha(this, id, alpha);
 }
 
+status_t SurfaceComposerClient::setLayerStack(SurfaceID id, uint32_t layerStack) {
+    return getComposer().setLayerStack(this, id, layerStack);
+}
+
 status_t SurfaceComposerClient::setMatrix(SurfaceID id, float dsdx, float dtdx,
         float dsdy, float dtdy) {
     return getComposer().setMatrix(this, id, dsdx, dtdx, dsdy, dtdy);
@@ -469,6 +556,21 @@ status_t SurfaceComposerClient::setOrientation(DisplayID dpy,
         int orientation, uint32_t flags)
 {
     return Composer::getInstance().setOrientation(orientation);
+}
+
+// ----------------------------------------------------------------------------
+
+void SurfaceComposerClient::setDisplayLayerStack(uint32_t token,
+        uint32_t layerStack) {
+    Composer::getInstance().setDisplayLayerStack(token, layerStack);
+}
+
+void SurfaceComposerClient::setDisplayProjection(uint32_t token,
+        uint32_t orientation,
+        const Rect& layerStackRect,
+        const Rect& displayRect) {
+    Composer::getInstance().setDisplayProjection(token, orientation,
+            layerStackRect, displayRect);
 }
 
 // ----------------------------------------------------------------------------

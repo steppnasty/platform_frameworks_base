@@ -79,6 +79,9 @@ public:
     // Forcibly remove connection before all references have gone away.
     void        dispose();
 
+    // Get information about a display
+    static status_t getDisplayInfo(DisplayID dpy, DisplayInfo* info);
+
     // ------------------------------------------------------------------------
     // surface creation / destruction
 
@@ -91,15 +94,6 @@ public:
             PixelFormat format, // pixel-format desired
             uint32_t flags = 0  // usage flags
     );
-
-    sp<SurfaceControl> createSurface(
-            DisplayID display,  // Display to create this surface on
-            uint32_t w,         // width in pixel
-            uint32_t h,         // height in pixel
-            PixelFormat format, // pixel-format desired
-            uint32_t flags = 0  // usage flags
-    );
-
 
     // ------------------------------------------------------------------------
     // Composer parameters
@@ -123,11 +117,13 @@ public:
     //! Set the orientation of the given display
     static int setOrientation(DisplayID dpy, int orientation, uint32_t flags);
 
+    //! Flag the currently open transaction as an animation transaction.
+    static void setAnimationTransaction();
+
     // Query the number of displays
     static ssize_t getNumberOfDisplays();
 
     // Get information about a display
-    static status_t getDisplayInfo(DisplayID dpy, DisplayInfo* info);
     static ssize_t getDisplayWidth(DisplayID dpy);
     static ssize_t getDisplayHeight(DisplayID dpy);
     static ssize_t getDisplayOrientation(DisplayID dpy);
@@ -152,7 +148,27 @@ public:
     status_t    setMatrix(SurfaceID id, float dsdx, float dtdx, float dsdy, float dtdy);
     status_t    setPosition(SurfaceID id, float x, float y);
     status_t    setSize(SurfaceID id, uint32_t w, uint32_t h);
+    status_t    setCrop(SurfaceID id, const Rect& crop);
+    status_t    setLayerStack(SurfaceID id, uint32_t layerStack);
     status_t    destroySurface(SurfaceID sid);
+
+    static void setDisplayLayerStack(uint32_t token,
+            uint32_t layerStack);
+
+    /* setDisplayProjection() defines the projection of layer stacks
+     * to a given display.
+     *
+     * - orientation defines the display's orientation.
+     * - layerStackRect defines which area of the window manager coordinate
+     * space will be used.
+     * - displayRect defines where on the display will layerStackRect be
+     * mapped to. displayRect is specified post-orientation, that is
+     * it uses the orientation seen by the end-user.
+     */
+    static void setDisplayProjection(uint32_t token,
+            uint32_t orientation,
+            const Rect& layerStackRect,
+            const Rect& displayRect);
 
 private:
     virtual void onFirstRef();

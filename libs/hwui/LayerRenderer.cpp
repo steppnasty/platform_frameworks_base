@@ -18,6 +18,8 @@
 
 #include <ui/Rect.h>
 
+#include <private/hwui/DrawGlInfo.h>
+
 #include "LayerCache.h"
 #include "LayerRenderer.h"
 #include "Matrix.h"
@@ -37,7 +39,12 @@ LayerRenderer::LayerRenderer(Layer* layer): mLayer(layer) {
 LayerRenderer::~LayerRenderer() {
 }
 
-void LayerRenderer::prepareDirty(float left, float top, float right, float bottom, bool opaque) {
+void LayerRenderer::setViewport(int width, int height) {
+    initViewport(width, height);
+}
+
+status_t LayerRenderer::prepareDirty(float left, float top, float right, float bottom,
+        bool opaque) {
     LAYER_RENDERER_LOGD("Rendering into layer, fbo = %d", mLayer->getFbo());
 
     glBindFramebuffer(GL_FRAMEBUFFER, mLayer->getFbo());
@@ -45,7 +52,6 @@ void LayerRenderer::prepareDirty(float left, float top, float right, float botto
     const float width = mLayer->layer.getWidth();
     const float height = mLayer->layer.getHeight();
 
-#if RENDER_LAYERS_AS_REGIONS
     Rect dirty(left, top, right, bottom);
     if (dirty.isEmpty() || (dirty.left <= 0 && dirty.top <= 0 &&
             dirty.right >= width && dirty.bottom >= height)) {
@@ -57,10 +63,21 @@ void LayerRenderer::prepareDirty(float left, float top, float right, float botto
         mLayer->region.subtractSelf(r);
     }
 
-    OpenGLRenderer::prepareDirty(dirty.left, dirty.top, dirty.right, dirty.bottom, opaque);
-#else
-    OpenGLRenderer::prepareDirty(0.0f, 0.0f, width, height, opaque);
-#endif
+    return OpenGLRenderer::prepareDirty(dirty.left, dirty.top, dirty.right, dirty.bottom, opaque);
+}
+
+status_t LayerRenderer::clear(float left, float top, float right, float bottom, bool opaque) {
+    if (mLayer->isDirty()) {
+        getCaches().disableScissor();
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        getCaches().resetScissor();
+        mLayer->setDirty(false);
+
+        return DrawGlInfo::kStatusDone;
+    }
+
+    return OpenGLRenderer::clear(left, top, right, bottom, opaque);
 }
 
 void LayerRenderer::finish() {
@@ -78,6 +95,10 @@ GLint LayerRenderer::getTargetFbo() {
     return mLayer->getFbo();
 }
 
+bool LayerRenderer::suppressErrorChecks() {
+    return true;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Dirty region tracking
 ///////////////////////////////////////////////////////////////////////////////
@@ -87,14 +108,10 @@ bool LayerRenderer::hasLayer() {
 }
 
 Region* LayerRenderer::getRegion() {
-#if RENDER_LAYERS_AS_REGIONS
     if (getSnapshot()->flags & Snapshot::kFlagFboTarget) {
         return OpenGLRenderer::getRegion();
     }
     return &mLayer->region;
-#else
-    return OpenGLRenderer::getRegion();
-#endif
 }
 
 // TODO: This implementation is flawed and can generate T-junctions
@@ -105,7 +122,6 @@ Region* LayerRenderer::getRegion() {
 //       In practice, T-junctions do not appear often so this has yet
 //       to be fixed.
 void LayerRenderer::generateMesh() {
-#if RENDER_LAYERS_AS_REGIONS
     if (mLayer->region.isRect() || mLayer->region.isEmpty()) {
         if (mLayer->mesh) {
             delete mLayer->mesh;
@@ -172,7 +188,6 @@ void LayerRenderer::generateMesh() {
             indices[index + 5] = quad + 3;   // bottom-right
         }
     }
-#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -182,14 +197,15 @@ void LayerRenderer::generateMesh() {
 Layer* LayerRenderer::createLayer(uint32_t width, uint32_t height, bool isOpaque) {
     LAYER_RENDERER_LOGD("Requesting new render layer %dx%d", width, height);
 
-    GLuint fbo = Caches::getInstance().fboCache.get();
+    Caches& caches = Caches::getInstance();
+    GLuint fbo = caches.fboCache.get();
     if (!fbo) {
         ALOGW("Could not obtain an FBO");
         return NULL;
     }
 
-    glActiveTexture(GL_TEXTURE0);
-    Layer* layer = Caches::getInstance().layerCache.get(width, height);
+    caches.activeTexture(0);
+    Layer* layer = caches.layerCache.get(width, height);
     if (!layer) {
         ALOGW("Could not obtain a layer");
         return NULL;
@@ -202,6 +218,7 @@ Layer* LayerRenderer::createLayer(uint32_t width, uint32_t height, bool isOpaque
     layer->setAlpha(255, SkXfermode::kSrcOver_Mode);
     layer->setBlend(!isOpaque);
     layer->setColorFilter(NULL);
+    layer->setDirty(true);
     layer->region.clear();
 
     GLuint previousFbo;
@@ -220,11 +237,8 @@ Layer* LayerRenderer::createLayer(uint32_t width, uint32_t height, bool isOpaque
                     fbo, width, height);
 
             glBindFramebuffer(GL_FRAMEBUFFER, previousFbo);
-            Caches::getInstance().fboCache.put(fbo);
-            layer->setFbo(0);
 
-            layer->deleteTexture();
-            delete layer;
+            Caches::getInstance().resourceCache.decrementRefcount(layer);
 
             return NULL;
         }
@@ -232,11 +246,6 @@ Layer* LayerRenderer::createLayer(uint32_t width, uint32_t height, bool isOpaque
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
             layer->getTexture(), 0);
-
-    glDisable(GL_SCISSOR_TEST);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glEnable(GL_SCISSOR_TEST);
 
     glBindFramebuffer(GL_FRAMEBUFFER, previousFbo);
 
@@ -252,8 +261,7 @@ bool LayerRenderer::resizeLayer(Layer* layer, uint32_t width, uint32_t height) {
             layer->texCoords.set(0.0f, height / float(layer->getHeight()),
                     width / float(layer->getWidth()), 0.0f);
         } else {
-            layer->deleteTexture();
-            delete layer;
+            Caches::getInstance().resourceCache.decrementRefcount(layer);
             return false;
         }
     }
@@ -261,7 +269,7 @@ bool LayerRenderer::resizeLayer(Layer* layer, uint32_t width, uint32_t height) {
     return true;
 }
 
-Layer* LayerRenderer::createTextureLayer(bool isOpaque, int textureName) {
+Layer* LayerRenderer::createTextureLayer(bool isOpaque) {
     LAYER_RENDERER_LOGD("Creating new texture layer");
 
     Layer* layer = new Layer(0, 0);
@@ -276,12 +284,9 @@ Layer* LayerRenderer::createTextureLayer(bool isOpaque, int textureName) {
     layer->region.clear();
     layer->setRenderTarget(GL_NONE); // see ::updateTextureLayer()
 
-    glActiveTexture(GL_TEXTURE0);
+    Caches::getInstance().activeTexture(0);
+    layer->generateTexture();
 
-    if (textureName == 0)
-        layer->generateTexture();
-    else
-        *(layer->getTexturePointer()) = static_cast<GLuint>(textureName);
     return layer;
 }
 
@@ -298,8 +303,8 @@ void LayerRenderer::updateTextureLayer(Layer* layer, uint32_t width, uint32_t he
         if (renderTarget != layer->getRenderTarget()) {
             layer->setRenderTarget(renderTarget);
             layer->bindTexture();
-            layer->setFilter(GL_NEAREST, GL_NEAREST, false, true);
-            layer->setWrap(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, false, true);
+            layer->setFilter(GL_NEAREST, false, true);
+            layer->setWrap(GL_CLAMP_TO_EDGE, false, true);
         }
     }
 }
@@ -309,20 +314,15 @@ void LayerRenderer::destroyLayer(Layer* layer) {
         LAYER_RENDERER_LOGD("Recycling layer, %dx%d fbo = %d",
                 layer->getWidth(), layer->getHeight(), layer->getFbo());
 
-        if (layer->getFbo()) {
-            Caches::getInstance().fboCache.put(layer->getFbo());
-            layer->setFbo(0);
-        }
-
         if (!Caches::getInstance().layerCache.put(layer)) {
             LAYER_RENDERER_LOGD("  Destroyed!");
-            layer->deleteTexture();
-            delete layer;
+            Caches::getInstance().resourceCache.decrementRefcount(layer);
         } else {
             LAYER_RENDERER_LOGD("  Cached!");
 #if DEBUG_LAYER_RENDERER
             Caches::getInstance().layerCache.dump();
 #endif
+            layer->removeFbo();
             layer->region.clear();
         }
     }
@@ -336,9 +336,29 @@ void LayerRenderer::destroyLayerDeferred(Layer* layer) {
     }
 }
 
+void LayerRenderer::flushLayer(Layer* layer) {
+#ifdef GL_EXT_discard_framebuffer
+    GLuint fbo = layer->getFbo();
+    if (layer && fbo) {
+        // If possible, discard any enqueud operations on deferred
+        // rendering architectures
+        if (Caches::getInstance().extensions.hasDiscardFramebuffer()) {
+            GLuint previousFbo;
+            glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*) &previousFbo);
+            if (fbo != previousFbo) glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+            const GLenum attachments[] = { GL_COLOR_ATTACHMENT0 };
+            glDiscardFramebufferEXT(GL_FRAMEBUFFER, 1, attachments);
+
+            if (fbo != previousFbo) glBindFramebuffer(GL_FRAMEBUFFER, previousFbo);
+        }
+    }
+#endif
+}
+
 bool LayerRenderer::copyLayer(Layer* layer, SkBitmap* bitmap) {
     Caches& caches = Caches::getInstance();
-    if (layer && layer->isTextureLayer() && bitmap->width() <= caches.maxTextureSize &&
+    if (layer && bitmap->width() <= caches.maxTextureSize &&
             bitmap->height() <= caches.maxTextureSize) {
 
         GLuint fbo = caches.fboCache.get();
@@ -351,6 +371,7 @@ bool LayerRenderer::copyLayer(Layer* layer, SkBitmap* bitmap) {
 
         GLuint texture;
         GLuint previousFbo;
+        GLuint previousViewport[4];
 
         GLenum format;
         GLenum type;
@@ -380,18 +401,22 @@ bool LayerRenderer::copyLayer(Layer* layer, SkBitmap* bitmap) {
 
         float alpha = layer->getAlpha();
         SkXfermode::Mode mode = layer->getMode();
+        GLuint previousLayerFbo = layer->getFbo();
 
         layer->setAlpha(255, SkXfermode::kSrc_Mode);
         layer->setFbo(fbo);
 
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*) &previousFbo);
+        glGetIntegerv(GL_VIEWPORT, (GLint*) &previousViewport);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
         glGenTextures(1, &texture);
         if ((error = glGetError()) != GL_NO_ERROR) goto error;
 
-        glActiveTexture(GL_TEXTURE0);
+        caches.activeTexture(0);
         glBindTexture(GL_TEXTURE_2D, texture);
+
+        glPixelStorei(GL_PACK_ALIGNMENT, bitmap->bytesPerPixel());
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -413,7 +438,7 @@ bool LayerRenderer::copyLayer(Layer* layer, SkBitmap* bitmap) {
             renderer.OpenGLRenderer::prepareDirty(0.0f, 0.0f,
                     bitmap->width(), bitmap->height(), !layer->isBlend());
 
-            glDisable(GL_SCISSOR_TEST);
+            caches.disableScissor();
             renderer.translate(0.0f, bitmap->height());
             renderer.scale(1.0f, -1.0f);
 
@@ -450,9 +475,11 @@ error:
 
         glBindFramebuffer(GL_FRAMEBUFFER, previousFbo);
         layer->setAlpha(alpha, mode);
-        layer->setFbo(0);
+        layer->setFbo(previousLayerFbo);
         glDeleteTextures(1, &texture);
         caches.fboCache.put(fbo);
+        glViewport(previousViewport[0], previousViewport[1],
+                previousViewport[2], previousViewport[3]);
 
         return status;
     }

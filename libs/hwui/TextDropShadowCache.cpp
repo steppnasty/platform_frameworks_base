@@ -102,13 +102,15 @@ void TextDropShadowCache::clear() {
 }
 
 ShadowTexture* TextDropShadowCache::get(SkPaint* paint, const char* text, uint32_t len,
-        int numGlyphs, uint32_t radius) {
-    ShadowText entry(paint, radius, len, text);
+        int numGlyphs, uint32_t radius, const float* positions) {
+    ShadowText entry(paint, radius, len, text, positions);
     ShadowTexture* texture = mCache.get(entry);
 
     if (!texture) {
-        FontRenderer::DropShadow shadow = mRenderer->renderDropShadow(paint, text, 0,
-                len, numGlyphs, radius);
+        SkPaint paintCopy(*paint);
+        paintCopy.setTextAlign(SkPaint::kLeft_Align);
+        FontRenderer::DropShadow shadow = mRenderer->renderDropShadow(&paintCopy, text, 0,
+                len, numGlyphs, radius, positions);
 
         texture = new ShadowTexture;
         texture->left = shadow.penX;
@@ -137,8 +139,8 @@ ShadowTexture* TextDropShadowCache::get(SkPaint* paint, const char* text, uint32
         glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, texture->width, texture->height, 0,
                 GL_ALPHA, GL_UNSIGNED_BYTE, shadow.image);
 
-        texture->setFilter(GL_LINEAR, GL_LINEAR);
-        texture->setWrap(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+        texture->setFilter(GL_LINEAR);
+        texture->setWrap(GL_CLAMP_TO_EDGE);
 
         if (size < mMaxSize) {
             if (mDebugEnabled) {

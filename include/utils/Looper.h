@@ -88,6 +88,40 @@ private:
     wp<MessageHandler> mHandler;
 };
 
+/**
+ * A looper callback.
+ */
+class LooperCallback : public virtual RefBase {
+protected:
+    virtual ~LooperCallback() { }
+
+public:
+    /**
+     * Handles a poll event for the given file descriptor.
+     * It is given the file descriptor it is associated with,
+     * a bitmask of the poll events that were triggered (typically ALOOPER_EVENT_INPUT),
+     * and the data pointer that was originally supplied.
+     *
+     * Implementations should return 1 to continue receiving callbacks, or 0
+     * to have this file descriptor and callback unregistered from the looper.
+     */
+    virtual int handleEvent(int fd, int events, void* data) = 0;
+};
+
+/**
+ * Wraps a ALooper_callbackFunc function pointer.
+ */
+class SimpleLooperCallback : public LooperCallback {
+protected:
+    virtual ~SimpleLooperCallback();
+
+public:
+    SimpleLooperCallback(ALooper_callbackFunc callback);
+    virtual int handleEvent(int fd, int events, void* data);
+
+private:
+    ALooper_callbackFunc mCallback;
+};
 
 /**
  * A polling loop that supports monitoring file descriptor events, optionally
@@ -191,6 +225,7 @@ public:
      * This method may block briefly if it needs to wake the poll.
      */
     int addFd(int fd, int ident, int events, ALooper_callbackFunc callback, void* data);
+    int addFd(int fd, int ident, int events, const sp<LooperCallback>& callback, void* data);
 
     /**
      * Removes a previously added file descriptor from the looper.
@@ -283,7 +318,7 @@ private:
     struct Request {
         int fd;
         int ident;
-        ALooper_callbackFunc callback;
+        sp<LooperCallback> callback;
         void* data;
     };
 

@@ -19,7 +19,7 @@
 
 #include <SkBitmap.h>
 
-#include <utils/threads.h>
+#include <utils/Mutex.h>
 #include <utils/Vector.h>
 
 #include "Debug.h"
@@ -66,6 +66,11 @@ public:
      * cannot be found in the cache, a new texture is generated.
      */
     Texture* get(SkBitmap* bitmap);
+    /**
+     * Returns the texture associated with the specified bitmap. The generated
+     * texture is not kept in the cache. The caller must destroy the texture.
+     */
+    Texture* getTransient(SkBitmap* bitmap);
     /**
      * Removes the texture associated with the specified bitmap.
      * Upon remove the texture is freed.

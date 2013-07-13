@@ -14,5 +14,19 @@
  * limitations under the License.
  */
 
-void Dummy() {
-}
+#ifndef _ANDROID_VIEW_SURFACE_SESSION_H
+#define _ANDROID_VIEW_SURFACE_SESSION_H
+
+#include "jni.h"
+
+namespace android {
+
+class SurfaceComposerClient;
+
+/* Gets the underlying SurfaceComposerClient for a SurfaceSession. */
+extern sp<SurfaceComposerClient> android_view_SurfaceSession_getClient(
+        JNIEnv* env, jobject surfaceSessionObj);
+
+} // namespace android
+
+#endif // _ANDROID_VIEW_SURFACE_SESSION_H

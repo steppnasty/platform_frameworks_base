@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,34 @@
  * limitations under the License.
  */
 
-#ifndef _UI_POWER_MANAGER_H
-#define _UI_POWER_MANAGER_H
+#ifndef ANDROID_HWUI_DITHER_H
+#define ANDROID_HWUI_DITHER_H
 
+#include <GLES2/gl2.h>
+
+#include "Program.h"
 
 namespace android {
+namespace uirenderer {
 
-enum {
-    POWER_MANAGER_OTHER_EVENT = 0,
-    POWER_MANAGER_BUTTON_EVENT = 1,
-    POWER_MANAGER_TOUCH_EVENT = 2,
+/**
+ * Handles dithering for programs.
+ */
+class Dither {
+public:
+    Dither(): mInitialized(false), mDitherTexture(0) { }
 
-    POWER_MANAGER_LAST_EVENT = POWER_MANAGER_TOUCH_EVENT, // Last valid event code.
+    void clear();
+    void setupProgram(Program* program, GLuint* textureUnit);
+
+private:
+    void bindDitherTexture();
+
+    bool mInitialized;
+    GLuint mDitherTexture;
 };
 
-} // namespace android
+}; // namespace uirenderer
+}; // namespace android
 
-#endif // _UI_POWER_MANAGER_H
+#endif // ANDROID_HWUI_DITHER_H

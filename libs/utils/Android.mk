@@ -28,6 +28,7 @@ commonSources:= \
 	FileMap.cpp \
 	Flattenable.cpp \
 	LinearTransform.cpp \
+	Log.cpp \
 	ObbFile.cpp \
 	PropertyMap.cpp \
 	PackageRedirectionMap.cpp \
@@ -101,9 +102,8 @@ include $(CLEAR_VARS)
 # we have the common sources, plus some device-specific stuff
 LOCAL_SRC_FILES:= \
 	$(commonSources) \
-	BackupData.cpp \
-	BackupHelpers.cpp \
-	Looper.cpp
+	Looper.cpp \
+	Trace.cpp
 
 ifeq ($(TARGET_OS),linux)
 LOCAL_LDLIBS += -lrt -ldl
@@ -111,7 +111,8 @@ endif
 
 LOCAL_C_INCLUDES += \
 		external/zlib \
-		external/icu4c/common
+		external/icu4c/common \
+		bionic/libc/private
 
 LOCAL_LDLIBS += -lpthread
 
@@ -126,7 +127,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 ifeq ($(TARGET_OS),linux)
 include $(CLEAR_VARS)
-LOCAL_C_INCLUDES += external/zlib external/icu4c/common
+LOCAL_C_INCLUDES += external/zlib external/icu4c/common bionic/libc/private
 LOCAL_LDLIBS := -lrt -ldl -lpthread
 LOCAL_MODULE := libutils
 LOCAL_SRC_FILES := $(commonSources) BackupData.cpp BackupHelpers.cpp

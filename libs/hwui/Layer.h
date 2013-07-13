@@ -37,27 +37,18 @@ namespace uirenderer {
 // Layers
 ///////////////////////////////////////////////////////////////////////////////
 
+// Forward declarations
+class OpenGLRenderer;
+class DisplayList;
+
 /**
  * A layer has dimensions and is backed by an OpenGL texture or FBO.
  */
 struct Layer {
-    Layer(const uint32_t layerWidth, const uint32_t layerHeight) {
-        mesh = NULL;
-        meshIndices = NULL;
-        meshElementCount = 0;
-        cacheable = true;
-        textureLayer = false;
-        renderTarget = GL_TEXTURE_2D;
-        texture.width = layerWidth;
-        texture.height = layerHeight;
-        colorFilter = NULL;
-        ownsTexture = false;
-    }
+    Layer(const uint32_t layerWidth, const uint32_t layerHeight);
+    ~Layer();
 
-    ~Layer() {
-        if (mesh) delete mesh;
-        if (meshIndices) delete meshIndices;
-    }
+    void removeFbo();
 
     /**
      * Sets this layer's region to a rectangle. Computes the appropriate
@@ -78,6 +69,15 @@ struct Layer {
         regionRect.translate(layer.left, layer.top);
     }
 
+    void updateDeferred(OpenGLRenderer* renderer, DisplayList* displayList,
+            int left, int top, int right, int bottom) {
+        this->renderer = renderer;
+        this->displayList = displayList;
+        const Rect r(left, top, right, bottom);
+        dirtyRect.unionWith(r);
+        deferredUpdateScheduled = true;
+    }
+
     inline uint32_t getWidth() {
         return texture.width;
     }
@@ -90,6 +90,8 @@ struct Layer {
         texture.width = width;
         texture.height = height;
     }
+
+    ANDROID_API void setPaint(SkPaint* paint);
 
     inline void setBlend(bool blend) {
         texture.blend = blend;
@@ -132,10 +134,6 @@ struct Layer {
         return fbo;
     }
 
-    inline GLuint* getTexturePointer() {
-        return &texture.id;
-    }
-
     inline GLuint getTexture() {
         return texture.id;
     }
@@ -148,12 +146,12 @@ struct Layer {
         this->renderTarget = renderTarget;
     }
 
-    void setWrap(GLenum wrapS, GLenum wrapT, bool bindTexture = false, bool force = false) {
-        texture.setWrap(wrapS, wrapT, bindTexture, force, renderTarget);
+    void setWrap(GLenum wrap, bool bindTexture = false, bool force = false) {
+        texture.setWrap(wrap, bindTexture, force, renderTarget);
     }
 
-    void setFilter(GLenum min, GLenum mag, bool bindTexture = false, bool force = false) {
-        texture.setFilter(min, mag,bindTexture, force, renderTarget);
+    void setFilter(GLenum filter, bool bindTexture = false, bool force = false) {
+        texture.setFilter(filter, bindTexture, force, renderTarget);
     }
 
     inline bool isCacheable() {
@@ -162,6 +160,14 @@ struct Layer {
 
     inline void setCacheable(bool cacheable) {
         this->cacheable = cacheable;
+    }
+
+    inline bool isDirty() {
+        return dirty;
+    }
+
+    inline void setDirty(bool dirty) {
+        this->dirty = dirty;
     }
 
     inline bool isTextureLayer() {
@@ -176,21 +182,34 @@ struct Layer {
         return colorFilter;
     }
 
-    inline void setColorFilter(SkiaColorFilter* filter) {
-        colorFilter = filter;
-    }
+    ANDROID_API void setColorFilter(SkiaColorFilter* filter);
 
     inline void bindTexture() {
-        glBindTexture(renderTarget, texture.id);
+        if (texture.id) {
+            glBindTexture(renderTarget, texture.id);
+        }
     }
 
     inline void generateTexture() {
-        glGenTextures(1, &texture.id);
-        ownsTexture = true;
+        if (!texture.id) {
+            glGenTextures(1, &texture.id);
+        }
     }
 
     inline void deleteTexture() {
-        if (texture.id && ownsTexture) glDeleteTextures(1, &texture.id);
+        if (texture.id) {
+            glDeleteTextures(1, &texture.id);
+            texture.id = 0;
+        }
+    }
+
+    /**
+     * When the caller frees the texture itself, the caller
+     * must call this method to tell this layer that it lost
+     * the texture.
+     */
+    void clearTexture() {
+        texture.id = 0;
     }
 
     inline void deleteFbo() {
@@ -198,6 +217,9 @@ struct Layer {
     }
 
     inline void allocateTexture(GLenum format, GLenum storage) {
+#if DEBUG_LAYERS
+        ALOGD("  Allocate layer: %dx%d", getWidth(), getHeight());
+#endif
         glTexImage2D(renderTarget, 0, format, getWidth(), getHeight(), 0, format, storage, NULL);
     }
 
@@ -236,6 +258,14 @@ struct Layer {
     uint16_t* meshIndices;
     GLsizei meshElementCount;
 
+    /**
+     * Used for deferred updates.
+     */
+    bool deferredUpdateScheduled;
+    OpenGLRenderer* renderer;
+    DisplayList* displayList;
+    Rect dirtyRect;
+
 private:
     /**
      * Name of the FBO used to render the layer. If the name is 0
@@ -265,6 +295,12 @@ private:
     bool textureLayer;
 
     /**
+     * When set to true, this layer is dirty and should be cleared
+     * before any rendering occurs.
+     */
+    bool dirty;
+
+    /**
      * Indicates the render target.
      */
     GLenum renderTarget;
@@ -292,11 +328,6 @@ private:
      * Optional transform.
      */
     mat4 transform;
-
-    /**
-     * Indicates whether the texture is owned by the layer
-     */
-    bool ownsTexture;
 
 }; // struct Layer
 

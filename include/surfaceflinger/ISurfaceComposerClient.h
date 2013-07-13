@@ -42,6 +42,23 @@ class ISurfaceComposerClient : public IInterface
 public:
     DECLARE_META_INTERFACE(SurfaceComposerClient);
 
+    // flags for createSurface()
+    enum { // (keep in sync with Surface.java)
+        eHidden             = 0x00000004,
+        eDestroyBackbuffer  = 0x00000020,
+        eSecure             = 0x00000080,
+        eNonPremultiplied   = 0x00000100,
+        eOpaque             = 0x00000400,
+        eProtectedByApp     = 0x00000800,
+        eProtectedByDRM     = 0x00001000,
+
+        eFXSurfaceNormal    = 0x00000000,
+        eFXSurfaceBlur      = 0x00010000, // deprecated, same as Dim
+        eFXSurfaceDim       = 0x00020000,
+        eFXSurfaceScreenshot= 0x00030000,
+        eFXSurfaceMask      = 0x000F0000,
+    };
+
     struct surface_data_t {
         int32_t             token;
         int32_t             identity;
@@ -52,7 +69,7 @@ public:
     /*
      * Requires ACCESS_SURFACE_FLINGER permission
      */
-    virtual sp<ISurface> createSurface( surface_data_t* data,
+    virtual sp<ISurface> createSurface(surface_data_t* data,
                                         const String8& name,
                                         DisplayID display,
                                         uint32_t w,

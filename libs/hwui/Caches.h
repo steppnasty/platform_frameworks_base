@@ -38,6 +38,8 @@
 #include "TextDropShadowCache.h"
 #include "FboCache.h"
 #include "ResourceCache.h"
+#include "Stencil.h"
+#include "Dither.h"
 
 namespace android {
 namespace uirenderer {
@@ -66,9 +68,16 @@ static const GLsizei gVertexStride = sizeof(Vertex);
 static const GLsizei gAlphaVertexStride = sizeof(AlphaVertex);
 static const GLsizei gAAVertexStride = sizeof(AAVertex);
 static const GLsizei gMeshTextureOffset = 2 * sizeof(float);
+static const GLsizei gVertexAlphaOffset = 2 * sizeof(float);
 static const GLsizei gVertexAAWidthOffset = 2 * sizeof(float);
 static const GLsizei gVertexAALengthOffset = 3 * sizeof(float);
 static const GLsizei gMeshCount = 4;
+
+static const GLenum gTextureUnits[] = {
+    GL_TEXTURE0,
+    GL_TEXTURE1,
+    GL_TEXTURE2
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Debug
@@ -93,16 +102,6 @@ class ANDROID_API Caches: public Singleton<Caches> {
 
     CacheLogger mLogger;
 
-    GLuint mCurrentBuffer;
-
-    // Used to render layers
-    TextureVertex* mRegionMesh;
-    GLuint mRegionMeshIndices;
-
-    mutable Mutex mGarbageLock;
-    Vector<Layer*> mLayerGarbage;
-    Vector<DisplayList*> mDisplayListGarbage;
-
 public:
     enum FlushMode {
         kFlushMode_Layers = 0,
@@ -111,7 +110,7 @@ public:
     };
 
     /**
-     * Initializes the cache.
+     * Initialize caches.
      */
     void init();
 
@@ -155,17 +154,64 @@ public:
     /**
      * Binds the VBO used to render simple textured quads.
      */
-    void bindMeshBuffer();
+    bool bindMeshBuffer();
 
     /**
      * Binds the specified VBO if needed.
      */
-    void bindMeshBuffer(const GLuint buffer);
+    bool bindMeshBuffer(const GLuint buffer);
 
     /**
      * Unbinds the VBO used to render simple textured quads.
      */
-    void unbindMeshBuffer();
+    bool unbindMeshBuffer();
+
+    bool bindIndicesBuffer(const GLuint buffer);
+    bool unbindIndicesBuffer();
+
+    /**
+     * Binds an attrib to the specified float vertex pointer.
+     * Assumes a stride of gMeshStride and a size of 2.
+     */
+    void bindPositionVertexPointer(bool force, GLvoid* vertices, GLsizei stride = gMeshStride);
+
+    /**
+     * Binds an attrib to the specified float vertex pointer.
+     * Assumes a stride of gMeshStride and a size of 2.
+     */
+    void bindTexCoordsVertexPointer(bool force, GLvoid* vertices);
+
+    /**
+     * Resets the vertex pointers.
+     */
+    void resetVertexPointers();
+    void resetTexCoordsVertexPointer();
+
+    void enableTexCoordsVertexArray();
+    void disbaleTexCoordsVertexArray();
+
+    /**
+     * Activate the specified texture unit. The texture unit must
+     * be specified using an integer number (0 for GL_TEXTURE0 etc.)
+     */
+    void activeTexture(GLuint textureUnit);
+
+    /**
+     * Sets the scissor for the current surface.
+     */
+    bool setScissor(GLint x, GLint y, GLint width, GLint height);
+
+    /**
+     * Resets the scissor state.
+     */
+    void resetScissor();
+
+    bool enableScissor();
+    bool disableScissor();
+    void setScissorEnabled(bool enabled);
+
+    void startTiling(GLuint x, GLuint y, GLuint width, GLuint height, bool opaque);
+    void endTiling();
 
     /**
      * Returns the mesh used to draw regions. Calling this method will
@@ -180,10 +226,15 @@ public:
     void dumpMemoryUsage();
     void dumpMemoryUsage(String8& log);
 
+    bool hasRegisteredFunctors();
+    void registerFunctors(uint32_t functorCount);
+    void unregisterFunctors(uint32_t functorCount);
+
     bool blend;
     GLenum lastSrcMode;
     GLenum lastDstMode;
     Program* currentProgram;
+    bool scissorEnabled;
 
     // VBO to draw with
     GLuint meshBuffer;
@@ -193,6 +244,8 @@ public:
 
     // Misc
     GLint maxTextureSize;
+    bool debugLayersUpdates;
+    bool debugOverdraw;
 
     TextureCache textureCache;
     LayerCache layerCache;
@@ -207,12 +260,59 @@ public:
     PatchCache patchCache;
     TextDropShadowCache dropShadowCache;
     FboCache fboCache;
-    GammaFontRenderer fontRenderer;
     ResourceCache resourceCache;
 
+    GammaFontRenderer* fontRenderer;
+
+    Dither dither;
+#if STENCIL_BUFFER_SIZE
+    Stencil stencil;
+#endif
+
 private:
+    void initFont();
+    void initConstraints();
+    void initProperties();
+
+    static void eventMarkNull(GLsizei length, const GLchar* marker) { }
+    static void startMarkNull(GLsizei length, const GLchar* marker) { }
+    static void endMarkNull() { }
+
+    static void setLabelNull(GLenum type, uint object, GLsizei length,
+            const char* label) { }
+    static void getLabelNull(GLenum type, uint object, GLsizei bufferSize,
+            GLsizei* length, char* label) {
+        if (length) *length = 0;
+        if (label) *label = '\0';
+    }
+
+    GLuint mCurrentBuffer;
+    GLuint mCurrentIndicesBuffer;
+    void* mCurrentPositionPointer;
+    GLsizei mCurrentPositionStride;
+    void* mCurrentTexCoordsPointer;
+
+    bool mTexCoordsArrayEnabled;
+
+    GLuint mTextureUnit;
+
+    GLint mScissorX;
+    GLint mScissorY;
+    GLint mScissorWidth;
+    GLint mScissorHeight;
+
+    // Used to render layers
+    TextureVertex* mRegionMesh;
+    GLuint mRegionMeshIndices;
+
+    mutable Mutex mGarbageLock;
+    Vector<Layer*> mLayerGarbage;
+    Vector<DisplayList*> mDisplayListGarbage;
+
     DebugLevel mDebugLevel;
     bool mInitialized;
+
+    uint32_t mFunctorsCount;
 }; // class Caches
 
 }; // namespace uirenderer

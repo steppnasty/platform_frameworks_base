@@ -36,15 +36,24 @@ struct Texture {
         minFilter = GL_NEAREST;
         magFilter = GL_NEAREST;
 
+        mipMap = false;
+
         firstFilter = true;
         firstWrap = true;
+
+        id = 0;
     }
 
-    void setWrap(GLenum wrapS, GLenum wrapT, bool bindTexture = false, bool force = false,
+    void setWrap(GLenum wrap, bool bindTexture = false, bool force = false,
+                GLenum renderTarget = GL_TEXTURE_2D) {
+        setWrapST(wrap, wrap, bindTexture, force, renderTarget);
+    }
+
+    void setWrapST(GLenum wrapS, GLenum wrapT, bool bindTexture = false, bool force = false,
             GLenum renderTarget = GL_TEXTURE_2D) {
 
         if (firstWrap || force || wrapS != this->wrapS || wrapT != this->wrapT) {
-            firstWrap = true;
+            firstWrap = false;
 
             this->wrapS = wrapS;
             this->wrapT = wrapT;
@@ -58,7 +67,12 @@ struct Texture {
         }
     }
 
-    void setFilter(GLenum min, GLenum mag, bool bindTexture = false, bool force = false,
+    void setFilter(GLenum filter, bool bindTexture = false, bool force = false,
+                GLenum renderTarget = GL_TEXTURE_2D) {
+        setFilterMinMag(filter, filter, bindTexture, force, renderTarget);
+    }
+
+    void setFilterMinMag(GLenum min, GLenum mag, bool bindTexture = false, bool force = false,
             GLenum renderTarget = GL_TEXTURE_2D) {
 
         if (firstFilter || force || min != minFilter || mag != magFilter) {
@@ -70,6 +84,8 @@ struct Texture {
             if (bindTexture) {
                 glBindTexture(renderTarget, id);
             }
+
+            if (mipMap && min == GL_LINEAR) min = GL_LINEAR_MIPMAP_LINEAR;
 
             glTexParameteri(renderTarget, GL_TEXTURE_MIN_FILTER, min);
             glTexParameteri(renderTarget, GL_TEXTURE_MAG_FILTER, mag);
@@ -104,7 +120,12 @@ struct Texture {
      * Optional, size of the original bitmap.
      */
     uint32_t bitmapSize;
+    /**
+     * Indicates whether this texture will use trilinear filtering.
+     */
+    bool mipMap;
 
+private:
     /**
      * Last wrap modes set on this texture. Defaults to GL_CLAMP_TO_EDGE.
      */
@@ -117,7 +138,6 @@ struct Texture {
     GLenum minFilter;
     GLenum magFilter;
 
-private:
     bool firstFilter;
     bool firstWrap;
 }; // struct Texture

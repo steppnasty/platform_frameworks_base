@@ -35,27 +35,13 @@ namespace android {
 
 class IMemoryHeap;
 class ComposerState;
+class DisplayState;
+class DisplayInfo;
 
 class ISurfaceComposer : public IInterface
 {
 public:
     DECLARE_META_INTERFACE(SurfaceComposer);
-
-    enum { // (keep in sync with Surface.java)
-        eHidden             = 0x00000004,
-        eDestroyBackbuffer  = 0x00000020,
-        eSecure             = 0x00000080,
-        eNonPremultiplied   = 0x00000100,
-        eOpaque             = 0x00000400,
-        eProtectedByApp     = 0x00000800,
-        eProtectedByDRM     = 0x00001000,
-
-        eFXSurfaceNormal    = 0x00000000,
-        eFXSurfaceBlur      = 0x00010000,
-        eFXSurfaceDim       = 0x00020000,
-        eFXSurfaceScreenshot= 0x00030000,
-        eFXSurfaceMask      = 0x000F0000,
-    };
 
     enum {
         ePositionChanged            = 0x00000001,
@@ -87,6 +73,7 @@ public:
 
     enum {
         eSynchronous            = 0x01,
+        eAnimation              = 0x02,
     };
 
     enum {

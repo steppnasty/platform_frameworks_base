@@ -371,6 +371,11 @@ int IPCThreadState::getCallingUid()
     return mCallingUid;
 }
 
+int IPCThreadState::getOrigCallingUid()
+{
+    return mOrigCallingUid;
+}
+
 int64_t IPCThreadState::clearCallingIdentity()
 {
     int64_t token = ((int64_t)mCallingUid<<32) | mCallingPid;
@@ -426,7 +431,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
     // This thread may have been spawned by a thread that was in the background
     // scheduling group, so first we will make sure it is in the default/foreground
     // one to avoid performing an initial transaction in the background.
-    androidSetThreadSchedulingGroup(mMyThreadId, ANDROID_TGROUP_DEFAULT);
+    set_sched_policy(mMyThreadId, SP_FOREGROUND);
         
     status_t result;
     do {
@@ -475,7 +480,7 @@ void IPCThreadState::joinThreadPool(bool isMain)
         // sure to go in the foreground after executing a transaction, but
         // there are other callbacks into user code that could have changed
         // our group so we want to make absolutely sure it is put back.
-        androidSetThreadSchedulingGroup(mMyThreadId, ANDROID_TGROUP_DEFAULT);
+        set_sched_policy(mMyThreadId, SP_FOREGROUND);
 
         // Let this thread exit the thread pool if it is no longer
         // needed and it is not the main process thread.
@@ -641,6 +646,7 @@ IPCThreadState::IPCThreadState()
 {
     pthread_setspecific(gTLS, this);
     clearCaller();
+    mOrigCallingUid = mCallingUid;
     mIn.setDataCapacity(256);
     mOut.setDataCapacity(256);
 }
@@ -992,7 +998,8 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             
             mCallingPid = tr.sender_pid;
             mCallingUid = tr.sender_euid;
-            
+            mOrigCallingUid = tr.sender_euid;
+  
             int curPrio = getpriority(PRIO_PROCESS, mMyThreadId);
             if (gDisableBackgroundScheduling) {
                 if (curPrio > ANDROID_PRIORITY_NORMAL) {
@@ -1009,8 +1016,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
                     // since the driver won't modify scheduling classes for us.
                     // The scheduling group is reset to default by the caller
                     // once this method returns after the transaction is complete.
-                    androidSetThreadSchedulingGroup(mMyThreadId,
-                                                    ANDROID_TGROUP_BG_NONINTERACT);
+                    set_sched_policy(mMyThreadId, SP_BACKGROUND);
                 }
             }
 
@@ -1050,6 +1056,7 @@ status_t IPCThreadState::executeCommand(int32_t cmd)
             
             mCallingPid = origPid;
             mCallingUid = origUid;
+            mOrigCallingUid = origUid;
 
             IF_LOG_TRANSACTIONS() {
                 TextOutput::Bundle _b(alog);

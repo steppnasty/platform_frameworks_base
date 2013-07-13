@@ -35,6 +35,7 @@ struct DisplayInfo {
     float               density;
     float               xdpi;
     float               ydpi;
+    bool                secure;
 };
 
 /* Display orientations as defined in Surface.java and ISurfaceComposer.h. */

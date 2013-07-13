@@ -92,6 +92,13 @@ bool SurfaceControl::isSameSurface(
     return lhs->mSurface->asBinder() == rhs->mSurface->asBinder();
 }
 
+status_t SurfaceControl::setLayerStack(int32_t layerStack) {
+    status_t err = validate();
+    if (err < 0) return err;
+    const sp<SurfaceComposerClient>& client(mClient);
+    return client->setLayerStack(mToken, layerStack);
+}
+
 status_t SurfaceControl::setLayer(int32_t layer) {
     status_t err = validate();
     if (err < 0) return err;
@@ -158,6 +165,13 @@ status_t SurfaceControl::setMatrix(float dsdx, float dtdx, float dsdy, float dtd
     const sp<SurfaceComposerClient>& client(mClient);
     return client->setMatrix(mToken, dsdx, dtdx, dsdy, dtdy);
 }
+status_t SurfaceControl::setCrop(const Rect& crop) {
+    status_t err = validate();
+    if (err < 0) return err;
+    const sp<SurfaceComposerClient>& client(mClient);
+    return client->setCrop(mToken, crop);
+}
+
 status_t SurfaceControl::setFreezeTint(uint32_t tint) {
     status_t err = validate();
     if (err < 0) return err;
