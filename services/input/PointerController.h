@@ -20,7 +20,8 @@
 #include "SpriteController.h"
 
 #include <ui/DisplayInfo.h>
-#include <ui/Input.h>
+#include <androidfw/Input.h>
+#include <utils/BitSet.h>
 #include <utils/RefBase.h>
 #include <utils/Looper.h>
 #include <utils/String8.h>
@@ -169,8 +170,7 @@ public:
             const uint32_t* spotIdToIndex, BitSet32 spotIdBits);
     virtual void clearSpots();
 
-    void setDisplaySize(int32_t width, int32_t height);
-    void setDisplayOrientation(int32_t orientation);
+    void setDisplayViewport(int32_t width, int32_t height, int32_t orientation);
     void setPointerIcon(const SpriteIcon& icon);
     void setInactivityTimeout(InactivityTimeout inactivityTimeout);
 

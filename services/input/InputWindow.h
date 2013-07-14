@@ -17,8 +17,8 @@
 #ifndef _UI_INPUT_WINDOW_H
 #define _UI_INPUT_WINDOW_H
 
-#include <ui/Input.h>
-#include <ui/InputTransport.h>
+#include <androidfw/Input.h>
+#include <androidfw/InputTransport.h>
 #include <utils/RefBase.h>
 #include <utils/Timers.h>
 #include <utils/String8.h>
@@ -110,6 +110,8 @@ struct InputWindowInfo {
 
     enum {
         INPUT_FEATURE_DISABLE_TOUCH_PAD_GESTURES = 0x00000001,
+        INPUT_FEATURE_NO_INPUT_CHANNEL = 0x00000002,
+        INPUT_FEATURE_DISABLE_USER_ACTIVITY = 0x00000004,
     };
 
     sp<InputChannel> inputChannel;
@@ -132,6 +134,7 @@ struct InputWindowInfo {
     int32_t ownerPid;
     int32_t ownerUid;
     int32_t inputFeatures;
+    int32_t displayId;
 
     bool touchableRegionContainsPoint(int32_t x, int32_t y) const;
     bool frameContainsPoint(int32_t x, int32_t y) const;
