@@ -24,7 +24,7 @@
 #include <utils/AssetManager.h>
 
 #include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/SurfaceComposerClient.h>
 
 #include <EGL/egl.h>
 #include <GLES/gl.h>

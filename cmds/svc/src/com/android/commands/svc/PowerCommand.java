@@ -16,14 +16,12 @@
 
 package com.android.commands.svc;
 
-import android.os.Binder;
-import android.os.IBinder;
-import android.os.IPowerManager;
-import android.os.PowerManager;
-import android.os.ServiceManager;
-import android.os.RemoteException;
-import android.os.BatteryManager;
 import android.content.Context;
+import android.os.BatteryManager;
+import android.os.IPowerManager;
+import android.os.RemoteException;
+import android.os.ServiceManager;
+import android.os.SystemClock;
 
 public class PowerCommand extends Svc.Command {
     public PowerCommand() {
@@ -63,13 +61,15 @@ public class PowerCommand extends Svc.Command {
                     IPowerManager pm
                             = IPowerManager.Stub.asInterface(ServiceManager.getService(Context.POWER_SERVICE));
                     try {
-                        IBinder lock = new Binder();
-                        pm.acquireWakeLock(PowerManager.FULL_WAKE_LOCK, lock, "svc power", null);
+                        if (val != 0) {
+                            // if the request is not to set it to false, wake up the screen so that
+                            // it can stay on as requested
+                            pm.wakeUp(SystemClock.uptimeMillis());
+                        }
                         pm.setStayOnSetting(val);
-                        pm.releaseWakeLock(lock, 0);
                     }
                     catch (RemoteException e) {
-                        System.err.println("Faild to set setting: " + e);
+                        System.err.println("Failed to set setting: " + e);
                     }
                     return;
                 }

@@ -36,7 +36,9 @@ import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.util.AndroidException;
+import android.view.Display;
 import android.view.IWindowManager;
 
 import java.io.BufferedReader;
@@ -56,11 +58,12 @@ public class Am {
     private int mNextArg;
     private String mCurArgData;
 
-    private boolean mDebugOption = false;
+    private int mStartFlags = 0;
     private boolean mWaitOption = false;
     private boolean mStopOption = false;
 
     private int mRepeat = 0;
+    private int mUserId;
 
     private String mProfileFile;
     private boolean mProfileAutoStop;
@@ -140,16 +143,29 @@ public class Am {
         }
     }
 
-    private Intent makeIntent() throws URISyntaxException {
+    int parseUserArg(String arg) {
+        int userId;
+        if ("all".equals(arg)) {
+            userId = UserHandle.USER_ALL;
+        } else if ("current".equals(arg) || "cur".equals(arg)) {
+            userId = UserHandle.USER_CURRENT;
+        } else {
+            userId = Integer.parseInt(arg);
+        }
+        return userId;
+    }
+
+    private Intent makeIntent(int defUser) throws URISyntaxException {
         Intent intent = new Intent();
         Intent baseIntent = intent;
         boolean hasIntentInfo = false;
 
-        mDebugOption = false;
+        mStartFlags = 0;
         mWaitOption = false;
         mStopOption = false;
         mRepeat = 0;
         mProfileFile = null;
+        mUserId = defUser;
         Uri data = null;
         String type = null;
 
@@ -275,7 +291,7 @@ public class Am {
                 intent.setDataAndType(data, type);
                 intent = new Intent();
             } else if (opt.equals("-D")) {
-                mDebugOption = true;
+                mStartFlags |= ActivityManager.START_FLAG_DEBUG;
             } else if (opt.equals("-W")) {
                 mWaitOption = true;
             } else if (opt.equals("-P")) {
@@ -358,21 +374,30 @@ public class Am {
     }
 
     private void runStartService() throws Exception {
-        Intent intent = makeIntent();
+        Intent intent = makeIntent(UserHandle.USER_CURRENT);
+        if (mUserId == UserHandle.USER_ALL) {
+            System.err.println("Error: Can't start activity with user 'all'");
+            return;
+        }
         System.out.println("Starting service: " + intent);
-        ComponentName cn = mAm.startService(null, intent, intent.getType());
+        ComponentName cn = mAm.startService(null, intent, intent.getType(), mUserId);
         if (cn == null) {
             System.err.println("Error: Not found; no service started.");
         }
     }
 
     private void runStart() throws Exception {
-        Intent intent = makeIntent();
+        Intent intent = makeIntent(UserHandle.USER_CURRENT);
+
+        if (mUserId == UserHandle.USER_ALL) {
+            System.err.println("Error: Can't start service with user 'all'");
+            return;
+        }
 
         String mimeType = intent.getType();
         if (mimeType == null && intent.getData() != null
                 && "content".equals(intent.getData().getScheme())) {
-            mimeType = mAm.getProviderMimeType(intent.getData());
+            mimeType = mAm.getProviderMimeType(intent.getData(), mUserId);
         }
 
         do {
@@ -387,7 +412,8 @@ public class Am {
                         System.err.println("Error: Package manager not running; aborting");
                         return;
                     }
-                    List<ResolveInfo> activities = pm.queryIntentActivities(intent, mimeType, 0);
+                    List<ResolveInfo> activities = pm.queryIntentActivities(
+                            intent, mimeType, 0, mUserId);
                     if (activities == null || activities.size() <= 0) {
                         System.err.println("Error: Intent does not match any activities: "
                                 + intent);
@@ -400,7 +426,7 @@ public class Am {
                     packageName = activities.get(0).activityInfo.packageName;
                 }
                 System.out.println("Stopping: " + packageName);
-                mAm.forceStopPackage(packageName);
+                mAm.forceStopPackage(packageName, mUserId);
                 Thread.sleep(250);
             }
     
@@ -426,62 +452,60 @@ public class Am {
             int res;
             if (mWaitOption) {
                 result = mAm.startActivityAndWait(null, intent, mimeType,
-                            null, 0, null, null, 0, false, mDebugOption,
-                            mProfileFile, fd, mProfileAutoStop);
+                            null, null, 0, mStartFlags, mProfileFile, fd, null, mUserId);
                 res = result.result;
             } else {
                 res = mAm.startActivity(null, intent, mimeType,
-                        null, 0, null, null, 0, false, mDebugOption,
-                        mProfileFile, fd, mProfileAutoStop);
+                        null, null, 0, mStartFlags, mProfileFile, fd, null);
             }
             PrintStream out = mWaitOption ? System.out : System.err;
             boolean launched = false;
             switch (res) {
-                case IActivityManager.START_SUCCESS:
+                case ActivityManager.START_SUCCESS:
                     launched = true;
                     break;
-                case IActivityManager.START_SWITCHES_CANCELED:
+                case ActivityManager.START_SWITCHES_CANCELED:
                     launched = true;
                     out.println(
                             "Warning: Activity not started because the "
                             + " current activity is being kept for the user.");
                     break;
-                case IActivityManager.START_DELIVERED_TO_TOP:
+                case ActivityManager.START_DELIVERED_TO_TOP:
                     launched = true;
                     out.println(
                             "Warning: Activity not started, intent has "
                             + "been delivered to currently running "
                             + "top-most instance.");
                     break;
-                case IActivityManager.START_RETURN_INTENT_TO_CALLER:
+                case ActivityManager.START_RETURN_INTENT_TO_CALLER:
                     launched = true;
                     out.println(
                             "Warning: Activity not started because intent "
                             + "should be handled by the caller");
                     break;
-                case IActivityManager.START_TASK_TO_FRONT:
+                case ActivityManager.START_TASK_TO_FRONT:
                     launched = true;
                     out.println(
                             "Warning: Activity not started, its current "
                             + "task has been brought to the front");
                     break;
-                case IActivityManager.START_INTENT_NOT_RESOLVED:
+                case ActivityManager.START_INTENT_NOT_RESOLVED:
                     out.println(
                             "Error: Activity not started, unable to "
                             + "resolve " + intent.toString());
                     break;
-                case IActivityManager.START_CLASS_NOT_FOUND:
+                case ActivityManager.START_CLASS_NOT_FOUND:
                     out.println(NO_CLASS_ERROR_CODE);
                     out.println("Error: Activity class " +
                             intent.getComponent().toShortString()
                             + " does not exist.");
                     break;
-                case IActivityManager.START_FORWARD_AND_REQUEST_CONFLICT:
+                case ActivityManager.START_FORWARD_AND_REQUEST_CONFLICT:
                     out.println(
                             "Error: Activity not started, you requested to "
                             + "both forward and receive its result");
                     break;
-                case IActivityManager.START_PERMISSION_DENIED:
+                case ActivityManager.START_PERMISSION_DENIED:
                     out.println(
                             "Error: Activity not started, you do not "
                             + "have permission to access it.");
@@ -516,11 +540,33 @@ public class Am {
     }
 
     private void runForceStop() throws Exception {
-        mAm.forceStopPackage(nextArgRequired());
+        int userId = UserHandle.USER_ALL;
+
+        String opt;
+        while ((opt=nextOption()) != null) {
+            if (opt.equals("--user")) {
+                userId = parseUserArg(nextArgRequired());
+            } else {
+                System.err.println("Error: Unknown option: " + opt);
+                return;
+            }
+        }
+        mAm.forceStopPackage(nextArgRequired(), userId);
     }
 
     private void runKill() throws Exception {
-        mAm.killBackgroundProcesses(nextArgRequired());
+        int userId = UserHandle.USER_ALL;
+
+        String opt;
+        while ((opt=nextOption()) != null) {
+            if (opt.equals("--user")) {
+                userId = parseUserArg(nextArgRequired());
+            } else {
+                System.err.println("Error: Unknown option: " + opt);
+                return;
+            }
+        }
+        mAm.killBackgroundProcesses(nextArgRequired(), userId);
     }
 
     private void runKillAll() throws Exception {
@@ -528,10 +574,11 @@ public class Am {
     }
 
     private void sendBroadcast() throws Exception {
-        Intent intent = makeIntent();
+        Intent intent = makeIntent(UserHandle.USER_ALL);
         IntentReceiver receiver = new IntentReceiver();
         System.out.println("Broadcasting: " + intent);
-        mAm.broadcastIntent(null, intent, null, receiver, 0, null, null, null, true, false);
+        mAm.broadcastIntent(null, intent, null, receiver, 0, null, null, null, true,
+            false, mUserId);
         receiver.waitForFinish();
     }
 
@@ -540,6 +587,7 @@ public class Am {
         boolean wait = false;
         boolean rawMode = false;
         boolean no_window_animation = false;
+        int userId = UserHandle.USER_CURRENT;
         Bundle args = new Bundle();
         String argKey = null, argValue = null;
         IWindowManager wm = IWindowManager.Stub.asInterface(ServiceManager.getService("window"));
@@ -559,11 +607,18 @@ public class Am {
             } else if (opt.equals("--no_window_animation")
                     || opt.equals("--no-window-animation")) {
                 no_window_animation = true;
+            } else if (opt.equals("--user")) {
+                userId = parseUserArg(nextArgRequired());
             } else {
                 System.err.println("Error: Unknown option: " + opt);
                 showUsage();
                 return;
             }
+        }
+
+        if (userId == UserHandle.USER_ALL) {
+            System.err.println("Error: Can't start instrumentation with user 'all'");
+            return;
         }
 
         String cnArg = nextArgRequired();
@@ -582,7 +637,7 @@ public class Am {
             wm.setAnimationScale(1, 0.0f);
         }
 
-        if (!mAm.startInstrumentation(cn, profileFile, 0, args, watcher)) {
+        if (!mAm.startInstrumentation(cn, profileFile, 0, args, watcher, userId)) {
             throw new AndroidException("INSTRUMENTATION_FAILED: " + cn.flattenToString());
         }
 
@@ -610,6 +665,7 @@ public class Am {
         String profileFile = null;
         boolean start = false;
         boolean wall = false;
+        int userId = UserHandle.USER_CURRENT;
         int profileType = 0;
         
         String process = null;
@@ -664,7 +720,7 @@ public class Am {
             } else if (start) {
                 //removeWallOption();
             }
-            if (!mAm.profileControl(process, start, profileFile, fd, profileType)) {
+            if (!mAm.profileControl(process, userId, start, profileFile, fd, profileType)) {
                 wall = false;
                 throw new AndroidException("PROFILE FAILED on process " + process);
             }
@@ -677,6 +733,7 @@ public class Am {
 
     private void runDumpHeap() throws Exception {
         boolean managed = !"-n".equals(nextOption());
+        int userId = UserHandle.USER_CURRENT;
         String process = nextArgRequired();
         String heapFile = nextArgRequired();
         ParcelFileDescriptor fd = null;
@@ -692,7 +749,7 @@ public class Am {
             return;
         }
 
-        if (!mAm.dumpHeap(process, managed, heapFile, fd)) {
+        if (!mAm.dumpHeap(process, userId, managed, heapFile, fd)) {
             throw new AndroidException("HEAP DUMP FAILED on process " + process);
         }
     }
@@ -1083,31 +1140,34 @@ public class Am {
 
         try {
             if (m >= 0 && n >= 0) {
-                wm.setForcedDisplaySize(m, n);
+                wm.setForcedDisplaySize(Display.DEFAULT_DISPLAY, m, n);
             } else {
-                wm.clearForcedDisplaySize();
+                wm.clearForcedDisplaySize(Display.DEFAULT_DISPLAY);
             }
         } catch (RemoteException e) {
         }
     }
 
     private void runToUri(boolean intentScheme) throws Exception {
-        Intent intent = makeIntent();
+        Intent intent = makeIntent(UserHandle.USER_CURRENT);
         System.out.println(intent.toUri(intentScheme ? Intent.URI_INTENT_SCHEME : 0));
     }
 
     private class IntentReceiver extends IIntentReceiver.Stub {
         private boolean mFinished = false;
 
-        public synchronized void performReceive(
+        @Override
+        public void performReceive(
                 Intent intent, int rc, String data, Bundle ext, boolean ord,
-                boolean sticky) {
+                boolean sticky, int sendingUser) throws RemoteException {
             String line = "Broadcast completed: result=" + rc;
             if (data != null) line = line + ", data=\"" + data + "\"";
             if (ext != null) line = line + ", extras: " + ext;
             System.out.println(line);
-            mFinished = true;
-            notifyAll();
+            synchronized (this) {
+                mFinished = true;
+                notifyAll();
+            }
         }
 
         public synchronized void waitForFinish() {

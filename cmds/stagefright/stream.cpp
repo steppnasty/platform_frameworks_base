@@ -33,9 +33,10 @@
 #include <binder/IServiceManager.h>
 #include <media/IMediaPlayerService.h>
 #include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/SurfaceComposerClient.h>
 
 #include <fcntl.h>
+#include <ui/DisplayInfo.h>
 
 using namespace android;
 
@@ -313,7 +314,6 @@ int main(int argc, char **argv) {
     sp<SurfaceControl> control =
         composerClient->createSurface(
                 String8("A Surface"),
-                0,
                 displayWidth,
                 displayHeight,
                 PIXEL_FORMAT_RGB_565,

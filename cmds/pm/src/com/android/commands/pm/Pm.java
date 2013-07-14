@@ -21,6 +21,7 @@ import com.android.internal.content.PackageHelper;
 import android.app.ActivityManagerNative;
 import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ContainerEncryptionParams;
 import android.content.pm.FeatureInfo;
 import android.content.pm.IPackageDataObserver;
 import android.content.pm.IPackageDeleteObserver;
@@ -33,25 +34,35 @@ import android.content.pm.PackageManager;
 import android.content.pm.ParceledListSlice;
 import android.content.pm.PermissionGroupInfo;
 import android.content.pm.PermissionInfo;
+import android.content.pm.UserInfo;
+import android.content.pm.VerificationParams;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.net.Uri;
+import android.os.IUserManager;
 import android.os.Parcel;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.UserHandle;
 
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.security.InvalidAlgorithmParameterException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.WeakHashMap;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
 public final class Pm {
     IPackageManager mPm;
+    IUserManager mUm;
 
     private WeakHashMap<String, Resources> mResourceCache
             = new WeakHashMap<String, Resources>();
@@ -212,6 +223,7 @@ public final class Pm {
         int getFlags = 0;
         boolean listDisabled = false, listEnabled = false;
         boolean listSystem = false, listThirdParty = false;
+        int userId = UserHandle.USER_OWNER;
         try {
             String opt;
             while ((opt=nextOption()) != null) {
@@ -246,7 +258,7 @@ public final class Pm {
         String filter = nextArg();
 
         try {
-            final List<PackageInfo> packages = getInstalledPackages(mPm, getFlags);
+            final List<PackageInfo> packages = getInstalledPackages(mPm, getFlags, userId);
 
             int count = packages.size();
             for (int p = 0 ; p < count ; p++) {
@@ -275,7 +287,7 @@ public final class Pm {
     }
 
     @SuppressWarnings("unchecked")
-    private List<PackageInfo> getInstalledPackages(IPackageManager pm, int flags)
+    private List<PackageInfo> getInstalledPackages(IPackageManager pm, int flags, int userId)
             throws RemoteException {
         final List<PackageInfo> packageInfos = new ArrayList<PackageInfo>();
         PackageInfo lastItem = null;
@@ -283,7 +295,7 @@ public final class Pm {
 
         do {
             final String lastKey = lastItem != null ? lastItem.packageName : null;
-            slice = pm.getInstalledPackages(flags, lastKey);
+            slice = pm.getInstalledPackages(flags, lastKey, userId);
             lastItem = slice.populateList(packageInfos, PackageInfo.CREATOR);
         } while (!slice.isLastSlice());
 
@@ -745,6 +757,17 @@ public final class Pm {
         String installerPackageName = null;
 
         String opt;
+
+        String algo = null;
+        byte[] iv = null;
+        byte[] key = null;
+
+        String macAlgo = null;
+        byte[] macKey = null;
+        byte[] tag = null;
+        String originatingUriString = null;
+        String referrer = null;
+
         while ((opt=nextOption()) != null) {
             if (opt.equals("-l")) {
                 installFlags |= PackageManager.INSTALL_FORWARD_LOCK;
@@ -772,8 +795,58 @@ public final class Pm {
             }
         }
 
+        final ContainerEncryptionParams encryptionParams;
+        if (algo != null || iv != null || key != null || macAlgo != null || macKey != null
+                || tag != null) {
+            if (algo == null || iv == null || key == null) {
+                System.err.println("Error: all of --algo, --iv, and --key must be specified");
+                return;
+            }
+
+            if (macAlgo != null || macKey != null || tag != null) {
+                if (macAlgo == null || macKey == null || tag == null) {
+                    System.err.println("Error: all of --macalgo, --mackey, and --tag must "
+                            + "be specified");
+                    return;
+                }
+            }
+
+            try {
+                final SecretKey encKey = new SecretKeySpec(key, "RAW");
+
+                final SecretKey macSecretKey;
+                if (macKey == null || macKey.length == 0) {
+                    macSecretKey = null;
+                } else {
+                    macSecretKey = new SecretKeySpec(macKey, "RAW");
+                }
+
+                encryptionParams = new ContainerEncryptionParams(algo, new IvParameterSpec(iv),
+                        encKey, macAlgo, null, macSecretKey, tag, -1, -1, -1);
+            } catch (InvalidAlgorithmParameterException e) {
+                e.printStackTrace();
+                return;
+            }
+        } else {
+            encryptionParams = null;
+        }
+
         final Uri apkURI;
         final Uri verificationURI;
+        final Uri originatingURI;
+        final Uri referrerURI;
+
+        if (originatingUriString != null) {
+            originatingURI = Uri.parse(originatingUriString);
+        } else {
+            originatingURI = null;
+        }
+
+        if (referrer != null) {
+            referrerURI = Uri.parse(referrer);
+        } else {
+            referrerURI = null;
+        }
 
         // Populate apkURI, must be present
         final String apkFilePath = nextArg();
@@ -797,8 +870,10 @@ public final class Pm {
 
         PackageInstallObserver obs = new PackageInstallObserver();
         try {
-            mPm.installPackageWithVerification(apkURI, obs, installFlags, installerPackageName,
-                    verificationURI, null);
+            VerificationParams verificationParams = new VerificationParams(verificationURI,
+                    originatingURI, referrerURI, VerificationParams.NO_UID, null);
+            mPm.installPackageWithVerificationAndEncryption(apkURI, obs, installFlags,
+                    installerPackageName, verificationParams, encryptionParams);
 
             synchronized (obs) {
                 while (!obs.finished) {
@@ -836,9 +911,11 @@ public final class Pm {
         }
         name = arg;
         try {
-            if (mPm.createUser(name, 0) == null) {
+            final UserInfo info = mUm.createUser(name, 0);
+            if (info != null) {
+                System.out.println("Success: created user id " + info.id);
+            } else {
                 System.err.println("Error: couldn't create user.");
-                showUsage();
             }
         } catch (RemoteException e) {
             System.err.println(e.toString());
@@ -868,7 +945,9 @@ public final class Pm {
             return;
         }
         try {
-            if (!mPm.removeUser(userId)) {
+            if (mUm.removeUser(userId)) {
+                System.out.println("Success: removed user");
+            } else {
                 System.err.println("Error: couldn't remove user.");
                 showUsage();
             }
@@ -896,7 +975,7 @@ public final class Pm {
 
         String opt = nextOption();
         if (opt != null && opt.equals("-k")) {
-            unInstallFlags = PackageManager.DONT_DELETE_DATA;
+            unInstallFlags = PackageManager.DELETE_KEEP_DATA;
         }
 
         String pkg = nextArg();
@@ -949,6 +1028,19 @@ public final class Pm {
     }
 
     private void runClear() {
+        int userId = 0;
+        String option = nextOption();
+        if (option != null && option.equals("--user")) {
+            String optionData = nextOptionData();
+            if (optionData == null || !isNumber(optionData)) {
+                System.err.println("Error: no USER_ID specified");
+                showUsage();
+                return;
+            } else {
+                userId = Integer.parseInt(optionData);
+            }
+        }
+
         String pkg = nextArg();
         if (pkg == null) {
             System.err.println("Error: no package specified");
@@ -958,7 +1050,7 @@ public final class Pm {
 
         ClearDataObserver obs = new ClearDataObserver();
         try {
-            if (!ActivityManagerNative.getDefault().clearApplicationUserData(pkg, obs)) {
+            if (!ActivityManagerNative.getDefault().clearApplicationUserData(pkg, obs, userId)) {
                 System.err.println("Failed");
             }
 
@@ -996,7 +1088,29 @@ public final class Pm {
         return "unknown";
     }
 
+    private static boolean isNumber(String s) {
+        try {
+            Integer.parseInt(s);
+        } catch (NumberFormatException nfe) {
+            return false;
+        }
+        return true;
+    }
+
     private void runSetEnabledSetting(int state) {
+        int userId = 0;
+        String option = nextOption();
+        if (option != null && option.equals("--user")) {
+            String optionData = nextOptionData();
+            if (optionData == null || !isNumber(optionData)) {
+                System.err.println("Error: no USER_ID specified");
+                showUsage();
+                return;
+            } else {
+                userId = Integer.parseInt(optionData);
+            }
+        }
+
         String pkg = nextArg();
         if (pkg == null) {
             System.err.println("Error: no package or component specified");
@@ -1006,20 +1120,20 @@ public final class Pm {
         ComponentName cn = ComponentName.unflattenFromString(pkg);
         if (cn == null) {
             try {
-                mPm.setApplicationEnabledSetting(pkg, state, 0);
+                mPm.setApplicationEnabledSetting(pkg, state, 0, userId);
                 System.err.println("Package " + pkg + " new state: "
                         + enabledSettingToString(
-                                mPm.getApplicationEnabledSetting(pkg)));
+                                mPm.getApplicationEnabledSetting(pkg, userId)));
             } catch (RemoteException e) {
                 System.err.println(e.toString());
                 System.err.println(PM_NOT_RUNNING_ERR);
             }
         } else {
             try {
-                mPm.setComponentEnabledSetting(cn, state, 0);
+                mPm.setComponentEnabledSetting(cn, state, 0, userId);
                 System.err.println("Component " + cn.toShortString() + " new state: "
                         + enabledSettingToString(
-                                mPm.getComponentEnabledSetting(cn)));
+                                mPm.getComponentEnabledSetting(cn, userId)));
             } catch (RemoteException e) {
                 System.err.println(e.toString());
                 System.err.println(PM_NOT_RUNNING_ERR);
@@ -1033,7 +1147,7 @@ public final class Pm {
      */
     private void displayPackageFilePath(String pckg) {
         try {
-            PackageInfo info = mPm.getPackageInfo(pckg, 0);
+            PackageInfo info = mPm.getPackageInfo(pckg, 0, 0);
             if (info != null && info.applicationInfo != null) {
                 System.out.print("package:");
                 System.out.println(info.applicationInfo.sourceDir);
@@ -1049,7 +1163,7 @@ public final class Pm {
         if (res != null) return res;
 
         try {
-            ApplicationInfo ai = mPm.getApplicationInfo(pii.packageName, 0);
+            ApplicationInfo ai = mPm.getApplicationInfo(pii.packageName, 0, 0);
             AssetManager am = new AssetManager();
             am.addAssetPath(ai.publicSourceDir);
             res = new Resources(am, null, null);

@@ -217,7 +217,7 @@ status_t BootAnimation::readyToRun() {
         return -1;
 
     // create the native surface
-    sp<SurfaceControl> control = session()->createSurface(
+    sp<SurfaceControl> control = session()->createSurface(String8("BootAnimation"),
             0, dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
 
     SurfaceComposerClient::openGlobalTransaction();
@@ -420,7 +420,7 @@ bool BootAnimation::movie()
             const String8 path(entryName.getPathDir());
             const String8 leaf(entryName.getPathLeaf());
             if (leaf.size() > 0) {
-                for (int j=0 ; j<pcount ; j++) {
+                for (size_t j=0 ; j<pcount ; j++) {
                     if (path == animation.parts[j].path) {
                         int method;
                         // supports only stored png files

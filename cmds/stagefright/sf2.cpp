@@ -33,7 +33,7 @@
 #include <media/stagefright/Utils.h>
 
 #include <surfaceflinger/ISurfaceComposer.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
+#include <gui/SurfaceComposerClient.h>
 
 #include "include/ESDS.h"
 
@@ -600,7 +600,6 @@ int main(int argc, char **argv) {
 
         control = composerClient->createSurface(
                 String8("A Surface"),
-                0,
                 1280,
                 800,
                 PIXEL_FORMAT_RGB_565,
