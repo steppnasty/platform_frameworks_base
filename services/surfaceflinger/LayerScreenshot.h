@@ -36,7 +36,7 @@ class LayerScreenshot : public LayerBaseClient
     sp<SurfaceFlinger> mFlinger;
 public:    
             LayerScreenshot(SurfaceFlinger* flinger, DisplayID display,
-                        const sp<Client>& client);
+                    const sp<Client>& client);
         virtual ~LayerScreenshot();
 
         status_t capture();

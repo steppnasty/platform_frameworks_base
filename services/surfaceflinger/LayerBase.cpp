@@ -29,6 +29,7 @@
 #include <hardware/hardware.h>
 
 #include "clz.h"
+#include "Client.h"
 #include "LayerBase.h"
 #include "SurfaceFlinger.h"
 #include "DisplayHardware/DisplayHardware.h"
@@ -82,10 +83,10 @@ GraphicPlane& LayerBase::graphicPlane(int dpy)
 void LayerBase::initStates(uint32_t w, uint32_t h, uint32_t flags)
 {
     uint32_t layerFlags = 0;
-    if (flags & ISurfaceComposer::eHidden)
-        layerFlags = ISurfaceComposer::eLayerHidden;
+    if (flags & ISurfaceComposerClient::eHidden)
+        layerFlags = layer_state_t::eLayerHidden;
 
-    if (flags & ISurfaceComposer::eNonPremultiplied)
+    if (flags & ISurfaceComposerClient::eNonPremultiplied)
         mPremultipliedAlpha = false;
 
     mCurrentState.z             = 0;

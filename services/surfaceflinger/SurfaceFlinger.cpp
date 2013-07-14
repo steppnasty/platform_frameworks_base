@@ -48,6 +48,7 @@
 #include "clz.h"
 #include "GLExtensions.h"
 #include "DdmConnection.h"
+#include "Client.h"
 #include "Layer.h"
 #include "LayerDim.h"
 #include "LayerScreenshot.h"
@@ -682,7 +683,7 @@ void SurfaceFlinger::computeVisibleRegions(
 
 
         // handle hidden surfaces by setting the visible region to empty
-        if (LIKELY(!(s.flags & ISurfaceComposer::eLayerHidden) && s.alpha)) {
+        if (LIKELY(!(s.flags & layer_state_t::eLayerHidden) && s.alpha)) {
             const bool translucent = !layer->isOpaque();
             const Rect bounds(layer->visibleBounds());
             visibleRegion.set(bounds);
@@ -1417,111 +1418,6 @@ void SurfaceFlinger::enableExternalDisplay(int disp_type, int value)
 }
 #endif
 
-sp<ISurface> SurfaceFlinger::createSurface(
-        ISurfaceComposerClient::surface_data_t* params,
-        const String8& name,
-        const sp<Client>& client,
-        DisplayID d, uint32_t w, uint32_t h, PixelFormat format,
-        uint32_t flags)
-{
-    sp<LayerBaseClient> layer;
-    sp<ISurface> surfaceHandle;
-
-    if (int32_t(w|h) < 0) {
-        ALOGE("createSurface() failed, w or h is negative (w=%d, h=%d)",
-                int(w), int(h));
-        return surfaceHandle;
-    }
-
-    //ALOGD("createSurface for pid %d (%d x %d)", pid, w, h);
-    sp<Layer> normalLayer;
-    switch (flags & eFXSurfaceMask) {
-        case eFXSurfaceNormal:
-            normalLayer = createNormalSurface(client, d, w, h, flags, format);
-            layer = normalLayer;
-            break;
-        case eFXSurfaceBlur:
-            // for now we treat Blur as Dim, until we can implement it
-            // efficiently.
-        case eFXSurfaceDim:
-            layer = createDimSurface(client, d, w, h, flags);
-            break;
-        case eFXSurfaceScreenshot:
-            layer = createScreenshotSurface(client, d, w, h, flags);
-            break;
-    }
-
-    if (layer != 0) {
-        layer->initStates(w, h, flags);
-        layer->setName(name);
-        ssize_t token = addClientLayer(client, layer);
-
-        surfaceHandle = layer->getSurface();
-        if (surfaceHandle != 0) {
-            params->token = token;
-            params->identity = layer->getIdentity();
-            if (normalLayer != 0) {
-                Mutex::Autolock _l(mStateLock);
-                mLayerMap.add(layer->getSurfaceBinder(), normalLayer);
-            }
-        }
-
-        setTransactionFlags(eTransactionNeeded);
-    }
-
-    return surfaceHandle;
-}
-
-sp<Layer> SurfaceFlinger::createNormalSurface(
-        const sp<Client>& client, DisplayID display,
-        uint32_t w, uint32_t h, uint32_t flags,
-        PixelFormat& format)
-{
-    // initialize the surfaces
-    switch (format) { // TODO: take h/w into account
-    case PIXEL_FORMAT_TRANSPARENT:
-    case PIXEL_FORMAT_TRANSLUCENT:
-        format = PIXEL_FORMAT_RGBA_8888;
-        break;
-    case PIXEL_FORMAT_OPAQUE:
-#ifdef NO_RGBX_8888
-        format = PIXEL_FORMAT_RGB_565;
-#else
-        format = PIXEL_FORMAT_RGBX_8888;
-#endif
-        break;
-    }
-
-#ifdef NO_RGBX_8888
-    if (format == PIXEL_FORMAT_RGBX_8888)
-        format = PIXEL_FORMAT_RGBA_8888;
-#endif
-
-    sp<Layer> layer = new Layer(this, display, client);
-    status_t err = layer->setBuffers(w, h, format, flags);
-    if (LIKELY(err != NO_ERROR)) {
-        ALOGE("createNormalSurfaceLocked() failed (%s)", strerror(-err));
-        layer.clear();
-    }
-    return layer;
-}
-
-sp<LayerDim> SurfaceFlinger::createDimSurface(
-        const sp<Client>& client, DisplayID display,
-        uint32_t w, uint32_t h, uint32_t flags)
-{
-    sp<LayerDim> layer = new LayerDim(this, display, client);
-    return layer;
-}
-
-sp<LayerScreenshot> SurfaceFlinger::createScreenshotSurface(
-        const sp<Client>& client, DisplayID display,
-        uint32_t w, uint32_t h, uint32_t flags)
-{
-    sp<LayerScreenshot> layer = new LayerScreenshot(this, display, client);
-    return layer;
-}
-
 status_t SurfaceFlinger::removeSurface(const sp<Client>& client, SurfaceID sid)
 {
     /*
@@ -1612,6 +1508,125 @@ uint32_t SurfaceFlinger::setClientStateLocked(
         }
     }
     return flags;
+}
+
+sp<ISurface> SurfaceFlinger::createLayer(
+        ISurfaceComposerClient::surface_data_t* params,
+        const String8& name,
+        const sp<Client>& client,
+        DisplayID d, uint32_t w, uint32_t h, PixelFormat format,
+        uint32_t flags)
+{
+    sp<LayerBaseClient> layer;
+    sp<ISurface> surfaceHandle;
+
+    if (int32_t(w|h) < 0) {
+        ALOGE("createLayer() failed, w or h is negative (w=%d, h=%d)",
+                int(w), int(h));
+        return surfaceHandle;
+    }
+
+    //ALOGD("createLayer for (%d x %d), name=%s", w, h, name.string());
+    switch (flags & ISurfaceComposerClient::eFXSurfaceMask) {
+        case ISurfaceComposerClient::eFXSurfaceNormal:
+            layer = createNormalLayer(client, d, w, h, flags, format);
+            break;
+        case ISurfaceComposerClient::eFXSurfaceBlur:
+        case ISurfaceComposerClient::eFXSurfaceDim:
+            layer = createDimLayer(client, d, w, h, flags);
+            break;
+        case ISurfaceComposerClient::eFXSurfaceScreenshot:
+            layer = createScreenshotLayer(client, d, w, h, flags);
+            break;
+    }
+
+    if (layer != 0) {
+        layer->initStates(w, h, flags);
+        layer->setName(name);
+        ssize_t token = addClientLayer(client, layer);
+        surfaceHandle = layer->getSurface();
+        if (surfaceHandle != 0) {
+            params->token = token;
+            params->identity = layer->getIdentity();
+        }
+        setTransactionFlags(eTransactionNeeded);
+    }
+
+    return surfaceHandle;
+}
+
+sp<Layer> SurfaceFlinger::createNormalLayer(
+        const sp<Client>& client, DisplayID display,
+        uint32_t w, uint32_t h, uint32_t flags,
+        PixelFormat& format)
+{
+    // initialize the surfaces
+    switch (format) {
+    case PIXEL_FORMAT_TRANSPARENT:
+    case PIXEL_FORMAT_TRANSLUCENT:
+        format = PIXEL_FORMAT_RGBA_8888;
+        break;
+    case PIXEL_FORMAT_OPAQUE:
+#ifdef NO_RGBX_8888
+        format = PIXEL_FORMAT_RGB_565;
+#else
+        format = PIXEL_FORMAT_RGBX_8888;
+#endif
+        break;
+    }
+
+#ifdef NO_RGBX_8888
+    if (format == PIXEL_FORMAT_RGBX_8888)
+        format = PIXEL_FORMAT_RGBA_8888;
+#endif
+
+    sp<Layer> layer = new Layer(this, display, client);
+    status_t err = layer->setBuffers(w, h, format, flags);
+    if (CC_LIKELY(err != NO_ERROR)) {
+        ALOGE("createNormalLayer() failed (%s)", strerror(-err));
+        layer.clear();
+    }
+    return layer;
+}
+
+sp<LayerDim> SurfaceFlinger::createDimLayer(
+        const sp<Client>& client, DisplayID display,
+        uint32_t w, uint32_t h, uint32_t flags)
+{
+    sp<LayerDim> layer = new LayerDim(this, display, client);
+    return layer;
+}
+
+sp<LayerScreenshot> SurfaceFlinger::createScreenshotLayer(
+        const sp<Client>& client, DisplayID display,
+        uint32_t w, uint32_t h, uint32_t flags)
+{
+    sp<LayerScreenshot> layer = new LayerScreenshot(this, display, client);
+    return layer;
+}
+
+status_t SurfaceFlinger::onLayerRemoved(const sp<Client>& client, SurfaceID sid)
+{
+    /*
+     * called by the window manager, when a surface should be marked for
+     * destruction.
+     *
+     * The surface is removed from the current and drawing lists, but placed
+     * in the purgatory queue, so it's not destroyed right-away (we need
+     * to wait for all client's references to go away first).
+     */
+
+    status_t err = NAME_NOT_FOUND;
+    Mutex::Autolock _l(mStateLock);
+    sp<LayerBaseClient> layer = client->getLayerUser(sid);
+
+    if (layer != 0) {
+        err = purgatorizeLayer_l(layer);
+        if (err == NO_ERROR) {
+            setTransactionFlags(eTransactionNeeded);
+        }
+    }
+    return err;
 }
 
 void SurfaceFlinger::screenReleased(int dpy)
@@ -2456,7 +2471,7 @@ status_t SurfaceFlinger::captureScreenImplLocked(DisplayID dpy,
         for (size_t i=0 ; i<count; ++i) {
             const sp<LayerBase>& layer(layers[i]);
             const uint32_t flags = layer->drawingState().flags;
-            if (!(flags & ISurfaceComposer::eLayerHidden)) {
+            if (!(flags & layer_state_t::eLayerHidden)) {
                 const uint32_t z = layer->drawingState().z;
                 if (z >= minLayerZ && z <= maxLayerZ) {
                     layer->drawForSreenShot();
@@ -2580,130 +2595,6 @@ sp<Layer> SurfaceFlinger::getLayer(const sp<ISurface>& sur) const
     Mutex::Autolock _l(mStateLock);
     result = mLayerMap.valueFor( sur->asBinder() ).promote();
     return result;
-}
-
-// ---------------------------------------------------------------------------
-
-Client::Client(const sp<SurfaceFlinger>& flinger)
-    : mFlinger(flinger), mNameGenerator(1)
-{
-}
-
-Client::~Client()
-{
-    const size_t count = mLayers.size();
-    for (size_t i=0 ; i<count ; i++) {
-        sp<LayerBaseClient> layer(mLayers.valueAt(i).promote());
-        if (layer != 0) {
-            mFlinger->removeLayer(layer);
-        }
-    }
-}
-
-status_t Client::initCheck() const {
-    return NO_ERROR;
-}
-
-size_t Client::attachLayer(const sp<LayerBaseClient>& layer)
-{
-    Mutex::Autolock _l(mLock);
-    size_t name = mNameGenerator++;
-    mLayers.add(name, layer);
-    return name;
-}
-
-void Client::detachLayer(const LayerBaseClient* layer)
-{
-    Mutex::Autolock _l(mLock);
-    // we do a linear search here, because this doesn't happen often
-    const size_t count = mLayers.size();
-    for (size_t i=0 ; i<count ; i++) {
-        if (mLayers.valueAt(i) == layer) {
-            mLayers.removeItemsAt(i, 1);
-            break;
-        }
-    }
-}
-sp<LayerBaseClient> Client::getLayerUser(int32_t i) const
-{
-    Mutex::Autolock _l(mLock);
-    sp<LayerBaseClient> lbc;
-    wp<LayerBaseClient> layer(mLayers.valueFor(i));
-    if (layer != 0) {
-        lbc = layer.promote();
-        ALOGE_IF(lbc==0, "getLayerUser(name=%d) is dead", int(i));
-    }
-    return lbc;
-}
-
-
-status_t Client::onTransact(
-    uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
-{
-    // these must be checked
-     IPCThreadState* ipc = IPCThreadState::self();
-     const int pid = ipc->getCallingPid();
-     const int uid = ipc->getCallingUid();
-     const int self_pid = getpid();
-     if (UNLIKELY(pid != self_pid && uid != AID_GRAPHICS && uid != 0)) {
-         // we're called from a different process, do the real check
-         if (!PermissionCache::checkCallingPermission(sAccessSurfaceFlinger))
-         {
-             ALOGE("Permission Denial: "
-                     "can't openGlobalTransaction pid=%d, uid=%d", pid, uid);
-             return PERMISSION_DENIED;
-         }
-     }
-     return BnSurfaceComposerClient::onTransact(code, data, reply, flags);
-}
-
-
-sp<ISurface> Client::createSurface(
-        ISurfaceComposerClient::surface_data_t* params,
-        const String8& name,
-        DisplayID display, uint32_t w, uint32_t h, PixelFormat format,
-        uint32_t flags)
-{
-    /*
-     * createSurface must be called from the GL thread so that it can
-     * have access to the GL context.
-     */
-
-    class MessageCreateSurface : public MessageBase {
-        sp<ISurface> result;
-        SurfaceFlinger* flinger;
-        ISurfaceComposerClient::surface_data_t* params;
-        Client* client;
-        const String8& name;
-        DisplayID display;
-        uint32_t w, h;
-        PixelFormat format;
-        uint32_t flags;
-    public:
-        MessageCreateSurface(SurfaceFlinger* flinger,
-                ISurfaceComposerClient::surface_data_t* params,
-                const String8& name, Client* client,
-                DisplayID display, uint32_t w, uint32_t h, PixelFormat format,
-                uint32_t flags)
-            : flinger(flinger), params(params), client(client), name(name),
-              display(display), w(w), h(h), format(format), flags(flags)
-        {
-        }
-        sp<ISurface> getResult() const { return result; }
-        virtual bool handler() {
-            result = flinger->createSurface(params, name, client,
-                    display, w, h, format, flags);
-            return true;
-        }
-    };
-
-    sp<MessageBase> msg = new MessageCreateSurface(mFlinger.get(),
-            params, name, this, display, w, h, format, flags);
-    mFlinger->postMessageSync(msg);
-    return static_cast<MessageCreateSurface*>( msg.get() )->getResult();
-}
-status_t Client::destroySurface(SurfaceID sid) {
-    return mFlinger->removeSurface(this, sid);
 }
 
 // ---------------------------------------------------------------------------

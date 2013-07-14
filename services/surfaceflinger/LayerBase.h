@@ -297,7 +297,7 @@ class LayerBaseClient : public LayerBase
 {
 public:
             LayerBaseClient(SurfaceFlinger* flinger, DisplayID display,
-                        const sp<Client>& client);
+                    const sp<Client>& client);
 
             virtual ~LayerBaseClient();
 

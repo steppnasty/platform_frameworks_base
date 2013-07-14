@@ -56,40 +56,6 @@ struct surface_flinger_cblk_t;
 
 // ---------------------------------------------------------------------------
 
-class Client : public BnSurfaceComposerClient
-{
-public:
-        Client(const sp<SurfaceFlinger>& flinger);
-        ~Client();
-
-    status_t initCheck() const;
-
-    // protected by SurfaceFlinger::mStateLock
-    size_t attachLayer(const sp<LayerBaseClient>& layer);
-    void detachLayer(const LayerBaseClient* layer);
-    sp<LayerBaseClient> getLayerUser(int32_t i) const;
-
-private:
-    // ISurfaceComposerClient interface
-    virtual sp<ISurface> createSurface(
-            surface_data_t* params, const String8& name,
-            DisplayID display, uint32_t w, uint32_t h,PixelFormat format,
-            uint32_t flags);
-    virtual status_t destroySurface(SurfaceID surfaceId);
-    virtual status_t onTransact(
-        uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags);
-
-    // constant
-    sp<SurfaceFlinger> mFlinger;
-
-    // protected by mLock
-    DefaultKeyedVector< size_t, wp<LayerBaseClient> > mLayers;
-    size_t mNameGenerator;
-
-    // thread-safe
-    mutable Mutex mLock;
-};
-
 class GraphicBufferAlloc : public BnGraphicBufferAlloc
 {
 public:
@@ -241,26 +207,6 @@ private:
     friend class LayerBaseClient;
     friend class Layer;
 
-    sp<ISurface> createSurface(
-            ISurfaceComposerClient::surface_data_t* params,
-            const String8& name,
-            const sp<Client>& client,
-            DisplayID display, uint32_t w, uint32_t h, PixelFormat format,
-            uint32_t flags);
-
-    sp<Layer> createNormalSurface(
-            const sp<Client>& client, DisplayID display,
-            uint32_t w, uint32_t h, uint32_t flags,
-            PixelFormat& format);
-
-    sp<LayerDim> createDimSurface(
-            const sp<Client>& client, DisplayID display,
-            uint32_t w, uint32_t h, uint32_t flags);
-
-    sp<LayerScreenshot> createScreenshotSurface(
-            const sp<Client>& client, DisplayID display,
-            uint32_t w, uint32_t h, uint32_t flags);
-
     status_t removeSurface(const sp<Client>& client, SurfaceID sid);
     status_t destroySurface(const wp<LayerBaseClient>& layer);
     uint32_t setClientStateLocked(const sp<Client>& client, const layer_state_t& s);
@@ -323,11 +269,35 @@ private:
             void        setInvalidateRegion(const Region& reg);
             Region      getAndClearInvalidateRegion();
 
-            ssize_t     addClientLayer(const sp<Client>& client,
-                    const sp<LayerBaseClient>& lbc);
-            status_t    addLayer_l(const sp<LayerBase>& layer);
-            status_t    removeLayer_l(const sp<LayerBase>& layer);
-            status_t    purgatorizeLayer_l(const sp<LayerBase>& layer);
+    /* ------------------------------------------------------------------------
+     * Layer management
+     */
+    sp<ISurface> createLayer(ISurfaceComposerClient::surface_data_t* params,
+            const String8& name, const sp<Client>& client, DisplayID display,
+            uint32_t w, uint32_t h, PixelFormat format, uint32_t flags);
+
+    sp<Layer> createNormalLayer(const sp<Client>& client, DisplayID display,
+            uint32_t w, uint32_t h, uint32_t flags, PixelFormat& format);
+
+    sp<LayerDim> createDimLayer(const sp<Client>& client,
+            DisplayID display, uint32_t w, uint32_t h, uint32_t flags);
+
+    sp<LayerScreenshot> createScreenshotLayer(const sp<Client>& client,
+            DisplayID display, uint32_t w, uint32_t h, uint32_t flags);
+
+    // called in response to the window-manager calling
+    // ISurfaceComposerClient::destroySurface()
+    // The specified layer is first placed in a purgatory list
+    // until all references from the client are released.
+    status_t onLayerRemoved(const sp<Client>& client, SurfaceID sid);
+
+    // add a layer to SurfaceFlinger
+    ssize_t     addClientLayer(const sp<Client>& client,
+        const sp<LayerBaseClient>& lbc);
+
+    status_t    addLayer_l(const sp<LayerBase>& layer);
+    status_t    removeLayer_l(const sp<LayerBase>& layer);
+    status_t    purgatorizeLayer_l(const sp<LayerBase>& layer);
 
             uint32_t    getTransactionFlags(uint32_t flags);
             uint32_t    peekTransactionFlags(uint32_t flags);
