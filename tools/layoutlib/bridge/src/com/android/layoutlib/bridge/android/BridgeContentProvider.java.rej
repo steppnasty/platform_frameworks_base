@@ -1,0 +1,30 @@
+--- tools/layoutlib/bridge/src/com/android/layoutlib/bridge/android/BridgeContentProvider.java	2013-06-28 13:00:58.158472446 +0000
++++ opt/android/frameworks/base/tools/layoutlib/bridge/src/com/android/layoutlib/bridge/android/BridgeContentProvider.java	2013-05-19 20:33:39.002125852 +0000
+@@ -26,6 +26,7 @@
+ import android.net.Uri;
+ import android.os.Bundle;
+ import android.os.IBinder;
++import android.os.ICancellationSignal;
+ import android.os.ParcelFileDescriptor;
+ import android.os.RemoteException;
+ 
+@@ -90,7 +91,8 @@
+     }
+ 
+     @Override
+-    public Cursor query(Uri arg0, String[] arg1, String arg2, String[] arg3, String arg4)
++    public Cursor query(Uri arg0, String[] arg1, String arg2, String[] arg3, String arg4,
++                ICancellationSignal arg5)
+             throws RemoteException {
+         // TODO Auto-generated method stub
+         return null;
+@@ -122,4 +124,9 @@
+         return null;
+     }
+ 
++    @Override
++    public ICancellationSignal createCancellationSignal() throws RemoteException {
++        // TODO Auto-generated method stub
++        return null;
++    }
+ }
