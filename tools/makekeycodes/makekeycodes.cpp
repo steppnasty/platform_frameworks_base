@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <ui/KeycodeLabels.h>
+#include <androidfw/KeycodeLabels.h>
 
 int
 main(int argc, char** argv)
