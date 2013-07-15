@@ -58,8 +58,19 @@ public final class BridgeWindow implements IWindow {
         // pass for now.
     }
 
-    public void resized(int arg0, int arg1, Rect arg2, Rect arg3, boolean arg4, Configuration arg5)
-            throws RemoteException {
+    @Override
+    public void resized(Rect arg1, Rect arg2, Rect arg3,
+            boolean arg4, Configuration arg5) throws RemoteException {
+        // pass for now.
+    }
+
+    @Override
+    public void moved(int arg0, int arg1) throws RemoteException {
+        // pass for now.
+    }
+
+    @Override
+    public void dispatchScreenState(boolean on) throws RemoteException {
         // pass for now.
     }
 
@@ -88,6 +99,10 @@ public final class BridgeWindow implements IWindow {
     public void dispatchSystemUiVisibilityChanged(int seq, int globalUi,
             int localValue, int localChanges) {
         // pass for now.
+    }
+
+    @Override
+    public void doneAnimating() {
     }
 
     public IBinder asBinder() {

@@ -25,6 +25,7 @@ import com.android.ide.common.rendering.api.ResourceValue;
 import com.android.ide.common.rendering.api.StyleResourceValue;
 import com.android.layoutlib.bridge.Bridge;
 import com.android.layoutlib.bridge.BridgeConstants;
+import com.android.layoutlib.bridge.android.view.WindowManagerImpl;
 import com.android.layoutlib.bridge.impl.ParserFactory;
 import com.android.layoutlib.bridge.impl.Stack;
 import com.android.resources.ResourceType;
@@ -60,13 +61,17 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserHandle;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.BridgeInflater;
+import android.view.CompatibilityInfoHolder;
+import android.view.Display;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.textservice.TextServicesManager;
 
 import java.io.File;
@@ -96,7 +101,7 @@ public final class BridgeContext extends Context {
     private final Configuration mConfig;
     private final ApplicationInfo mApplicationInfo;
     private final IProjectCallback mProjectCallback;
-    private final BridgeWindowManager mIWindowManager;
+    private final WindowManager mWindowManager;
 
     private Resources.Theme mTheme;
 
@@ -137,7 +142,7 @@ public final class BridgeContext extends Context {
         mRenderResources = renderResources;
         mConfig = config;
 
-        mIWindowManager = new BridgeWindowManager(mConfig, metrics, Surface.ROTATION_0);
+        mWindowManager = new WindowManagerImpl(mMetrics);
 
         mApplicationInfo = new ApplicationInfo();
         mApplicationInfo.targetSdkVersion = targetSdkVersion;
@@ -194,10 +199,6 @@ public final class BridgeContext extends Context {
 
     public RenderResources getRenderResources() {
         return mRenderResources;
-    }
-
-    public BridgeWindowManager getIWindowManager() {
-        return mIWindowManager;
     }
 
     public Map<String, String> getDefaultPropMap(Object key) {
@@ -931,6 +932,24 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public Context createPackageContextAsUser(String arg0, int arg1, UserHandle user) {
+        // pass
+        return null;
+    }
+
+    @Override
+    public Context createConfigurationContext(Configuration overrideConfiguration) {
+        // pass
+        return null;
+    }
+
+    @Override
+    public Context createDisplayContext(Display display) {
+        // pass
+        return null;
+    }
+
+    @Override
     public String[] databaseList() {
         // TODO Auto-generated method stub
         return null;
@@ -1163,6 +1182,13 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public Intent registerReceiverAsUser(BroadcastReceiver arg0, UserHandle arg0p5,
+            IntentFilter arg1, String arg2, Handler arg3) {
+        // pass
+        return null;
+    }
+
+    @Override
     public void removeStickyBroadcast(Intent arg0) {
         // TODO Auto-generated method stub
 
@@ -1197,7 +1223,24 @@ public final class BridgeContext extends Context {
             BroadcastReceiver arg2, Handler arg3, int arg4, String arg5,
             Bundle arg6) {
         // TODO Auto-generated method stub
+    }
 
+    @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user) {
+        // pass
+    }
+
+    @Override
+    public void sendBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission) {
+        // pass
+    }
+
+    @Override
+    public void sendOrderedBroadcastAsUser(Intent intent, UserHandle user,
+            String receiverPermission, BroadcastReceiver resultReceiver, Handler scheduler,
+            int initialCode, String initialData, Bundle initialExtras) {
+        // pass
     }
 
     @Override
@@ -1211,6 +1254,16 @@ public final class BridgeContext extends Context {
             BroadcastReceiver resultReceiver, Handler scheduler, int initialCode, String initialData,
            Bundle initialExtras) {
         // TODO Auto-generated method stub
+    }
+
+    @Override
+    public void sendStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        // pass
+    }
+
+    @Override
+    public void removeStickyBroadcastAsUser(Intent intent, UserHandle user) {
+        // pass
     }
 
     @Override
@@ -1238,10 +1291,22 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public void startActivity(Intent arg0, Bundle arg1) {
+        // pass
+    }
+
+    @Override
     public void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
             throws IntentSender.SendIntentException {
         // TODO Auto-generated method stub
+    }
+
+    @Override
+    public void startIntentSender(IntentSender intent,
+            Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags,
+            Bundle options) throws IntentSender.SendIntentException {
+        // pass
     }
 
     @Override
@@ -1260,6 +1325,18 @@ public final class BridgeContext extends Context {
     @Override
     public boolean stopService(Intent arg0) {
         // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public ComponentName startServiceAsUser(Intent arg0, UserHandle arg1) {
+        // pass
+        return null;
+    }
+
+    @Override
+    public boolean stopServiceAsUser(Intent arg0, UserHandle arg1) {
+        // pass
         return false;
     }
 
@@ -1287,6 +1364,12 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public void startActivities(Intent[] arg0, Bundle arg1) {
+        // pass
+
+    }
+
+    @Override
     public boolean isRestricted() {
         return false;
     }
@@ -1294,6 +1377,12 @@ public final class BridgeContext extends Context {
     @Override
     public File getObbDir() {
         Bridge.getLog().error(LayoutLog.TAG_UNSUPPORTED, "OBB not supported", null);
+        return null;
+    }
+
+    @Override
+    public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
+        // pass
         return null;
     }
 }
