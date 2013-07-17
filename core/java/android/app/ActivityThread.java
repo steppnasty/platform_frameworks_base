@@ -1095,6 +1095,14 @@ public final class ActivityThread {
         }
 
         @Override
+        public void dumpDbInfo(FileDescriptor fd, String[] args) {
+            PrintWriter pw = new PrintWriter(new FileOutputStream(fd));
+            PrintWriterPrinter printer = new PrintWriterPrinter(pw);
+            SQLiteDebug.dump(printer, args);
+            pw.flush();
+        }
+
+        @Override
         public void unstableProviderDied(IBinder provider) {
             queueOrSendMessage(H.UNSTABLE_PROVIDER_DIED, provider);
         }

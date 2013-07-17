@@ -559,6 +559,26 @@ public abstract class ApplicationThreadNative extends Binder
             return true;
         }
 
+        case DUMP_DB_INFO_TRANSACTION:
+        {
+            data.enforceInterface(IApplicationThread.descriptor);
+            ParcelFileDescriptor fd = data.readFileDescriptor();
+            String[] args = data.readStringArray();
+            if (fd != null) {
+                try {
+                    dumpDbInfo(fd.getFileDescriptor(), args);
+                } finally {
+                    try {
+                        fd.close();
+                    } catch (IOException e) {
+                        // swallowed, not propagated back to the caller
+                    }
+                }
+            }
+            reply.writeNoException();
+            return true;
+        }
+
         case UNSTABLE_PROVIDER_DIED_TRANSACTION:
         {
             data.enforceInterface(IApplicationThread.descriptor);
@@ -1146,6 +1166,15 @@ class ApplicationThreadProxy implements IApplicationThread {
         data.writeFileDescriptor(fd);
         data.writeStringArray(args);
         mRemote.transact(DUMP_GFX_INFO_TRANSACTION, data, null, IBinder.FLAG_ONEWAY);
+        data.recycle();
+    }
+
+    public void dumpDbInfo(FileDescriptor fd, String[] args) throws RemoteException {
+        Parcel data = Parcel.obtain();
+        data.writeInterfaceToken(IApplicationThread.descriptor);
+        data.writeFileDescriptor(fd);
+        data.writeStringArray(args);
+        mRemote.transact(DUMP_DB_INFO_TRANSACTION, data, null, IBinder.FLAG_ONEWAY);
         data.recycle();
     }
 

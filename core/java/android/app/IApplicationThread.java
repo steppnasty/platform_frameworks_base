@@ -128,6 +128,7 @@ public interface IApplicationThread extends IInterface {
     Debug.MemoryInfo dumpMemInfo(FileDescriptor fd, boolean checkin, boolean all,
             String[] args) throws RemoteException;
     void dumpGfxInfo(FileDescriptor fd, String[] args) throws RemoteException;
+    void dumpDbInfo(FileDescriptor fd, String[] args) throws RemoteException;
     void unstableProviderDied(IBinder provider) throws RemoteException;
 
     String descriptor = "android.app.IApplicationThread";
@@ -176,5 +177,6 @@ public interface IApplicationThread extends IInterface {
     int DUMP_MEM_INFO_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+42;
     int DUMP_GFX_INFO_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+43;
     int DUMP_PROVIDER_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+44;
+    int DUMP_DB_INFO_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+45;
     int UNSTABLE_PROVIDER_DIED_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+46;
 }
