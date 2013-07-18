@@ -17,6 +17,7 @@
 package android.view;
 
 import android.content.Context;
+import android.util.Log;
 
 /**
  * This class is a mediator for accomplishing a given task, for example sharing a file.
@@ -58,6 +59,7 @@ import android.content.Context;
  * @see MenuItem#getActionProvider()
  */
 public abstract class ActionProvider {
+    private static final String TAG = "ActionProvider";
     private SubUiVisibilityListener mSubUiVisibilityListener;
     private VisibilityListener mVisibilityListener;
 
@@ -219,6 +221,21 @@ public abstract class ActionProvider {
      */
     public void setSubUiVisibilityListener(SubUiVisibilityListener listener) {
         mSubUiVisibilityListener = listener;
+    }
+
+    /**
+     * Set a listener to be notified when this ActionProvider's overridden visibility changes.
+     * This should only be used by MenuItem implementations.
+     *
+     * @param listener listener to set
+     */
+    public void setVisibilityListener(VisibilityListener listener) {
+        if (mVisibilityListener != null) {
+            Log.w(TAG, "setVisibilityListener: Setting a new ActionProvider.VisibilityListener " +
+                    "when one is already set. Are you reusing this " + getClass().getSimpleName() +
+                    " instance while it is still in use somewhere else?");
+        }
+        mVisibilityListener = listener;
     }
 
     /**
