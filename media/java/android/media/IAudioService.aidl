@@ -25,6 +25,7 @@ import android.media.IAudioRoutesObserver;
 import android.media.IRemoteControlClient;
 import android.media.IRemoteControlDisplay;
 import android.media.IRemoteVolumeObserver;
+import android.media.IRingtonePlayer;
 import android.view.KeyEvent;
 
 /**
@@ -141,6 +142,8 @@ interface IAudioService {
 
     void forceVolumeControlStream(int streamType, IBinder cb);
 
+    void setRingtonePlayer(IRingtonePlayer player);
+    IRingtonePlayer getRingtonePlayer();
     int getMasterStreamType();
 
     AudioRoutesInfo startWatchingRoutes(in IAudioRoutesObserver observer);

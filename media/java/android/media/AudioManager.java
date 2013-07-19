@@ -2325,4 +2325,12 @@ public class AudioManager {
         }
     }
 
+    /** {@hide} */
+    public IRingtonePlayer getRingtonePlayer() {
+        try {
+            return getService().getRingtonePlayer();
+        } catch (RemoteException e) {
+            return null;
+        }
+    }
 }

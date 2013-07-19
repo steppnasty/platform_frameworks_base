@@ -16,6 +16,7 @@
 
 package android.media;
 
+import static android.Manifest.permission.REMOTE_AUDIO_PLAYBACK;
 import static android.media.AudioManager.RINGER_MODE_NORMAL;
 import static android.media.AudioManager.RINGER_MODE_SILENT;
 import static android.media.AudioManager.RINGER_MODE_VIBRATE;
@@ -378,6 +379,8 @@ public class AudioService extends IAudioService.Stub implements OnFinished {
     // server process so in theory it is not necessary to monitor the client death.
     // However it is good to be ready for future evolutions.
     private ForceControlStreamClient mForceControlStreamClient = null;
+    // Used to play ringtones outside system_server
+    private volatile IRingtonePlayer mRingtonePlayer;
 
     // Request to override default use of A2DP for media
     private boolean mBluetoothA2dpEnabled;
@@ -5038,6 +5041,17 @@ streamType]],
                     mBluetoothA2dpEnabled ? AudioSystem.FORCE_NONE : AudioSystem.FORCE_NO_BT_A2DP,
                     null, 0);
             }
+    }
+
+    @Override
+    public void setRingtonePlayer(IRingtonePlayer player) {
+        mContext.enforceCallingOrSelfPermission(REMOTE_AUDIO_PLAYBACK, null);
+        mRingtonePlayer = player;
+    }
+
+    @Override
+    public IRingtonePlayer getRingtonePlayer() {
+        return mRingtonePlayer;
     }
 
     @Override
