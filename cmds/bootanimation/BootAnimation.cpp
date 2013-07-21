@@ -30,7 +30,7 @@
 #include <utils/Atomic.h>
 #include <utils/Errors.h>
 #include <utils/Log.h>
-#include <utils/AssetManager.h>
+#include <androidfw/AssetManager.h>
 
 #include <ui/PixelFormat.h>
 #include <ui/Rect.h>

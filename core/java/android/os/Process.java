@@ -607,6 +607,15 @@ public class Process {
     }
 
     /**
+     * Returns whether the current process is in an isolated sandbox.
+     * @hide
+     */
+    public static final boolean isIsolated() {
+        int uid = UserHandle.getAppId(myUid());
+        return uid >= FIRST_ISOLATED_UID && uid <= LAST_ISOLATED_UID;
+    }
+
+    /**
      * Returns the UID assigned to a particular user name, or -1 if there is
      * none.  If the given string consists of only numbers, it is converted
      * directly to a uid.

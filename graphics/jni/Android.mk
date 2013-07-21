@@ -5,6 +5,7 @@ LOCAL_SRC_FILES:= \
     android_renderscript_RenderScript.cpp
 
 LOCAL_SHARED_LIBRARIES := \
+	libandroidfw \
         libandroid_runtime \
         libnativehelper \
         libRS \

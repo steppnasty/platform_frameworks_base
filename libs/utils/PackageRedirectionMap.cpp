@@ -22,7 +22,7 @@
 #define LOG_TAG "packageresmap"
 
 #include <utils/PackageRedirectionMap.h>
-#include <utils/ResourceTypes.h>
+#include <androidfw/ResourceTypes.h>
 #include <utils/misc.h>
 
 using namespace android;

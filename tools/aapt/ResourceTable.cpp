@@ -12,7 +12,7 @@
 #include "ResourceIdCache.h"
 
 #include <utils/ByteOrder.h>
-#include <utils/ResourceTypes.h>
+#include <androidfw/ResourceTypes.h>
 #include <stdarg.h>
 
 #define NOISY(x) //x

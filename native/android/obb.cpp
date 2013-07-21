@@ -19,7 +19,7 @@
 #include <android/obb.h>
 
 #include <utils/Log.h>
-#include <utils/ObbFile.h>
+#include <androidfw/ObbFile.h>
 
 using namespace android;
 

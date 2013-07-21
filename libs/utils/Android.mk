@@ -18,9 +18,6 @@ LOCAL_PATH:= $(call my-dir)
 # and once for the device.
 
 commonSources:= \
-	Asset.cpp \
-	AssetDir.cpp \
-	AssetManager.cpp \
 	BlobCache.cpp \
 	BufferedTextOutput.cpp \
 	CallStack.cpp \
@@ -29,15 +26,12 @@ commonSources:= \
 	Flattenable.cpp \
 	LinearTransform.cpp \
 	Log.cpp \
-	ObbFile.cpp \
 	PropertyMap.cpp \
 	PackageRedirectionMap.cpp \
 	RefBase.cpp \
-	ResourceTypes.cpp \
 	SharedBuffer.cpp \
 	Static.cpp \
 	StopWatch.cpp \
-	StreamingZipInflater.cpp \
 	String8.cpp \
 	String16.cpp \
 	StringArray.cpp \

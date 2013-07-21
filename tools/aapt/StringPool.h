@@ -10,7 +10,7 @@
 #include "Main.h"
 #include "AaptAssets.h"
 
-#include <utils/ResourceTypes.h>
+#include <androidfw/ResourceTypes.h>
 #include <utils/String16.h>
 #include <utils/TextOutput.h>
 
@@ -33,7 +33,7 @@ void printStringPool(const ResStringPool* pool);
 /**
  * The StringPool class is used as an intermediate representation for
  * generating the string pool resource data structure that can be parsed with
- * ResStringPool in include/utils/ResourceTypes.h.
+ * ResStringPool in include/androidfw/ResourceTypes.h.
  */
 class StringPool
 {

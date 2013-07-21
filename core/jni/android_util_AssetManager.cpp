@@ -32,9 +32,9 @@
 #include <android_runtime/AndroidRuntime.h>
 #include <utils/Log.h>
 
-#include <utils/Asset.h>
-#include <utils/AssetManager.h>
-#include <utils/ResourceTypes.h>
+#include <androidfw/Asset.h>
+#include <androidfw/AssetManager.h>
+#include <androidfw/ResourceTypes.h>
 #include <utils/PackageRedirectionMap.h>
 #include <utils/ZipFile.h>
 
@@ -444,7 +444,7 @@ static jint android_content_AssetManager_addAssetPath(JNIEnv* env, jobject clazz
 
     AssetManager* am = assetManagerForJavaObject(env, clazz);
     if (am == NULL) {
-        return JNI_FALSE;
+        return 0;
     }
 
     void* cookie;
@@ -700,7 +700,7 @@ static jint android_content_AssetManager_loadResourceValue(JNIEnv* env, jobject 
     if (ref == 0) {
         ref = ident;
     } else {
-        REDIRECT_NOISY(LOGW("PERFORMED REDIRECT OF ident=0x%08x FOR ref=0x%08x\n", ident, ref));
+        REDIRECT_NOISY(ALOGW("PERFORMED REDIRECT OF ident=0x%08x FOR ref=0x%08x\n", ident, ref));
     }
 
     Res_value value;
@@ -896,7 +896,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
         return JNI_FALSE;
     }
 
-    DEBUG_STYLES(LOGI("APPLY STYLE: theme=0x%x defStyleAttr=0x%x defStyleRes=0x%x xml=0x%x",
+    DEBUG_STYLES(ALOGI("APPLY STYLE: theme=0x%x defStyleAttr=0x%x defStyleRes=0x%x xml=0x%x",
         themeToken, defStyleAttr, defStyleRes, xmlParserToken));
 
     ResTable::Theme* theme = (ResTable::Theme*)themeToken;
@@ -1008,7 +1008,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
     for (jsize ii=0; ii<NI; ii++) {
         const uint32_t curIdent = (uint32_t)src[ii];
 
-        DEBUG_STYLES(LOGI("RETRIEVING ATTR 0x%08x...", curIdent));
+        DEBUG_STYLES(ALOGI("RETRIEVING ATTR 0x%08x...", curIdent));
 
         // Try to find a value for this attribute...  we prioritize values
         // coming from, first XML attributes, then XML style, then default
@@ -1029,7 +1029,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
             xmlParser->getAttributeValue(ix, &value);
             ix++;
             curXmlAttr = xmlParser->getAttributeNameResID(ix);
-            DEBUG_STYLES(LOGI("-> From XML: type=0x%x, data=0x%08x",
+            DEBUG_STYLES(ALOGI("-> From XML: type=0x%x, data=0x%08x",
                     value.dataType, value.data));
         }
 
@@ -1043,7 +1043,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
                 block = styleEnt->stringBlock;
                 typeSetFlags = styleTypeSetFlags;
                 value = styleEnt->map.value;
-                DEBUG_STYLES(LOGI("-> From style: type=0x%x, data=0x%08x",
+                DEBUG_STYLES(ALOGI("-> From style: type=0x%x, data=0x%08x",
                         value.dataType, value.data));
             }
             styleEnt++;
@@ -1059,7 +1059,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
                 block = defStyleEnt->stringBlock;
                 typeSetFlags = defStyleTypeSetFlags;
                 value = defStyleEnt->map.value;
-                DEBUG_STYLES(LOGI("-> From def style: type=0x%x, data=0x%08x",
+                DEBUG_STYLES(ALOGI("-> From def style: type=0x%x, data=0x%08x",
                         value.dataType, value.data));
             }
             defStyleEnt++;
@@ -1071,14 +1071,14 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
             ssize_t newBlock = theme->resolveAttributeReference(&value, block,
                     &resid, &typeSetFlags, &config);
             if (newBlock >= 0) block = newBlock;
-            DEBUG_STYLES(LOGI("-> Resolved attr: type=0x%x, data=0x%08x",
+            DEBUG_STYLES(ALOGI("-> Resolved attr: type=0x%x, data=0x%08x",
                     value.dataType, value.data));
         } else {
             // If we still don't have a value for this attribute, try to find
             // it in the theme!
             ssize_t newBlock = theme->getAttribute(curIdent, &value, &typeSetFlags);
             if (newBlock >= 0) {
-                DEBUG_STYLES(LOGI("-> From theme: type=0x%x, data=0x%08x",
+                DEBUG_STYLES(ALOGI("-> From theme: type=0x%x, data=0x%08x",
                         value.dataType, value.data));
                 newBlock = res.resolveReference(&value, block, &resid,
                         &typeSetFlags, &config);
@@ -1089,14 +1089,14 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
                 }
 #endif
                 if (newBlock >= 0) block = newBlock;
-                DEBUG_STYLES(LOGI("-> Resolved theme: type=0x%x, data=0x%08x",
+                DEBUG_STYLES(ALOGI("-> Resolved theme: type=0x%x, data=0x%08x",
                         value.dataType, value.data));
             }
         }
 
         // Deal with the special @null value -- it turns back to TYPE_NULL.
         if (value.dataType == Res_value::TYPE_REFERENCE && value.data == 0) {
-            DEBUG_STYLES(LOGI("-> Setting to @null!"));
+            DEBUG_STYLES(ALOGI("-> Setting to @null!"));
             value.dataType = Res_value::TYPE_NULL;
             block = kXmlBlock;
         }
@@ -1105,7 +1105,7 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
         if (resid != 0) {
             uint32_t redirect = res.lookupRedirectionMap(resid);
             if (redirect != 0) {
-                REDIRECT_NOISY(LOGW("deep REDIRECT 0x%08x => 0x%08x\n", resid, redirect));
+                REDIRECT_NOISY(ALOGW("deep REDIRECT 0x%08x => 0x%08x\n", resid, redirect));
                 ssize_t newBlock = res.getResource(redirect, &value, true, config.density, &typeSetFlags, &config);
                 if (newBlock >= 0) {
                     newBlock = res.resolveReference(&value, newBlock, &redirect, &typeSetFlags, &config);
@@ -1121,12 +1121,12 @@ static jboolean android_content_AssetManager_applyStyle(JNIEnv* env, jobject cla
                     }
                 }
                 if (resid != redirect) {
-                    LOGW("deep redirect failure from 0x%08x => 0x%08x, defStyleAttr=0x%08x, defStyleRes=0x%08x, style=0x%08x\n", resid, redirect, defStyleAttr, defStyleRes, style);
+                    ALOGW("deep redirect failure from 0x%08x => 0x%08x, defStyleAttr=0x%08x, defStyleRes=0x%08x, style=0x%08x\n", resid, redirect, defStyleAttr, defStyleRes, style);
                 }
             }
         }
 
-        DEBUG_STYLES(LOGI("Attribute 0x%08x: type=0x%x, data=0x%08x",
+        DEBUG_STYLES(ALOGI("Attribute 0x%08x: type=0x%x, data=0x%08x",
                 curIdent, value.dataType, value.data));
 
         // Write the final value back to Java.
@@ -1387,7 +1387,7 @@ static jint android_content_AssetManager_retrieveArray(JNIEnv* env, jobject claz
         if (resid != 0) {
             uint32_t redirect = res.lookupRedirectionMap(resid);
             if (redirect != 0) {
-                REDIRECT_NOISY(LOGW("array REDIRECT 0x%08x => 0x%08x\n", resid, redirect));
+                REDIRECT_NOISY(ALOGW("array REDIRECT 0x%08x => 0x%08x\n", resid, redirect));
                 ssize_t newBlock = res.getResource(redirect, &value, true, config.density, &typeSetFlags, &config);
                 if (newBlock >= 0) {
                     newBlock = res.resolveReference(&value, newBlock, &redirect, &typeSetFlags, &config);
@@ -1403,7 +1403,7 @@ static jint android_content_AssetManager_retrieveArray(JNIEnv* env, jobject claz
                     }
                 }
                 if (resid != redirect) {
-                    LOGW("array redirect failure from 0x%08x => 0x%08x, array id=0x%08x", resid, redirect, id);
+                    ALOGW("array redirect failure from 0x%08x => 0x%08x, array id=0x%08x", resid, redirect, id);
                 }
             }
         }
@@ -1644,7 +1644,7 @@ static jint android_content_AssetManager_splitThemePackage(JNIEnv* env, jobject 
         return -1;
     }
 
-    LOGV("splitThemePackage in %p (Java object %p)\n", am, clazz);
+    ALOGV("splitThemePackage in %p (Java object %p)\n", am, clazz);
 
     if (srcFileName == NULL || dstFileName == NULL) {
         jniThrowException(env, "java/lang/NullPointerException", srcFileName == NULL ? "srcFileName" : "dstFileName");
@@ -1661,7 +1661,7 @@ static jint android_content_AssetManager_splitThemePackage(JNIEnv* env, jobject 
     ZipFile* srcZip = new ZipFile;
     status_t err = srcZip->open(srcFileName8, ZipFile::kOpenReadWrite);
     if (err != NO_ERROR) {
-        LOGV("error opening zip file %s\n", srcFileName8);
+        ALOGV("error opening zip file %s\n", srcFileName8);
         delete srcZip;
         env->ReleaseStringUTFChars(srcFileName, srcFileName8);
         return -4;
@@ -1672,7 +1672,7 @@ static jint android_content_AssetManager_splitThemePackage(JNIEnv* env, jobject 
     err = dstZip->open(dstFileName8, ZipFile::kOpenReadWrite | ZipFile::kOpenTruncate | ZipFile::kOpenCreate);
 
     if (err != NO_ERROR) {
-        LOGV("error opening zip file %s\n", dstFileName8);
+        ALOGV("error opening zip file %s\n", dstFileName8);
         delete srcZip;
         delete dstZip;
         env->ReleaseStringUTFChars(srcFileName, srcFileName8);
@@ -1687,16 +1687,16 @@ static jint android_content_AssetManager_splitThemePackage(JNIEnv* env, jobject 
         ZipEntry *assetEntry = srcZip->getEntryByName(drmProtectedAssetFileName8);
         if (assetEntry == NULL) {
             result = 1;
-            LOGV("Invalid asset entry %s\n", drmProtectedAssetFileName8);
+            ALOGV("Invalid asset entry %s\n", drmProtectedAssetFileName8);
         } else {
             status_t loc_result = dstZip->add(srcZip, assetEntry, 0, NULL);
             if (loc_result != NO_ERROR) {
-                LOGV("error copying zip entry %s\n", drmProtectedAssetFileName8);
+                ALOGV("error copying zip entry %s\n", drmProtectedAssetFileName8);
                 result = result | 2;
             } else {
                 loc_result = srcZip->remove(assetEntry);
                 if (loc_result != NO_ERROR) {
-                    LOGV("error removing zip entry %s\n", drmProtectedAssetFileName8);
+                    ALOGV("error removing zip entry %s\n", drmProtectedAssetFileName8);
                     result = result | 4;
                 }
             }
@@ -1849,7 +1849,7 @@ static jboolean android_content_AssetManager_generateStyleRedirections(JNIEnv* e
     // the one in the theme.  This lets us do things like automatically find
     // redirections for @android:style/Widget.Button by looking at how the
     // theme overrides the android:attr/buttonStyle attribute.
-    REDIRECT_NOISY(LOGW("delta between 0x%08x and 0x%08x:\n", sourceStyle, destStyle));
+    REDIRECT_NOISY(ALOGW("delta between 0x%08x and 0x%08x:\n", sourceStyle, destStyle));
     for (; frameworkEnt < endFrameworkEnt; frameworkEnt++) {
         if (frameworkEnt->map.value.dataType != Res_value::TYPE_REFERENCE) {
             continue;
@@ -1866,7 +1866,7 @@ static jboolean android_content_AssetManager_generateStyleRedirections(JNIEnv* e
             if (themeEnt->map.value.data != frameworkEnt->map.value.data) {
                 uint32_t fromIdent = frameworkEnt->map.value.data;
                 uint32_t toIdent = themeEnt->map.value.data;
-                REDIRECT_NOISY(LOGW("   generated mapping from 0x%08x => 0x%08x (by attr 0x%08x)\n",
+                REDIRECT_NOISY(ALOGW("   generated mapping from 0x%08x => 0x%08x (by attr 0x%08x)\n",
                         fromIdent, toIdent, curIdent));
                 resMap->addRedirection(fromIdent, toIdent);
             }

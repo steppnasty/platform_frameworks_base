@@ -24,7 +24,7 @@
 #include "android_os_Parcel.h"
 #include <binder/Parcel.h>
 
-#include <utils/ResourceTypes.h>
+#include <androidfw/ResourceTypes.h>
 
 #include <stdio.h>
 

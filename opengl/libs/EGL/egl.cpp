@@ -66,6 +66,8 @@ int gEGLDebugLevel;
 static int sEGLTraceLevel;
 static int sEGLApplicationTraceLevel;
 
+static int sEGLApplicationDebugLevel;
+
 extern gl_hooks_t gHooksTrace;
 extern gl_hooks_t gHooksDebug;
 
@@ -132,6 +134,15 @@ void setGLHooksThreadSpecific(gl_hooks_t const *value) {
 extern "C"
 void setGLTraceLevel(int level) {
     sEGLApplicationTraceLevel = level;
+}
+
+/*
+ * Global entry point to allow applications to modify their own debug level.
+ * Debugging is enabled if either the application requested it, or if the system property
+ * matches the application's name.
+ */
+void EGLAPI setGLDebugLevel(int level) {
+    sEGLApplicationDebugLevel = level;
 }
 
 #else

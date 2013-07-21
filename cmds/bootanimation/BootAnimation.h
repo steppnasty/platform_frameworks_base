@@ -21,7 +21,7 @@
 #include <sys/types.h>
 
 #include <utils/threads.h>
-#include <utils/AssetManager.h>
+#include <androidfw/AssetManager.h>
 
 #include <surfaceflinger/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>

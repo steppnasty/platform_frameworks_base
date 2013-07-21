@@ -17,6 +17,15 @@ LOCAL_PATH:= $(call my-dir)
 # libandroidfw is partially built for the host (used by build time keymap validation tool)
 # These files are common to host and target builds.
 
+# formerly in libutils
+commonUtilsSources:= \
+    Asset.cpp \
+    AssetDir.cpp \
+    AssetManager.cpp \
+    ObbFile.cpp \
+    ResourceTypes.cpp \
+    StreamingZipInflater.cpp
+
 # formerly in libui
 commonUiSources:= \
     Input.cpp \
@@ -29,6 +38,7 @@ commonUiSources:= \
     VirtualKeyMap.cpp
 
 commonSources:= \
+	$(commonUtilsSources) \
         $(commonUiSources)
 
 # For the host

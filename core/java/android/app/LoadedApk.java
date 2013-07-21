@@ -437,6 +437,10 @@ public final class LoadedApk {
         return mAppDir;
     }
 
+    public String getLibDir() {
+        return mLibDir;
+    }
+
     public String getResDir() {
         return mResDir;
     }
