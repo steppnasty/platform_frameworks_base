@@ -84,6 +84,10 @@
     <!-- The attenuation in dB applied to the lock/unlock sounds. -->
     <integer name="config_lockSoundVolumeDb">-6</integer>
 
+    <!-- Flag indicating whether the AUDIO_BECOMING_NOISY notification should
+         be sent during a change to the audio output device. -->
+    <bool name="config_sendAudioBecomingNoisy">true</bool>
+
     <!-- The duration (in milliseconds) of a short animation. -->
     <integer name="config_shortAnimTime">200</integer>
 
@@ -552,10 +556,6 @@
     <integer-array name="config_autoBrightnessLcdBacklightValues">
     </integer-array>
 
-    <!-- Flag indicating whether we should enable automatic brightness for
-         the button and keyboard backlights. -->
-    <bool name="config_autoBrightnessButtonKeyboard">true</bool>
-
     <!-- Array of output values for button backlight corresponding to the LUX values
          in the config_autoBrightnessLevels array.  This array should have size one greater
          than the size of the config_autoBrightnessLevels array.
@@ -666,6 +666,10 @@
          Note: Disable SMS also disable voicemail waiting sms,
                cell broadcasting sms, and MMS. -->
     <bool name="config_sms_capable">true</bool>
+
+    <!-- Enable/disable default bluetooth profiles:
+        HSP_AG, ObexObjectPush, Audio, NAP -->
+    <bool name="config_bluetooth_default_profiles">true</bool>
 
     <!-- IP address of the dns server to use if nobody else suggests one -->
     <string name="config_default_dns_server" translatable="false">8.8.8.8</string>

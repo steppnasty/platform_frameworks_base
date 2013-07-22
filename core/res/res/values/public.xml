@@ -2002,7 +2002,6 @@
    Other Resources added
    =============================================================== -->
   <eat-comment /> 
-  <public type="bool" name="config_useMasterVolume" id="0x010f0000" />
   <public type="layout" name="media_route_chooser_layout" id="0x01090018" />
   <public type="layout" name="media_route_list_item_top_header" id="0x01090019" />
   <public type="layout" name="media_route_list_item_section_header" id="0x0109001a"      />
