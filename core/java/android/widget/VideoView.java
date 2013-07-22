@@ -26,6 +26,7 @@ import android.media.MediaPlayer;
 import android.media.Metadata;
 import android.media.MediaPlayer.OnCompletionListener;
 import android.media.MediaPlayer.OnErrorListener;
+import android.media.MediaPlayer.OnInfoListener;
 import android.net.Uri;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -84,6 +85,7 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     private MediaPlayer.OnPreparedListener mOnPreparedListener;
     private int         mCurrentBufferPercentage;
     private OnErrorListener mOnErrorListener;
+    private OnInfoListener mOnInfoListener;
     private int         mSeekWhenPrepared;  // recording the seek position while preparing
     private boolean     mCanPause;
     private boolean     mCanSeekBack;
@@ -221,7 +223,7 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
             mMediaPlayer = new MediaPlayer();
             mMediaPlayer.setOnPreparedListener(mPreparedListener);
             mMediaPlayer.setOnVideoSizeChangedListener(mSizeChangedListener);
-            mMediaPlayer.setOnInfoListener(mInfoListener);
+            mMediaPlayer.setOnInfoListener(mOnInfoListener);
             mDuration = -1;
             mMediaPlayer.setOnCompletionListener(mCompletionListener);
             mMediaPlayer.setOnErrorListener(mErrorListener);
@@ -283,8 +285,6 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     MediaPlayer.OnPreparedListener mPreparedListener = new MediaPlayer.OnPreparedListener() {
         public void onPrepared(MediaPlayer mp) {
             mCurrentState = STATE_PREPARED;
-
-            mp.setParameter(MediaPlayer.KEY_PARAMETER_3D_ATTRIBUTES, m3DAttributes);
 
             // Get the capabilities of the player for this stream
             Metadata data = mp.getMetadata(MediaPlayer.METADATA_ALL,
@@ -418,17 +418,6 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
         }
     };
 
-    private MediaPlayer.OnInfoListener mInfoListener =
-        new MediaPlayer.OnInfoListener() {
-        public boolean onInfo(MediaPlayer mp, int framework_err, int impl_err) {
-            if (framework_err == MediaPlayer.KEY_PARAMETER_3D_ATTRIBUTES) {
-                m3DAttributes = impl_err;
-                return true;
-            }
-            return false;
-        }
-    };
-
     /**
      * Register a callback to be invoked when the media file
      * is loaded and ready to go.
@@ -462,6 +451,16 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     public void setOnErrorListener(OnErrorListener l)
     {
         mOnErrorListener = l;
+    }
+
+    /**
+     * Register a callback to be invoked when an informational event
+     * occurs during playback or setup.
+     *
+     * @param l The callback that will be run
+     */
+    public void setOnInfoListener(OnInfoListener l) {
+        mOnInfoListener = l;
     }
 
     SurfaceHolder.Callback mSHCallback = new SurfaceHolder.Callback()

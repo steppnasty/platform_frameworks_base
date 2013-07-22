@@ -37,9 +37,6 @@ extern sp<ANativeWindow> android_view_Surface_getNativeWindow(
 extern bool android_view_Surface_isInstanceOf(JNIEnv* env, jobject obj);
 
 /* Gets the underlying Surface from a Surface Java object. */
-extern sp<Surface> Surface_getSurface(JNIEnv* env, jobject thiz);
-
-/* Gets the underlying Surface from a Surface Java object. */
 extern sp<Surface> android_view_Surface_getSurface(JNIEnv* env, jobject surfaceObj);
 
 /* Creates a Surface from an ISurfaceTexture. */

@@ -136,7 +136,7 @@ static void setSurfaceControl(JNIEnv* env, jobject surfaceObj,
 }
 
 static sp<Surface> getSurface(JNIEnv* env, jobject surfaceObj) {
-    sp<Surface> result(Surface_getSurface(env, surfaceObj));
+    sp<Surface> result(android_view_Surface_getSurface(env, surfaceObj));
     if (result == NULL) {
         /*
          * if this method is called from the WindowManager's process, it means
@@ -169,7 +169,7 @@ bool android_Surface_isInstanceOf(JNIEnv* env, jobject obj) {
     return env->IsInstanceOf(obj, gSurfaceClassInfo.clazz);
 }
 
-sp<Surface> Surface_getSurface(JNIEnv* env, jobject surfaceObj) {
+sp<Surface> android_view_Surface_getSurface(JNIEnv* env, jobject surfaceObj) {
     return reinterpret_cast<Surface*>(
             env->GetIntField(surfaceObj, gSurfaceClassInfo.mNativeSurface));
 }
@@ -736,7 +736,7 @@ static void Surface_transferFrom(
     }
 
     sp<SurfaceControl> control(getSurfaceControl(env, other));
-    sp<Surface> surface(Surface_getSurface(env, other));
+    sp<Surface> surface(android_view_Surface_getSurface(env, other));
     setSurfaceControl(env, clazz, control);
     setSurface(env, clazz, surface);
     setSurfaceControl(env, other, 0);
@@ -772,7 +772,7 @@ static void Surface_writeToParcel(JNIEnv* env, jobject surfaceObj, jobject parce
     if (control != NULL) {
         SurfaceControl::writeSurfaceToParcel(control, parcel);
     } else {
-        sp<Surface> surface(Surface_getSurface(env, surfaceObj));
+        sp<Surface> surface(android_view_Surface_getSurface(env, surfaceObj));
         if (surface != NULL) {
             Surface::writeToParcel(surface, parcel);
         } else {

@@ -113,12 +113,14 @@ class MediaPlayerService : public BnMediaPlayerService
 
         static bool             isOnEmulator();
         static int              getMinBufferCount();
+                void            setNextOutput(const sp<AudioOutput>& nextOutput);
     private:
         static void             setMinBufferCount();
         static void             CallbackWrapper(
                 int event, void *me, void *info);
 
         AudioTrack*             mTrack;
+        sp<AudioOutput>         mNextOutput;
 #ifdef WITH_QCOM_LPA
         AudioTrack*             mSession;
 #endif
@@ -289,6 +291,7 @@ private:
         virtual status_t        attachAuxEffect(int effectId);
         virtual status_t        setParameter(int key, const Parcel &request);
         virtual status_t        getParameter(int key, Parcel *reply);
+        virtual status_t        setNextPlayer(const sp<IMediaPlayer>& player);
 
         sp<MediaPlayerBase>     createPlayer(player_type playerType);
 
@@ -351,6 +354,7 @@ private:
                     uid_t                       mUID;
                     sp<ANativeWindow>           mConnectedWindow;
                     sp<IBinder>                 mConnectedWindowBinder;
+                    sp<Client>                  mNextClient;
 
         // Metadata filters.
         media::Metadata::Filter mMetadataAllow;  // protected by mLock

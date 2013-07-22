@@ -63,6 +63,7 @@ MediaPlayer::MediaPlayer()
     mAudioSessionId = AudioSystem::newAudioSessionId();
     AudioSystem::acquireAudioSessionId(mAudioSessionId);
     mSendLevel = 0;
+    mRetransmitEndpointValid = false;
 }
 
 MediaPlayer::~MediaPlayer()
@@ -95,6 +96,7 @@ void MediaPlayer::clear_l()
     mCurrentPosition = -1;
     mSeekPosition = -1;
     mVideoWidth = mVideoHeight = 0;
+    mRetransmitEndpointValid = false;
 }
 
 status_t MediaPlayer::setListener(const sp<MediaPlayerListener>& listener)
@@ -599,6 +601,34 @@ status_t MediaPlayer::getParameter(int key, Parcel *reply)
     return INVALID_OPERATION;
 }
 
+status_t MediaPlayer::setRetransmitEndpoint(const char* addrString,
+                                            uint16_t port) {
+    ALOGV("MediaPlayer::setRetransmitEndpoint(%s:%hu)",
+            addrString ? addrString : "(null)", port);
+
+    Mutex::Autolock _l(mLock);
+    if ((mPlayer != NULL) || (mCurrentState != MEDIA_PLAYER_IDLE))
+        return INVALID_OPERATION;
+
+    if (NULL == addrString) {
+        mRetransmitEndpointValid = false;
+        return OK;
+    }
+
+    struct in_addr saddr;
+    if(!inet_aton(addrString, &saddr)) {
+        return BAD_VALUE;
+    }
+
+    memset(&mRetransmitEndpoint, 0, sizeof(&mRetransmitEndpoint));
+    mRetransmitEndpoint.sin_family = AF_INET;
+    mRetransmitEndpoint.sin_addr   = saddr;
+    mRetransmitEndpoint.sin_port   = htons(port);
+    mRetransmitEndpointValid       = true;
+
+    return OK;
+}
+
 void MediaPlayer::notify(int msg, int ext1, int ext2, const Parcel *obj)
 {
     ALOGV("message received msg=%d, ext1=%d, ext2=%d", msg, ext1, ext2);
@@ -741,6 +771,13 @@ void MediaPlayer::died()
     }
     return p;
 
+}
+
+status_t MediaPlayer::setNextMediaPlayer(const sp<MediaPlayer>& next) {
+    if (mPlayer == NULL) {
+        return NO_INIT;
+    }
+    return mPlayer->setNextPlayer(next == NULL ? NULL : next->mPlayer);
 }
 
 }; // namespace android
