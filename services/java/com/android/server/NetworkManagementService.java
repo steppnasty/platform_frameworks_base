@@ -27,6 +27,7 @@ import static android.net.NetworkStats.UID_ALL;
 import static android.net.TrafficStats.UID_TETHERING;
 import static android.provider.Settings.Secure.NETSTATS_ENABLED;
 import static android.provider.Settings.Secure.TETHER_LEASE_TIME;
+import static com.android.server.NetworkManagementService.NetdResponseCode.InterfaceGetCfgResult;
 import static com.android.server.NetworkManagementSocketTagger.PROP_QTAGUID_ENABLED;
 
 import android.content.Context;
@@ -372,46 +373,36 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         }
     }
 
-    public InterfaceConfiguration getInterfaceConfig(String iface) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(ACCESS_NETWORK_STATE, TAG);
-        String rsp;
-        try {
-            rsp = mConnector.doCommand("interface getcfg " + iface).get(0);
-        } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException(
-                    "Cannot communicate with native daemon to get interface config");
-        }
-        Slog.d(TAG, String.format("rsp <%s>", rsp));
+    @Override
+    public InterfaceConfiguration getInterfaceConfig(String iface) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
 
-        // Rsp: 213 xx:xx:xx:xx:xx:xx yyy.yyy.yyy.yyy zzz [flag1 flag2 flag3]
-        StringTokenizer st = new StringTokenizer(rsp);
+        final NativeDaemonEvent event;
+        try {
+            event = mConnector.execute("interface", "getcfg", iface);
+        } catch (NativeDaemonConnectorException e) {
+            throw e.rethrowAsParcelableException();
+        }
+
+        event.checkCode(InterfaceGetCfgResult);
+
+        // Rsp: 213 xx:xx:xx:xx:xx:xx yyy.yyy.yyy.yyy zzz flag1 flag2 flag3
+        final StringTokenizer st = new StringTokenizer(event.getMessage());
 
         InterfaceConfiguration cfg;
         try {
-            try {
-                int code = Integer.parseInt(st.nextToken(" "));
-                if (code != NetdResponseCode.InterfaceGetCfgResult) {
-                    throw new IllegalStateException(
-                        String.format("Expected code %d, but got %d",
-                                NetdResponseCode.InterfaceGetCfgResult, code));
-                }
-            } catch (NumberFormatException nfe) {
-                throw new IllegalStateException(
-                        String.format("Invalid response from daemon (%s)", rsp));
-            }
-
             cfg = new InterfaceConfiguration();
             cfg.setHardwareAddress(st.nextToken(" "));
             InetAddress addr = null;
             int prefixLength = 0;
             try {
-                addr = NetworkUtils.numericToInetAddress(st.nextToken(" "));
+                addr = NetworkUtils.numericToInetAddress(st.nextToken());
             } catch (IllegalArgumentException iae) {
                 Slog.e(TAG, "Failed to parse ipaddr", iae);
             }
 
             try {
-                prefixLength = Integer.parseInt(st.nextToken(" "));
+                prefixLength = Integer.parseInt(st.nextToken());
             } catch (NumberFormatException nfe) {
                 Slog.e(TAG, "Failed to parse prefixLength", nfe);
             }
@@ -421,22 +412,26 @@ public class NetworkManagementService extends INetworkManagementService.Stub
                 cfg.setFlag(st.nextToken());
             }
         } catch (NoSuchElementException nsee) {
-            throw new IllegalStateException(
-                    String.format("Invalid response from daemon (%s)", rsp));
+            throw new IllegalStateException("Invalid response from daemon: " + event);
         }
         return cfg;
     }
 
-    public void setInterfaceConfig(
-            String iface, InterfaceConfiguration cfg) throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(CHANGE_NETWORK_STATE, TAG);
+    @Override
+    public void setInterfaceConfig(String iface, InterfaceConfiguration cfg) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
         LinkAddress linkAddr = cfg.getLinkAddress();
         if (linkAddr == null || linkAddr.getAddress() == null) {
             throw new IllegalStateException("Null LinkAddress given");
         }
+
         final Command cmd = new Command("interface", "setcfg", iface,
                 linkAddr.getAddress().getHostAddress(),
                 linkAddr.getNetworkPrefixLength());
+        for (String flag : cfg.getFlags()) {
+            cmd.appendArg(flag);
+        }
+
         try {
             mConnector.execute(cmd);
         } catch (NativeDaemonConnectorException e) {
