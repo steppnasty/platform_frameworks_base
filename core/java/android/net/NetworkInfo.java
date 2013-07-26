@@ -76,7 +76,11 @@ public class NetworkInfo implements Parcelable {
         /** Attempt to connect failed. */
         FAILED,
         /** Access to this network is blocked. */
-        BLOCKED
+        BLOCKED,
+        /** Link has poor connectivity. */
+        VERIFYING_POOR_LINK,
+        /** Checking if network is a captive portal */
+        CAPTIVE_PORTAL_CHECK,
     }
 
     /**

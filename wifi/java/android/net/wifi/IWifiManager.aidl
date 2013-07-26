@@ -101,8 +101,12 @@ interface IWifiManager
 
     void clearBlacklist();
 
-    Messenger getMessenger();
+    Messenger getWifiServiceMessenger();
+
+    Messenger getWifiStateMachineMessenger();
 
     String getConfigFile();
+
+    void captivePortalCheckComplete();
 }
 

@@ -25,6 +25,7 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Parcelable;
+import android.os.UserHandle;
 import android.util.Log;
 
 /**
@@ -39,6 +40,7 @@ class SupplicantStateTracker extends StateMachine {
     private static final boolean DBG = false;
 
     private WifiStateMachine mWifiStateMachine;
+    private WifiConfigStore mWifiConfigStore;
     private int mAuthenticationFailuresCount = 0;
     /* Indicates authentication failure in supplicant broadcast.
      * TODO: enhance auth failure reporting to include notification
@@ -46,7 +48,7 @@ class SupplicantStateTracker extends StateMachine {
     private boolean mAuthFailureInSupplicantBroadcast = false;
 
     /* Maximum retries on a authentication failure notification */
-    private static final int MAX_RETRIES_ON_AUTHENTICATION_FAILURE = 4;
+    private static final int MAX_RETRIES_ON_AUTHENTICATION_FAILURE = 2;
 
     /* Tracks if networks have been disabled during a connection */
     private boolean mNetworksDisabledDuringConnect = false;
@@ -62,11 +64,12 @@ class SupplicantStateTracker extends StateMachine {
     private State mCompletedState = new CompletedState();
     private State mDormantState = new DormantState();
 
-    public SupplicantStateTracker(Context context, WifiStateMachine wsm, Handler target) {
-        super(TAG, target.getLooper());
+    public SupplicantStateTracker(Context c, WifiStateMachine wsm, WifiConfigStore wcs, Handler t) {
+        super(TAG, t.getLooper());
 
-        mContext = context;
+        mContext = c;
         mWifiStateMachine = wsm;
+        mWifiConfigStore = wcs;
         addState(mDefaultState);
             addState(mUninitializedState, mDefaultState);
             addState(mInactiveState, mDefaultState);
@@ -85,11 +88,11 @@ class SupplicantStateTracker extends StateMachine {
     private void handleNetworkConnectionFailure(int netId) {
         /* If other networks disabled during connection, enable them */
         if (mNetworksDisabledDuringConnect) {
-            WifiConfigStore.enableAllNetworks();
+            mWifiConfigStore.enableAllNetworks();
             mNetworksDisabledDuringConnect = false;
         }
         /* Disable failed network */
-        WifiConfigStore.disableNetwork(netId, WifiConfiguration.DISABLED_AUTH_FAILURE);
+        mWifiConfigStore.disableNetwork(netId, WifiConfiguration.DISABLED_AUTH_FAILURE);
     }
 
     private void transitionOnSupplicantStateChange(StateChangeResult stateChangeResult) {
@@ -143,7 +146,7 @@ class SupplicantStateTracker extends StateMachine {
                 WifiManager.EXTRA_SUPPLICANT_ERROR,
                 WifiManager.ERROR_AUTHENTICATING);
         }
-        mContext.sendStickyBroadcast(intent);
+        mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
     }
 
     /********************************************************
@@ -173,7 +176,7 @@ class SupplicantStateTracker extends StateMachine {
                 case WifiStateMachine.CMD_RESET_SUPPLICANT_STATE:
                     transitionTo(mUninitializedState);
                     break;
-                case WifiStateMachine.CMD_CONNECT_NETWORK:
+                case WifiManager.CONNECT_NETWORK:
                     mNetworksDisabledDuringConnect = true;
                     break;
                 default:
@@ -285,7 +288,7 @@ class SupplicantStateTracker extends StateMachine {
              /* Reset authentication failure count */
              mAuthenticationFailuresCount = 0;
              if (mNetworksDisabledDuringConnect) {
-                 WifiConfigStore.enableAllNetworks();
+                 mWifiConfigStore.enableAllNetworks();
                  mNetworksDisabledDuringConnect = false;
              }
         }

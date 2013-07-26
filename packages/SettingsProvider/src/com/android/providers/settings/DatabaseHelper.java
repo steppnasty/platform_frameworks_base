@@ -70,7 +70,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // database gets upgraded properly. At a minimum, please confirm that 'upgradeVersion'
     // is properly propagated through your change.  Not doing so will result in a loss of user
     // settings
-    private static final int DATABASE_VERSION = 88;
+    private static final int DATABASE_VERSION = 89;
 
     private Context mContext;
     private int mUserHandle;
@@ -1346,6 +1346,52 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 }
             }
             upgradeVersion = 88;
+        }
+
+        if (upgradeVersion == 88) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    String[] settingsToMove = {
+                            Settings.Global.BATTERY_DISCHARGE_DURATION_THRESHOLD,
+                            Settings.Global.BATTERY_DISCHARGE_THRESHOLD,
+                            Settings.Global.SEND_ACTION_APP_ERROR,
+                            Settings.Global.DROPBOX_AGE_SECONDS,
+                            Settings.Global.DROPBOX_MAX_FILES,
+                            Settings.Global.DROPBOX_QUOTA_KB,
+                            Settings.Global.DROPBOX_QUOTA_PERCENT,
+                            Settings.Global.DROPBOX_RESERVE_PERCENT,
+                            Settings.Global.DROPBOX_TAG_PREFIX,
+                            Settings.Global.ERROR_LOGCAT_PREFIX,
+                            Settings.Global.SYS_FREE_STORAGE_LOG_INTERVAL,
+                            Settings.Global.DISK_FREE_CHANGE_REPORTING_THRESHOLD,
+                            Settings.Global.SYS_STORAGE_THRESHOLD_PERCENTAGE,
+                            Settings.Global.SYS_STORAGE_THRESHOLD_MAX_BYTES,
+                            Settings.Global.SYS_STORAGE_FULL_THRESHOLD_BYTES,
+                            Settings.Global.SYNC_MAX_RETRY_DELAY_IN_SECONDS,
+                            Settings.Global.CONNECTIVITY_CHANGE_DELAY,
+                            Settings.Global.CAPTIVE_PORTAL_DETECTION_ENABLED,
+                            Settings.Global.CAPTIVE_PORTAL_SERVER,
+                            Settings.Global.NSD_ON,
+                            Settings.Global.SET_INSTALL_LOCATION,
+                            Settings.Global.DEFAULT_INSTALL_LOCATION,
+                            Settings.Global.INET_CONDITION_DEBOUNCE_UP_DELAY,
+                            Settings.Global.INET_CONDITION_DEBOUNCE_DOWN_DELAY,
+                            Settings.Global.READ_EXTERNAL_STORAGE_ENFORCED_DEFAULT,
+                            Settings.Global.HTTP_PROXY,
+                            Settings.Global.GLOBAL_HTTP_PROXY_HOST,
+                            Settings.Global.GLOBAL_HTTP_PROXY_PORT,
+                            Settings.Global.GLOBAL_HTTP_PROXY_EXCLUSION_LIST,
+                            Settings.Global.SET_GLOBAL_HTTP_PROXY,
+                            Settings.Global.DEFAULT_DNS_SERVER,
+                    };
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, true);
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 89;
         }
 
         // *** Remember to update DATABASE_VERSION above!

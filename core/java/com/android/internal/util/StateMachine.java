@@ -20,9 +20,13 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
+import android.text.TextUtils;
 import android.util.Log;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Vector;
 
@@ -435,6 +439,109 @@ public class StateMachine {
     public static final boolean NOT_HANDLED = false;
 
     /**
+     * StateMachine logging record.
+     * {@hide}
+     */
+    public static class LogRec {
+        private long mTime;
+        private int mWhat;
+        private String mInfo;
+        private State mState;
+        private State mOrgState;
+
+        /**
+         * Constructor
+         *
+         * @param msg
+         * @param state that handled the message
+         * @param orgState is the first state the received the message but
+         * did not processes the message.
+         */
+        LogRec(Message msg, String info, State state, State orgState) {
+            update(msg, info, state, orgState);
+        }
+
+        /**
+         * Update the information in the record.
+         * @param state that handled the message
+         * @param orgState is the first state the received the message but
+         * did not processes the message.
+         */
+        public void update(Message msg, String info, State state, State orgState) {
+            mTime = System.currentTimeMillis();
+            mWhat = (msg != null) ? msg.what : 0;
+            mInfo = info;
+            mState = state;
+            mOrgState = orgState;
+        }
+
+        /**
+         * @return time stamp
+         */
+        public long getTime() {
+            return mTime;
+        }
+
+        /**
+         * @return msg.what
+         */
+        public long getWhat() {
+            return mWhat;
+        }
+
+        /**
+         * @return the command that was executing
+         */
+        public String getInfo() {
+            return mInfo;
+        }
+
+        /**
+         * @return the state that handled this message
+         */
+        public State getState() {
+            return mState;
+        }
+
+        /**
+         * @return the original state that received the message.
+         */
+        public State getOriginalState() {
+            return mOrgState;
+        }
+
+        /**
+         * @return as string
+         */
+        public String toString(StateMachine sm) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("time=");
+            Calendar c = Calendar.getInstance();
+            c.setTimeInMillis(mTime);
+            sb.append(String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c));
+            sb.append(" state=");
+            sb.append(mState == null ? "<null>" : mState.getName());
+            sb.append(" orgState=");
+            sb.append(mOrgState == null ? "<null>" : mOrgState.getName());
+            sb.append(" what=");
+            String what = sm.getWhatToString(mWhat);
+            if (TextUtils.isEmpty(what)) {
+                sb.append(mWhat);
+                sb.append("(0x");
+                sb.append(Integer.toHexString(mWhat));
+                sb.append(")");
+            } else {
+                sb.append(what);
+            }
+            if ( ! TextUtils.isEmpty(mInfo)) {
+                sb.append(" ");
+                sb.append(mInfo);
+            }
+            return sb.toString();
+        }
+    }
+
+    /**
      * {@hide}
      *
      * The information maintained for a processed message.
@@ -518,61 +625,61 @@ public class StateMachine {
     }
 
     /**
-     * A list of messages recently processed by the state machine.
+     * A list of log records including messages recently processed by the state machine.
      *
-     * The class maintains a list of messages that have been most
+     * The class maintains a list of log records including messages
      * recently processed. The list is finite and may be set in the
      * constructor or by calling setSize. The public interface also
-     * includes size which returns the number of recent messages,
-     * count which is the number of message processed since the
-     * the last setSize, get which returns a processed message and
-     * add which adds a processed messaged.
+     * includes size which returns the number of recent records,
+     * count which is the number of records processed since the
+     * the last setSize, get which returns a record and
+     * add which adds a record.
      */
-    private static class ProcessedMessages {
+    private static class LogRecords {
 
         private static final int DEFAULT_SIZE = 20;
 
-        private Vector<ProcessedMessageInfo> mMessages = new Vector<ProcessedMessageInfo>();
+        private Vector<LogRec> mLogRecords = new Vector<LogRec>();
         private int mMaxSize = DEFAULT_SIZE;
         private int mOldestIndex = 0;
         private int mCount = 0;
 
         /**
-         * Constructor
+         * private constructor use add
          */
-        ProcessedMessages() {
+        private LogRecords() {
         }
 
         /**
-         * Set size of messages to maintain and clears all current messages.
+         * Set size of messages to maintain and clears all current records.
          *
-         * @param maxSize number of messages to maintain at anyone time.
+         * @param maxSize number of records to maintain at anyone time.
         */
-        void setSize(int maxSize) {
+        synchronized void setSize(int maxSize) {
             mMaxSize = maxSize;
             mCount = 0;
-            mMessages.clear();
+            mLogRecords.clear();
         }
 
         /**
-         * @return the number of recent messages.
+         * @return the number of recent records.
          */
-        int size() {
-            return mMessages.size();
+        synchronized int size() {
+            return mLogRecords.size();
         }
 
         /**
-         * @return the total number of messages processed since size was set.
+         * @return the total number of records processed since size was set.
          */
-        int count() {
+        synchronized int count() {
             return mCount;
         }
 
         /**
-         * Clear the list of Processed Message Info.
+         * Clear the list of records.
          */
-        void cleanup() {
-            mMessages.clear();
+        synchronized void cleanup() {
+            mLogRecords.clear();
         }
 
         /**
@@ -580,7 +687,7 @@ public class StateMachine {
          * record and size()-1 is the newest record. If the index is to
          * large null is returned.
          */
-        ProcessedMessageInfo get(int index) {
+        synchronized LogRec get(int index) {
             int nextIndex = mOldestIndex + index;
             if (nextIndex >= mMaxSize) {
                 nextIndex -= mMaxSize;
@@ -588,29 +695,30 @@ public class StateMachine {
             if (nextIndex >= size()) {
                 return null;
             } else {
-                return mMessages.get(nextIndex);
+                return mLogRecords.get(nextIndex);
             }
         }
 
         /**
          * Add a processed message.
          *
-         * @param message
+         * @param msg
+         * @param messageInfo to be stored
          * @param state that handled the message
          * @param orgState is the first state the received the message but
          * did not processes the message.
          */
-        void add(Message message, State state, State orgState) {
+        synchronized void add(Message msg, String messageInfo, State state, State orgState) {
             mCount += 1;
-            if (mMessages.size() < mMaxSize) {
-                mMessages.add(new ProcessedMessageInfo(message, state, orgState));
+            if (mLogRecords.size() < mMaxSize) {
+                mLogRecords.add(new LogRec(msg, messageInfo, state, orgState));
             } else {
-                ProcessedMessageInfo pmi = mMessages.get(mOldestIndex);
+                LogRec pmi = mLogRecords.get(mOldestIndex);
                 mOldestIndex += 1;
                 if (mOldestIndex >= mMaxSize) {
                     mOldestIndex = 0;
                 }
-                pmi.update(message, state, orgState);
+                pmi.update(msg, messageInfo, state, orgState);
             }
         }
     }
@@ -627,8 +735,8 @@ public class StateMachine {
         /** The current message */
         private Message mMsg;
 
-        /** A list of messages that this state machine has processed */
-        private ProcessedMessages mProcessedMessages = new ProcessedMessages();
+        /** A list of log records including messages this state machine has processed */
+        private LogRecords mLogRecords = new LogRecords();
 
         /** true if construction of the state machine has not been completed */
         private boolean mIsConstructionCompleted;
@@ -817,7 +925,7 @@ public class StateMachine {
             mSm.mSmHandler = null;
             mSm = null;
             mMsg = null;
-            mProcessedMessages.cleanup();
+            mLogRecords.cleanup();
             mStateStack = null;
             mTempStateStack = null;
             mStateInfo.clear();
@@ -896,16 +1004,19 @@ public class StateMachine {
                 if (mDbg) {
                     Log.d(TAG, "processMsg: " + curStateInfo.state.getName());
                 }
-            }
 
-            /**
-             * Record that we processed the message
-             */
-            if (curStateInfo != null) {
-                State orgState = mStateStack[mStateStackTopIndex].state;
-                mProcessedMessages.add(msg, curStateInfo.state, orgState);
-            } else {
-                mProcessedMessages.add(msg, null, null);
+                /**
+                 * Record that we processed the message
+                 */
+                if (mSm.recordLogRec(msg)) {
+                    if (curStateInfo != null) {
+                        State orgState = mStateStack[mStateStackTopIndex].state;
+                        mLogRecords.add(msg, mSm.getLogRecString(msg), curStateInfo.state,
+                                orgState);
+                    } else {
+                        mLogRecords.add(msg, mSm.getLogRecString(msg), null, null);
+                    }
+                }
             }
         }
 
@@ -1145,26 +1256,6 @@ public class StateMachine {
             mDbg = dbg;
         }
 
-        /** @see StateMachine#setProcessedMessagesSize(int) */
-        private final void setProcessedMessagesSize(int maxSize) {
-            mProcessedMessages.setSize(maxSize);
-        }
-
-        /** @see StateMachine#getProcessedMessagesSize() */
-        private final int getProcessedMessagesSize() {
-            return mProcessedMessages.size();
-        }
-
-        /** @see StateMachine#getProcessedMessagesCount() */
-        private final int getProcessedMessagesCount() {
-            return mProcessedMessages.count();
-        }
-
-        /** @see StateMachine#getProcessedMessageInfo(int) */
-        private final ProcessedMessageInfo getProcessedMessageInfo(int index) {
-            return mProcessedMessages.get(index);
-        }
-
     }
 
     private SmHandler mSmHandler;
@@ -1328,33 +1419,58 @@ public class StateMachine {
     }
 
     /**
-     * Set size of messages to maintain and clears all current messages.
+     * Set number of log records to maintain and clears all current records.
      *
      * @param maxSize number of messages to maintain at anyone time.
      */
-    public final void setProcessedMessagesSize(int maxSize) {
-        mSmHandler.setProcessedMessagesSize(maxSize);
+    public final void setLogRecSize(int maxSize) {
+        mSmHandler.mLogRecords.setSize(maxSize);
     }
 
     /**
-     * @return number of messages processed
+     * @return number of log records
      */
-    public final int getProcessedMessagesSize() {
-        return mSmHandler.getProcessedMessagesSize();
+    public final int getLogRecSize() {
+        return mSmHandler.mLogRecords.size();
     }
 
     /**
-     * @return the total number of messages processed
+     * @return the total number of records processed
      */
-    public final int getProcessedMessagesCount() {
-        return mSmHandler.getProcessedMessagesCount();
+    public final int getLogRecCount() {
+        return mSmHandler.mLogRecords.count();
     }
 
     /**
-     * @return a processed message information
+     * @return a log record
      */
-    public final ProcessedMessageInfo getProcessedMessageInfo(int index) {
-        return mSmHandler.getProcessedMessageInfo(index);
+    public final LogRec getLogRec(int index) {
+        return mSmHandler.mLogRecords.get(index);
+    }
+
+    /**
+     * @return true if msg should be saved in the log, default is true.
+     */
+    protected boolean recordLogRec(Message msg) {
+        return true;
+    }
+
+    /**
+     * Return a string to be logged by LogRec, default
+     * is an empty string. Override if additional information is desired.
+     *
+     * @param msg that was processed
+     * @return information to be logged as a String
+     */
+    protected String getLogRecString(Message msg) {
+        return "";
+    }
+
+    /**
+     * @return the string for msg.what
+     */
+    protected String getWhatToString(int what) {
+        return null;
     }
 
     /**
@@ -1583,5 +1699,22 @@ public class StateMachine {
 
         /** Send the complete construction message */
         mSmHandler.completeConstruction();
+    }
+
+    /**
+     * Dump the current state.
+     *
+     * @param fd
+     * @param pw
+     * @param args
+     */
+    public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+        pw.println(getName() + ":");
+        pw.println(" total records=" + getLogRecCount());
+        for (int i=0; i < getLogRecSize(); i++) {
+            pw.printf(" rec[%d]: %s\n", i, getLogRec(i).toString(this));
+            pw.flush();
+        }
+        pw.println("curState=" + getCurrentState().getName());
     }
 }

@@ -904,9 +904,12 @@ public final class Settings {
 
             // these are moving directly from system to global
             MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_RADIOS);
+            MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_TOGGLEABLE_RADIOS);
             MOVED_TO_GLOBAL.add(Settings.Global.LOCK_SOUND);
             MOVED_TO_GLOBAL.add(Settings.Global.UNLOCK_SOUND);
             MOVED_TO_GLOBAL.add(Settings.Global.STAY_ON_WHILE_PLUGGED_IN);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SLEEP_POLICY);
             MOVED_TO_GLOBAL.add(Settings.Global.WINDOW_ANIMATION_SCALE);
             MOVED_TO_GLOBAL.add(Settings.Global.TRANSITION_ANIMATION_SCALE);
             MOVED_TO_GLOBAL.add(Settings.Global.ANIMATOR_DURATION_SCALE);
@@ -1384,9 +1387,10 @@ public final class Settings {
         public static final String RADIO_BLUETOOTH = Global.RADIO_BLUETOOTH;
 
         /**
-         * Constant for use in AIRPLANE_MODE_RADIOS to specify Wi-Fi radio.
+         * @deprecated Use {@link android.provider.Settings.Global#RADIO_WIFI} instead
          */
-        public static final String RADIO_WIFI = "wifi";
+        @Deprecated
+        public static final String RADIO_WIFI = Global.RADIO_WIFI;
 
         /**
          * {@hide}
@@ -1403,32 +1407,25 @@ public final class Settings {
         public static final String RADIO_NFC = "nfc";
 
         /**
-         * A comma separated list of radios that need to be disabled when airplane mode
-         * is on. This overrides WIFI_ON and BLUETOOTH_ON, if Wi-Fi and bluetooth are
-         * included in the comma separated list.
+         * @deprecated Use {@link android.provider.Settings.Global#AIRPLANE_MODE_RADIOS} instead
          */
-        public static final String AIRPLANE_MODE_RADIOS = "airplane_mode_radios";
+        @Deprecated
+        public static final String AIRPLANE_MODE_RADIOS = Global.AIRPLANE_MODE_RADIOS;
 
         /**
-         * A comma separated list of radios that should to be disabled when airplane mode
-         * is on, but can be manually reenabled by the user.  For example, if RADIO_WIFI is
-         * added to both AIRPLANE_MODE_RADIOS and AIRPLANE_MODE_TOGGLEABLE_RADIOS, then Wifi
-         * will be turned off when entering airplane mode, but the user will be able to reenable
-         * Wifi in the Settings app.
+         * @deprecated Use {@link android.provider.Settings.Global#AIRPLANE_MODE_TOGGLEABLE_RADIOS} instead
          *
          * {@hide}
          */
-        public static final String AIRPLANE_MODE_TOGGLEABLE_RADIOS = "airplane_mode_toggleable_radios";
+        @Deprecated
+        public static final String AIRPLANE_MODE_TOGGLEABLE_RADIOS =
+                Global.AIRPLANE_MODE_TOGGLEABLE_RADIOS;
 
         /**
-         * The policy for deciding when Wi-Fi should go to sleep (which will in
-         * turn switch to using the mobile data as an Internet connection).
-         * <p>
-         * Set to one of {@link #WIFI_SLEEP_POLICY_DEFAULT},
-         * {@link #WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED}, or
-         * {@link #WIFI_SLEEP_POLICY_NEVER}.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_SLEEP_POLICY} instead
          */
-        public static final String WIFI_SLEEP_POLICY = "wifi_sleep_policy";
+        @Deprecated
+        public static final String WIFI_SLEEP_POLICY = Global.WIFI_SLEEP_POLICY;
 
         /**
          * Value for {@link #WIFI_SLEEP_POLICY} to use the default Wi-Fi sleep
@@ -1438,16 +1435,17 @@ public final class Settings {
         public static final int WIFI_SLEEP_POLICY_DEFAULT = 0;
 
         /**
-         * Value for {@link #WIFI_SLEEP_POLICY} to use the default policy when
-         * the device is on battery, and never go to sleep when the device is
-         * plugged in.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED} instead
          */
-        public static final int WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED = 1;
+        @Deprecated
+        public static final int WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED =
+                Global.WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED;
 
         /**
-         * Value for {@link #WIFI_SLEEP_POLICY} to never go to sleep.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_SLEEP_POLICY_NEVER} instead
          */
-        public static final int WIFI_SLEEP_POLICY_NEVER = 2;
+        @Deprecated
+        public static final int WIFI_SLEEP_POLICY_NEVER = Global.WIFI_SLEEP_POLICY_NEVER;
 
         //TODO: deprecate static IP constants
         /**
@@ -2918,10 +2916,10 @@ public final class Settings {
 
        /**
          * @deprecated Use
-         * {@link android.provider.Settings.Secure#WIFI_MAX_DHCP_RETRY_COUNT} instead
+         * {@link android.provider.Settings.Global#WIFI_MAX_DHCP_RETRY_COUNT} instead
          */
         @Deprecated
-        public static final String WIFI_MAX_DHCP_RETRY_COUNT = Secure.WIFI_MAX_DHCP_RETRY_COUNT;
+        public static final String WIFI_MAX_DHCP_RETRY_COUNT = Global.WIFI_MAX_DHCP_RETRY_COUNT;
 
         /**
          * @deprecated Use
@@ -2933,19 +2931,11 @@ public final class Settings {
 
         /**
          * @deprecated Use
-         * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON} instead
+         * {@link android.provider.Settings.Global#WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON} instead
          */
         @Deprecated
         public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
-            Secure.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
-
-        /**
-         * @deprecated Use
-         * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} instead
-         */
-        @Deprecated
-        public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
-            Secure.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY;
+            Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#WIFI_NUM_OPEN_NETWORKS_KEPT}
@@ -2955,10 +2945,10 @@ public final class Settings {
         public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = Secure.WIFI_NUM_OPEN_NETWORKS_KEPT;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#WIFI_ON} instead
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_ON} instead
          */
         @Deprecated
-        public static final String WIFI_ON = Secure.WIFI_ON;
+        public static final String WIFI_ON = Global.WIFI_ON;
 
         /**
          * @deprecated Use
@@ -3016,10 +3006,10 @@ public final class Settings {
         public static final String WIFI_WATCHDOG_MAX_AP_CHECKS = Secure.WIFI_WATCHDOG_MAX_AP_CHECKS;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#WIFI_WATCHDOG_ON} instead
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_WATCHDOG_ON} instead
          */
         @Deprecated
-        public static final String WIFI_WATCHDOG_ON = Secure.WIFI_WATCHDOG_ON;
+        public static final String WIFI_WATCHDOG_ON = Global.WIFI_WATCHDOG_ON;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#WIFI_WATCHDOG_PING_COUNT} instead
@@ -3117,7 +3107,20 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.MOBILE_DATA);
             MOVED_TO_GLOBAL.add(Settings.Global.USB_MASS_STORAGE_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.WEB_AUTOFILL_QUERY_URL);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_COUNTRY_CODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_FRAMEWORK_SCAN_INTERVAL_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_FREQUENCY_BAND);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_IDLE_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_MAX_DHCP_RETRY_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_P2P_DEVICE_NAME);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SAVED_STATE);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SUPPLICANT_SCAN_INTERVAL_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SUSPEND_OPTIMIZATIONS_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_WATCHDOG_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_ENABLE);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_TIMEOUT);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_DEFAULT_RESPONSE);
@@ -3135,9 +3138,27 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_RESERVE_PERCENT);
             MOVED_TO_GLOBAL.add(Settings.Global.DROPBOX_TAG_PREFIX);
             MOVED_TO_GLOBAL.add(Settings.Global.ERROR_LOGCAT_PREFIX);
+            MOVED_TO_GLOBAL.add(Settings.Global.SYS_FREE_STORAGE_LOG_INTERVAL);
+            MOVED_TO_GLOBAL.add(Settings.Global.DISK_FREE_CHANGE_REPORTING_THRESHOLD);
+            MOVED_TO_GLOBAL.add(Settings.Global.SYS_STORAGE_THRESHOLD_PERCENTAGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.SYS_STORAGE_THRESHOLD_MAX_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.SYS_STORAGE_FULL_THRESHOLD_BYTES);
             MOVED_TO_GLOBAL.add(Settings.Global.SYNC_MAX_RETRY_DELAY_IN_SECONDS);
+            MOVED_TO_GLOBAL.add(Settings.Global.CONNECTIVITY_CHANGE_DELAY);
+            MOVED_TO_GLOBAL.add(Settings.Global.CAPTIVE_PORTAL_DETECTION_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.CAPTIVE_PORTAL_SERVER);
+            MOVED_TO_GLOBAL.add(Settings.Global.NSD_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.SET_INSTALL_LOCATION);
             MOVED_TO_GLOBAL.add(Settings.Global.DEFAULT_INSTALL_LOCATION);
+            MOVED_TO_GLOBAL.add(Settings.Global.INET_CONDITION_DEBOUNCE_UP_DELAY);
+            MOVED_TO_GLOBAL.add(Settings.Global.INET_CONDITION_DEBOUNCE_DOWN_DELAY);
             MOVED_TO_GLOBAL.add(Settings.Global.READ_EXTERNAL_STORAGE_ENFORCED_DEFAULT);
+            MOVED_TO_GLOBAL.add(Settings.Global.HTTP_PROXY);
+            MOVED_TO_GLOBAL.add(Settings.Global.GLOBAL_HTTP_PROXY_HOST);
+            MOVED_TO_GLOBAL.add(Settings.Global.GLOBAL_HTTP_PROXY_PORT);
+            MOVED_TO_GLOBAL.add(Settings.Global.GLOBAL_HTTP_PROXY_EXCLUSION_LIST);
+            MOVED_TO_GLOBAL.add(Settings.Global.SET_GLOBAL_HTTP_PROXY);
+            MOVED_TO_GLOBAL.add(Settings.Global.DEFAULT_DNS_SERVER);
             MOVED_TO_GLOBAL.add(Settings.Global.PREFERRED_NETWORK_MODE);
         }
 
@@ -4072,16 +4093,13 @@ public final class Settings {
         public static final String TTS_ENABLED_PLUGINS = "tts_enabled_plugins";
 
         /**
-         * Whether to notify the user of open networks.
-         * <p>
-         * If not connected and the scan results have an open network, we will
-         * put this notification up. If we attempt to connect to a network or
-         * the open network(s) disappear, we remove the notification. When we
-         * show the notification, we will not show it again for
-         * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} time.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON}
+         * instead.
          */
+        @Deprecated
         public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
-                "wifi_networks_available_notification_on";
+                Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
+
         /**
          * {@hide}
          */
@@ -4089,18 +4107,12 @@ public final class Settings {
                 "wimax_networks_available_notification_on";
 
         /**
-         * Delay (in seconds) before repeating the Wi-Fi networks available notification.
-         * Connecting to a network will reset the timer.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY}
+         * instead.
          */
+        @Deprecated
         public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
-                "wifi_networks_available_repeat_delay";
-
-        /**
-         * 802.11 country code in ISO 3166 format
-         * @hide
-         */
-        public static final String WIFI_COUNTRY_CODE = "wifi_country_code";
-
+                Global.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY;
 
         /**
          * When the number of open networks exceeds this number, the
@@ -4109,9 +4121,11 @@ public final class Settings {
         public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = "wifi_num_open_networks_kept";
 
         /**
-         * Whether the Wi-Fi should be on.  Only the Wi-Fi service should touch this.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_ON}
+         * instead.
          */
-        public static final String WIFI_ON = "wifi_on";
+        @Deprecated
+        public static final String WIFI_ON = Global.WIFI_ON;
 
         /**
          * AP SSID
@@ -4191,8 +4205,9 @@ public final class Settings {
         public static final String WIFI_WATCHDOG_MAX_AP_CHECKS = "wifi_watchdog_max_ap_checks";
 
         /**
-         * Whether the Wi-Fi watchdog is enabled.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_WATCHDOG_ON} instead
          */
+        @Deprecated
         public static final String WIFI_WATCHDOG_ON = "wifi_watchdog_on";
 
         /**
@@ -4277,14 +4292,6 @@ public final class Settings {
                 "wifi_watchdog_blacklist_followup_interval_ms";
 
         /**
-         * Setting to turn off poor network avoidance on Wi-Fi. Feature is disabled by default and
-         * the setting needs to be set to 1 to enable it.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED =
-                "wifi_watchdog_poor_network_test_enabled";
-
-        /**
          * Setting to turn off walled garden test on Wi-Fi. Feature is enabled by default and
          * the setting needs to be set to 0 to disable it.
          * @hide
@@ -4310,21 +4317,11 @@ public final class Settings {
                 "wifi_watchdog_show_disabled_network_popup";
 
         /**
-         * The maximum number of times we will retry a connection to an access
-         * point for which we have failed in acquiring an IP address from DHCP.
-         * A value of N means that we will make N+1 connection attempts in all.
+         * @deprecated Use
+         * {@link android.provider.Settings.Global#WIFI_MAX_DHCP_RETRY_COUNT} instead
          */
-        public static final String WIFI_MAX_DHCP_RETRY_COUNT = "wifi_max_dhcp_retry_count";
-
-        /**
-         * The operational wifi frequency band
-         * Set to one of {@link WifiManager#WIFI_FREQUENCY_BAND_AUTO},
-         * {@link WifiManager#WIFI_FREQUENCY_BAND_5GHZ} or
-         * {@link WifiManager#WIFI_FREQUENCY_BAND_2GHZ}
-         *
-         * @hide
-         */
-        public static final String WIFI_FREQUENCY_BAND = "wifi_frequency_band";
+        @Deprecated
+        public static final String WIFI_MAX_DHCP_RETRY_COUNT = Global.WIFI_MAX_DHCP_RETRY_COUNT;
 
         /**
          * Maximum amount of time in milliseconds to hold a wakelock while waiting for mobile
@@ -4674,24 +4671,11 @@ public final class Settings {
          * When idle, it is possible for the device to be switched from Wi-Fi to
          * the mobile data network.
          * @hide
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_IDLE_MS}
+         * instead.
          */
-        public static final String WIFI_IDLE_MS = "wifi_idle_ms";
-
-        /**
-         * The interval in milliseconds to issue wake up scans when wifi needs
-         * to connect. This is necessary to connect to an access point when
-         * device is on the move and the screen is off.
-         * @hide
-         */
-        public static final String WIFI_FRAMEWORK_SCAN_INTERVAL_MS =
-                "wifi_framework_scan_interval_ms";
-
-        /**
-         * The interval in milliseconds to scan as used by the wifi supplicant
-         * @hide
-         */
-        public static final String WIFI_SUPPLICANT_SCAN_INTERVAL_MS =
-                "wifi_supplicant_scan_interval_ms";
+        @Deprecated
+        public static final String WIFI_IDLE_MS = Global.WIFI_IDLE_MS;
 
         /**
          * The interval in milliseconds at which to check packet counts on the
@@ -5244,8 +5228,8 @@ public final class Settings {
             TTS_DEFAULT_COUNTRY,
             TTS_ENABLED_PLUGINS,
             TTS_DEFAULT_LOCALE,
-            WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
-            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,
+            WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,            // moved to global
+            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,               // moved to global
             WIFI_NUM_OPEN_NETWORKS_KEPT,
             MOUNT_PLAY_NOTIFICATION_SND,
             MOUNT_UMS_AUTOSTART,
@@ -5349,6 +5333,51 @@ public final class Settings {
         public static final String RADIO_BLUETOOTH = "bluetooth";
 
         /**
+         * Constant for use in AIRPLANE_MODE_RADIOS to specify Wi-Fi radio.
+         */
+        public static final String RADIO_WIFI = "wifi";
+
+        /**
+         * A comma separated list of radios that need to be disabled when airplane mode
+         * is on. This overrides WIFI_ON and BLUETOOTH_ON, if Wi-Fi and bluetooth are
+         * included in the comma separated list.
+         */
+        public static final String AIRPLANE_MODE_RADIOS = "airplane_mode_radios";
+
+        /**
+         * A comma separated list of radios that should to be disabled when airplane mode
+         * is on, but can be manually reenabled by the user.  For example, if RADIO_WIFI is
+         * added to both AIRPLANE_MODE_RADIOS and AIRPLANE_MODE_TOGGLEABLE_RADIOS, then Wifi
+         * will be turned off when entering airplane mode, but the user will be able to reenable
+         * Wifi in the Settings app.
+         *
+         * {@hide}
+         */
+        public static final String AIRPLANE_MODE_TOGGLEABLE_RADIOS = "airplane_mode_toggleable_radios";
+
+        /**
+         * The policy for deciding when Wi-Fi should go to sleep (which will in
+         * turn switch to using the mobile data as an Internet connection).
+         * <p>
+         * Set to one of {@link #WIFI_SLEEP_POLICY_DEFAULT},
+         * {@link #WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED}, or
+         * {@link #WIFI_SLEEP_POLICY_NEVER}.
+         */
+        public static final String WIFI_SLEEP_POLICY = "wifi_sleep_policy";
+
+        /**
+         * Value for {@link #WIFI_SLEEP_POLICY} to use the default policy when
+         * the device is on battery, and never go to sleep when the device is
+         * plugged in.
+         */
+        public static final int WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED = 1;
+
+        /**
+         * Value for {@link #WIFI_SLEEP_POLICY} to never go to sleep.
+         */
+        public static final int WIFI_SLEEP_POLICY_NEVER = 2;
+
+        /**
          * URI for the "device locked" (keyguard shown) sound.
          * @hide
          */
@@ -5447,6 +5476,13 @@ public final class Settings {
         public static final String WEB_AUTOFILL_QUERY_URL = "web_autofill_query_url";
 
         /**
+         * Delay (in seconds) before repeating the Wi-Fi networks available notification.
+         * Connecting to a network will reset the timer.
+         */
+        public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
+               "wifi_networks_available_repeat_delay";
+
+        /**
          * Whether the package manager should send package verification broadcasts for verifiers to
          * review apps prior to installation.
          * 1 = request apps to be verified prior to installation, if a verifier exists.
@@ -5472,6 +5508,46 @@ public final class Settings {
         public static final String PACKAGE_VERIFIER_INCLUDE_ADB = "verifier_verify_adb_installs";
 
         /**
+         * Whether to notify the user of open networks.
+         * <p>
+         * If not connected and the scan results have an open network, we will
+         * put this notification up. If we attempt to connect to a network or
+         * the open network(s) disappear, we remove the notification. When we
+         * show the notification, we will not show it again for
+         * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} time.
+         */
+        public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
+               "wifi_networks_available_notification_on";
+
+        /**
+         * 802.11 country code in ISO 3166 format
+         * @hide
+         */
+        public static final String WIFI_COUNTRY_CODE = "wifi_country_code";
+
+        /**
+         * The interval in milliseconds to issue wake up scans when wifi needs
+         * to connect. This is necessary to connect to an access point when
+         * device is on the move and the screen is off.
+         * @hide
+         */
+        public static final String WIFI_FRAMEWORK_SCAN_INTERVAL_MS =
+                "wifi_framework_scan_interval_ms";
+
+        /**
+         * The interval in milliseconds after which Wi-Fi is considered idle.
+         * When idle, it is possible for the device to be switched from Wi-Fi to
+         * the mobile data network.
+         * @hide
+         */
+        public static final String WIFI_IDLE_MS = "wifi_idle_ms";
+
+        /**
+         * Whether the Wi-Fi should be on.  Only the Wi-Fi service should touch this.
+         */
+        public static final String WIFI_ON = "wifi_on";
+
+        /**
          * Used to save the Wifi_ON state prior to tethering.
          * This state will be checked to restore Wifi after
          * the user turns off tethering.
@@ -5481,30 +5557,88 @@ public final class Settings {
         public static final String WIFI_SAVED_STATE = "wifi_saved_state";
 
         /**
-        * The number of milliseconds to delay when checking for data stalls during
-        * non-aggressive detection. (screen is turned off.)
-        * @hide
-        */
-       public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
+         * The interval in milliseconds to scan as used by the wifi supplicant
+         * @hide
+         */
+        public static final String WIFI_SUPPLICANT_SCAN_INTERVAL_MS =
+               "wifi_supplicant_scan_interval_ms";
+
+        /**
+         * The interval in milliseconds to scan at supplicant when p2p is connected
+         * @hide
+         */
+        public static final String WIFI_SCAN_INTERVAL_WHEN_P2P_CONNECTED_MS =
+               "wifi_scan_interval_p2p_connected_ms";
+
+        /**
+         * Whether the Wi-Fi watchdog is enabled.
+         */
+        public static final String WIFI_WATCHDOG_ON = "wifi_watchdog_on";
+
+        /**
+         * Setting to turn off poor network avoidance on Wi-Fi. Feature is enabled by default and
+         * the setting needs to be set to 0 to disable it.
+         * @hide
+         */
+        public static final String WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED =
+               "wifi_watchdog_poor_network_test_enabled";
+
+        /**
+         * Setting to turn on suspend optimizations at screen off on Wi-Fi. Enabled by default and
+         * needs to be set to 0 to disable it.
+         * @hide
+         */
+        public static final String WIFI_SUSPEND_OPTIMIZATIONS_ENABLED =
+               "wifi_suspend_optimizations_enabled";
+
+        /**
+         * The maximum number of times we will retry a connection to an access
+         * point for which we have failed in acquiring an IP address from DHCP.
+         * A value of N means that we will make N+1 connection attempts in all.
+         */
+        public static final String WIFI_MAX_DHCP_RETRY_COUNT = "wifi_max_dhcp_retry_count";
+
+        /**
+         * The operational wifi frequency band
+         * Set to one of {@link WifiManager#WIFI_FREQUENCY_BAND_AUTO},
+         * {@link WifiManager#WIFI_FREQUENCY_BAND_5GHZ} or
+         * {@link WifiManager#WIFI_FREQUENCY_BAND_2GHZ}
+         *
+         * @hide
+         */
+        public static final String WIFI_FREQUENCY_BAND = "wifi_frequency_band";
+
+        /**
+         * The Wi-Fi peer-to-peer device name
+         * @hide
+         */
+        public static final String WIFI_P2P_DEVICE_NAME = "wifi_p2p_device_name";
+
+        /**
+         * The number of milliseconds to delay when checking for data stalls during
+         * non-aggressive detection. (screen is turned off.)
+         * @hide
+         */
+        public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
                "data_stall_alarm_non_aggressive_delay_in_ms";
 
-       /**
-        * The number of milliseconds to delay when checking for data stalls during
-        * aggressive detection. (screen on or suspected data stall)
-        * @hide
-        */
-       public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
+        /**
+         * The number of milliseconds to delay when checking for data stalls during
+         * aggressive detection. (screen on or suspected data stall)
+         * @hide
+         */
+        public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
                "data_stall_alarm_aggressive_delay_in_ms";
 
-       /**
-        * The interval in milliseconds at which to check gprs registration
-        * after the first registration mismatch of gprs and voice service,
-        * to detect possible data network registration problems.
-        *
-        * @hide
-        */
-       public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
-               "gprs_register_check_period_ms";
+        /**
+         * The interval in milliseconds at which to check gprs registration
+         * after the first registration mismatch of gprs and voice service,
+         * to detect possible data network registration problems.
+         *
+         * @hide
+         */
+        public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
+                "gprs_register_check_period_ms";
 
         /**
          * Nonzero causes Log.wtf() to crash.
@@ -5611,6 +5745,57 @@ public final class Settings {
         public static final String ERROR_LOGCAT_PREFIX = "logcat_for_";
 
         /**
+         * The interval in minutes after which the amount of free storage left
+         * on the device is logged to the event log
+         *
+         * @hide
+         */
+        public static final String SYS_FREE_STORAGE_LOG_INTERVAL = "sys_free_storage_log_interval";
+
+        /**
+         * Threshold for the amount of change in disk free space required to
+         * report the amount of free space. Used to prevent spamming the logs
+         * when the disk free space isn't changing frequently.
+         *
+         * @hide
+         */
+        public static final String
+                DISK_FREE_CHANGE_REPORTING_THRESHOLD = "disk_free_change_reporting_threshold";
+
+        /**
+         * Minimum percentage of free storage on the device that is used to
+         * determine if the device is running low on storage. The default is 10.
+         * <p>
+         * Say this value is set to 10, the device is considered running low on
+         * storage if 90% or more of the device storage is filled up.
+         *
+         * @hide
+         */
+        public static final String
+                SYS_STORAGE_THRESHOLD_PERCENTAGE = "sys_storage_threshold_percentage";
+
+        /**
+         * Maximum byte size of the low storage threshold. This is to ensure
+         * that {@link #SYS_STORAGE_THRESHOLD_PERCENTAGE} does not result in an
+         * overly large threshold for large storage devices. Currently this must
+         * be less than 2GB. This default is 500MB.
+         *
+         * @hide
+         */
+        public static final String
+                SYS_STORAGE_THRESHOLD_MAX_BYTES = "sys_storage_threshold_max_bytes";
+
+        /**
+         * Minimum bytes of free storage on the device before the data partition
+         * is considered full. By default, 1 MB is reserved to avoid system-wide
+         * SQLite disk full exceptions.
+         *
+         * @hide
+         */
+        public static final String
+                SYS_STORAGE_FULL_THRESHOLD_BYTES = "sys_storage_full_threshold_bytes";
+
+        /**
          * The maximum reconnect delay for short network outages or when the
          * network is suspended due to phone use.
          *
@@ -5618,6 +5803,45 @@ public final class Settings {
          */
         public static final String
                 SYNC_MAX_RETRY_DELAY_IN_SECONDS = "sync_max_retry_delay_in_seconds";
+
+        /**
+         * The number of milliseconds to delay before sending out
+         * {@link ConnectivityManager#CONNECTIVITY_ACTION} broadcasts.
+         *
+         * @hide
+         */
+        public static final String CONNECTIVITY_CHANGE_DELAY = "connectivity_change_delay";
+
+        /**
+         * Setting to turn off captive portal detection. Feature is enabled by
+         * default and the setting needs to be set to 0 to disable it.
+         *
+         * @hide
+         */
+        public static final String
+                CAPTIVE_PORTAL_DETECTION_ENABLED = "captive_portal_detection_enabled";
+
+        /**
+         * The server used for captive portal detection upon a new conection. A
+         * 204 response code from the server is used for validation.
+         *
+         * @hide
+         */
+        public static final String CAPTIVE_PORTAL_SERVER = "captive_portal_server";
+
+        /**
+         * Whether network service discovery is enabled.
+         *
+         * @hide
+         */
+        public static final String NSD_ON = "nsd_on";
+
+        /**
+         * Let user pick default install location.
+         *
+         * @hide
+         */
+        public static final String SET_INSTALL_LOCATION = "set_install_location";
 
         /**
          * Default install location value.
@@ -5628,9 +5852,74 @@ public final class Settings {
          */
         public static final String DEFAULT_INSTALL_LOCATION = "default_install_location";
 
+        /**
+         * ms during which to consume extra events related to Inet connection
+         * condition after a transtion to fully-connected
+         *
+         * @hide
+         */
+        public static final String
+                INET_CONDITION_DEBOUNCE_UP_DELAY = "inet_condition_debounce_up_delay";
+
+        /**
+         * ms during which to consume extra events related to Inet connection
+         * condtion after a transtion to partly-connected
+         *
+         * @hide
+         */
+        public static final String
+                INET_CONDITION_DEBOUNCE_DOWN_DELAY = "inet_condition_debounce_down_delay";
+
         /** {@hide} */
         public static final String
                 READ_EXTERNAL_STORAGE_ENFORCED_DEFAULT = "read_external_storage_enforced_default";
+
+        /**
+         * Host name and port for global http proxy. Uses ':' seperator for
+         * between host and port.
+         */
+        public static final String HTTP_PROXY = "http_proxy";
+
+        /**
+         * Host name for global http proxy. Set via ConnectivityManager.
+         *
+         * @hide
+         */
+        public static final String GLOBAL_HTTP_PROXY_HOST = "global_http_proxy_host";
+
+        /**
+         * Integer host port for global http proxy. Set via ConnectivityManager.
+         *
+         * @hide
+         */
+        public static final String GLOBAL_HTTP_PROXY_PORT = "global_http_proxy_port";
+
+        /**
+         * Exclusion list for global proxy. This string contains a list of
+         * comma-separated domains where the global proxy does not apply.
+         * Domains should be listed in a comma- separated list. Example of
+         * acceptable formats: ".domain1.com,my.domain2.com" Use
+         * ConnectivityManager to set/get.
+         *
+         * @hide
+         */
+        public static final String
+                GLOBAL_HTTP_PROXY_EXCLUSION_LIST = "global_http_proxy_exclusion_list";
+
+        /**
+         * Enables the UI setting to allow the user to specify the global HTTP
+         * proxy and associated exclusion list.
+         *
+         * @hide
+         */
+        public static final String SET_GLOBAL_HTTP_PROXY = "set_global_http_proxy";
+
+        /**
+         * Setting for default DNS in case nobody suggests one
+         *
+         * @hide
+         */
+        public static final String DEFAULT_DNS_SERVER = "default_dns_server";
 
         /**
          * Scaling factor for normal window animations. Setting to 0 will
@@ -5716,7 +6005,9 @@ public final class Settings {
         public static final String[] SETTINGS_TO_BACKUP = {
             STAY_ON_WHILE_PLUGGED_IN,
             USB_MASS_STORAGE_ENABLED,
-            ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED
+            ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED,
+            WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
+            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY
         };
 
         // Populated lazily, guarded by class object:

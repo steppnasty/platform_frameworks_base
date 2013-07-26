@@ -2455,6 +2455,39 @@ please see styles_device_defaults.xml.
         <item name="android:pointerIconSpotAnchor">@android:drawable/pointer_spot_anchor_icon</item>
     </style>
 
+    <!-- Wifi dialog styles -->
+    <!-- @hide -->
+    <style name="wifi_item">
+        <item name="android:layout_width">200dip</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dip</item>
+        <item name="android:layout_marginStart">16dip</item>
+        <item name="android:layout_marginEnd">16dip</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">start</item>
+    </style>
+
+    <!-- @hide -->
+    <style name="wifi_item_label">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- @hide -->
+    <style name="wifi_item_content">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">18sp</item>
+    </style>
+
+    <!-- @hide -->
+    <style name="wifi_section">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
     <style name="Widget.Holo.MediaRouteButton">
         <item name="android:background">?android:attr/selectableItemBackground</item>
         <item name="android:externalRouteEnabledDrawable">@drawable/ic_media_route_holo_dark</item>

@@ -92,10 +92,12 @@ public class DhcpStateMachine extends StateMachine {
     /* Notification from DHCP state machine post DHCP discovery/renewal. Indicates
      * success/failure */
     public static final int CMD_POST_DHCP_ACTION            = BASE + 5;
+    /* Notification from DHCP state machine before quitting */
+    public static final int CMD_ON_QUIT                     = BASE + 6;
 
     /* Command from controller to indicate DHCP discovery/renewal can continue
      * after pre DHCP action is complete */
-    public static final int CMD_PRE_DHCP_ACTION_COMPLETE    = BASE + 6;
+    public static final int CMD_PRE_DHCP_ACTION_COMPLETE    = BASE + 7;
 
     /* Message.arg1 arguments to CMD_POST_DHCP notification */
     public static final int DHCP_SUCCESS = 1;
@@ -161,6 +163,15 @@ public class DhcpStateMachine extends StateMachine {
      */
     public void registerForPreDhcpNotification() {
         mRegisteredForPreDhcpNotification = true;
+    }
+
+    /**
+     * Quit the DhcpStateMachine.
+     *
+     * @hide
+     */
+    public void doQuit() {
+        quit();
     }
 
     class DefaultState extends State {
@@ -313,7 +324,7 @@ public class DhcpStateMachine extends StateMachine {
                     if (runDhcp(DhcpAction.RENEW)) {
                        transitionTo(mRunningState);
                     } else {
-                       transitionTo(mStoppedState);
+                        transitionTo(mStoppedState);
                     }
                     break;
                 case CMD_START_DHCP:

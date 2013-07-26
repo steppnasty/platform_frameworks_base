@@ -42,6 +42,11 @@ public class DhcpInfoInternal {
     public String serverAddress;
     public int leaseDuration;
 
+    /**
+     * Vendor specific information (from RFC 2132).
+     */
+    public String vendorInfo;
+
     private Collection<RouteInfo> mRoutes;
 
     public DhcpInfoInternal() {
@@ -136,6 +141,18 @@ public class DhcpInfoInternal {
             for (RouteInfo route : orig.getRoutes()) {
                 addRoute(route);
             }
+        }
+    }
+
+    /**
+     * Test if this DHCP lease includes vendor hint that network link is
+     * metered, and sensitive to heavy data transfers.
+     */
+    public boolean hasMeteredHint() {
+        if (vendorInfo != null) {
+            return vendorInfo.contains("ANDROID_METERED");
+        } else {
+            return false;
         }
     }
 

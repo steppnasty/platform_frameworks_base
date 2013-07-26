@@ -32,6 +32,7 @@ interface INetworkPolicyManager {
     /** Control UID policies. */
     void setUidPolicy(int uid, int policy);
     int getUidPolicy(int uid);
+    int[] getUidsWithPolicy(int policy);
 
     boolean isUidForeground(int uid);
 

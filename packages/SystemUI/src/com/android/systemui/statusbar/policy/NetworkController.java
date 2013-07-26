@@ -218,7 +218,7 @@ public class NetworkController extends BroadcastReceiver {
         mWifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
         Handler handler = new WifiHandler();
         mWifiChannel = new AsyncChannel();
-        Messenger wifiMessenger = mWifiManager.getMessenger();
+        Messenger wifiMessenger = mWifiManager.getWifiServiceMessenger();
         if (wifiMessenger != null) {
             mWifiChannel.connect(mContext, handler, wifiMessenger);
         }

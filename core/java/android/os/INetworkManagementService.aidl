@@ -218,7 +218,7 @@ interface INetworkManagementService
     /**
      * Start Wifi Access Point
      */
-    void startAccessPoint(in WifiConfiguration wifiConfig, String wlanIface, String softapIface);
+    void startAccessPoint(in WifiConfiguration wifiConfig, String iface);
 
     /**
      * Stop Wifi Access Point

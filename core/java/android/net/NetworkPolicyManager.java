@@ -66,6 +66,10 @@ public class NetworkPolicyManager {
         mService = service;
     }
 
+    public static NetworkPolicyManager from(Context context) {
+        return (NetworkPolicyManager) context.getSystemService(Context.NETWORK_POLICY_SERVICE);
+    }
+
     public static NetworkPolicyManager getSystemService(Context context) {
         return (NetworkPolicyManager) context.getSystemService(Context.NETWORK_POLICY_SERVICE);
     }
@@ -105,6 +109,14 @@ public class NetworkPolicyManager {
             return mService.getUidPolicy(uid);
         } catch (RemoteException e) {
             return POLICY_NONE;
+        }
+    }
+
+    public int[] getUidsWithPolicy(int policy) {
+        try {
+            return mService.getUidsWithPolicy(policy);
+        } catch (RemoteException e) {
+            return new int[0];
         }
     }
 

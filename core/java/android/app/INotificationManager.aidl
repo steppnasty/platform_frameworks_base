@@ -31,5 +31,7 @@ interface INotificationManager
     void enqueueNotificationWithTag(String pkg, String tag, int id,
             in Notification notification, inout int[] idReceived, int userId);
     void cancelNotificationWithTag(String pkg, String tag, int id, int userId);
+
+    void setNotificationsEnabledForPackage(String pkg, boolean enabled);
 }
 

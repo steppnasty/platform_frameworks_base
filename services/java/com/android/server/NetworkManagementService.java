@@ -961,44 +961,21 @@ public class NetworkManagementService extends INetworkManagementService.Stub
         }
     }
 
-    public void startAccessPoint(WifiConfiguration wifiConfig, String wlanIface, String softapIface)
-             throws IllegalStateException {
-        mContext.enforceCallingOrSelfPermission(
-                android.Manifest.permission.CHANGE_NETWORK_STATE, "NetworkManagementService");
-        mContext.enforceCallingOrSelfPermission(
-                android.Manifest.permission.CHANGE_WIFI_STATE, "NetworkManagementService");
+    @Override
+    public void startAccessPoint(
+            WifiConfiguration wifiConfig, String wlanIface) {
+        mContext.enforceCallingOrSelfPermission(CONNECTIVITY_INTERNAL, TAG);
         try {
-            Resources resources = mContext.getResources();
-            String mainIface = resources.getBoolean(
-                    com.android.internal.R.bool.config_wifi_ap_use_single_interface)
-                    ? softapIface : wlanIface;
-
-            if (resources.getBoolean(com.android.internal.R.bool.config_wifi_ap_firmware_reload))
-                wifiFirmwareReload(wlanIface, "AP");
-            mConnector.doCommand(String.format("softap start " + mainIface));
+            wifiFirmwareReload(wlanIface, "AP");
             if (wifiConfig == null) {
-                mConnector.doCommand(String.format("softap set " + mainIface + " " + softapIface));
+                mConnector.execute("softap", "set", wlanIface);
             } else {
-                /**
-                 * softap set arg1 arg2 arg3 [arg4 arg5 arg6 arg7 arg8]
-                 * argv1 - wlan interface
-                 * argv2 - softap interface
-                 * argv3 - SSID
-                 * argv4 - Security
-                 * argv5 - Key
-                 * argv6 - Channel
-                 * argv7 - Preamble
-                 * argv8 - Max SCB
-                 */
-                 String str = String.format("softap set " + mainIface + " " + softapIface +
-                                       " %s %s %s", convertQuotedString(wifiConfig.SSID),
-                                       getSecurityType(wifiConfig),
-                                       convertQuotedString(wifiConfig.preSharedKey));
-                mConnector.doCommand(str);
+                mConnector.execute("softap", "set", wlanIface, wifiConfig.SSID,
+                        getSecurityType(wifiConfig), wifiConfig.preSharedKey);
             }
-            mConnector.doCommand(String.format("softap startap"));
+            mConnector.execute("softap", "startap");
         } catch (NativeDaemonConnectorException e) {
-            throw new IllegalStateException("Error communicating to native daemon to start softap", e);
+            throw e.rethrowAsParcelableException();
         }
     }
 

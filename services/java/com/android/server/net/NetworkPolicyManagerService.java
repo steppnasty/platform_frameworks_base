@@ -50,6 +50,7 @@ import static android.net.NetworkTemplate.MATCH_MOBILE_ALL;
 import static android.net.NetworkTemplate.MATCH_WIFI;
 import static android.net.NetworkTemplate.buildTemplateMobileAll;
 import static android.text.format.DateUtils.DAY_IN_MILLIS;
+import static com.android.internal.util.ArrayUtils.appendInt;
 import static com.android.internal.util.Preconditions.checkNotNull;
 import static com.android.server.NetworkManagementService.LIMIT_GLOBAL_ALERT;
 import static com.android.server.net.NetworkPolicyManagerService.XmlUtils.readBooleanAttribute;
@@ -1139,6 +1140,23 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         synchronized (mRulesLock) {
             return mUidPolicy.get(uid, POLICY_NONE);
         }
+    }
+
+    @Override
+    public int[] getUidsWithPolicy(int policy) {
+        mContext.enforceCallingOrSelfPermission(MANAGE_NETWORK_POLICY, TAG);
+
+        int[] uids = new int[0];
+        synchronized (mRulesLock) {
+            for (int i = 0; i < mUidPolicy.size(); i++) {
+                final int uid = mUidPolicy.keyAt(i);
+                final int uidPolicy = mUidPolicy.valueAt(i);
+                if (uidPolicy == policy) {
+                    uids = appendInt(uids, uid);
+                }
+            }
+        }
+        return uids;
     }
 
     @Override
