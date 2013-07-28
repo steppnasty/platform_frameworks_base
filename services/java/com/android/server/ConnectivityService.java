@@ -2754,9 +2754,9 @@ private NetworkStateTracker makeWimaxStateTracker() {
                 mGlobalProxy = null;
             }
             ContentResolver res = mContext.getContentResolver();
-            Settings.Secure.putString(res, Settings.Secure.GLOBAL_HTTP_PROXY_HOST, host);
-            Settings.Secure.putInt(res, Settings.Secure.GLOBAL_HTTP_PROXY_PORT, port);
-            Settings.Secure.putString(res, Settings.Secure.GLOBAL_HTTP_PROXY_EXCLUSION_LIST,
+            Settings.Global.putString(res, Settings.Global.GLOBAL_HTTP_PROXY_HOST, host);
+            Settings.Global.putInt(res, Settings.Global.GLOBAL_HTTP_PROXY_PORT, port);
+            Settings.Global.putString(res, Settings.Global.GLOBAL_HTTP_PROXY_EXCLUSION_LIST,
                     exclList);
         }
 
@@ -2768,10 +2768,10 @@ private NetworkStateTracker makeWimaxStateTracker() {
 
     private void loadGlobalProxy() {
         ContentResolver res = mContext.getContentResolver();
-        String host = Settings.Secure.getString(res, Settings.Secure.GLOBAL_HTTP_PROXY_HOST);
-        int port = Settings.Secure.getInt(res, Settings.Secure.GLOBAL_HTTP_PROXY_PORT, 0);
-        String exclList = Settings.Secure.getString(res,
-                Settings.Secure.GLOBAL_HTTP_PROXY_EXCLUSION_LIST);
+        String host = Settings.Global.getString(res, Settings.Global.GLOBAL_HTTP_PROXY_HOST);
+        int port = Settings.Global.getInt(res, Settings.Global.GLOBAL_HTTP_PROXY_PORT, 0);
+        String exclList = Settings.Global.getString(res,
+                Settings.Global.GLOBAL_HTTP_PROXY_EXCLUSION_LIST);
         if (!TextUtils.isEmpty(host)) {
             ProxyProperties proxyProperties = new ProxyProperties(host, port, exclList);
             synchronized (mGlobalProxyLock) {
