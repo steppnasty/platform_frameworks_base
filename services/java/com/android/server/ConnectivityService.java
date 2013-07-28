@@ -343,8 +343,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
 
         // read our default dns server ip
-        String dns = Settings.Secure.getString(context.getContentResolver(),
-                Settings.Secure.DEFAULT_DNS_SERVER);
+        String dns = Settings.Global.getString(context.getContentResolver(),
+                Settings.Global.DEFAULT_DNS_SERVER);
         if (dns == null || dns.length() == 0) {
             dns = context.getResources().getString(
                     com.android.internal.R.string.config_default_dns_server);
