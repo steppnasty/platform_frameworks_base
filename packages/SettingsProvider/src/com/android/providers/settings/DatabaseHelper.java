@@ -1792,15 +1792,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // Set default noise suppression value
             loadSetting(stmt, Settings.System.NOISE_SUPPRESSION, 0);
     
-            loadBooleanSetting(stmt, Settings.Global.AIRPLANE_MODE_ON,
-                    R.bool.def_airplane_mode_on);
-    
-            loadStringSetting(stmt, Settings.System.AIRPLANE_MODE_RADIOS,
-                    R.string.def_airplane_mode_radios);
-    
-            loadStringSetting(stmt, Settings.System.AIRPLANE_MODE_TOGGLEABLE_RADIOS,
-                    R.string.airplane_mode_toggleable_radios);
-    
             loadBooleanSetting(stmt, Settings.System.AUTO_TIME,
                     R.bool.def_auto_time); // Sync time to NITZ
 
@@ -1898,11 +1889,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadIntegerSetting(stmt, Settings.Secure.NETWORK_PREFERENCE,
                     R.integer.def_network_preference);
     
-            loadBooleanSetting(stmt, Settings.Secure.WIFI_ON,
-                    R.bool.def_wifi_on);
-            loadBooleanSetting(stmt, Settings.Secure.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
-                    R.bool.def_networks_available_notification_on);
-    
             String wifiWatchList = SystemProperties.get("ro.com.android.wifi-watchlist");
             if (!TextUtils.isEmpty(wifiWatchList)) {
                 loadSetting(stmt, Settings.Secure.WIFI_WATCHDOG_WATCH_LIST, wifiWatchList);
@@ -1954,20 +1940,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadStringSetting(stmt, Settings.Secure.ACCESSIBILITY_WEB_CONTENT_KEY_BINDINGS,
                     R.string.def_accessibility_web_content_key_bindings);
 
-            final int maxBytes = mContext.getResources().getInteger(
-                    R.integer.def_download_manager_max_bytes_over_mobile);
-            if (maxBytes > 0) {
-                loadSetting(stmt, Settings.Secure.DOWNLOAD_MAX_BYTES_OVER_MOBILE,
-                        Integer.toString(maxBytes));
-            }
-
-            final int recommendedMaxBytes = mContext.getResources().getInteger(
-                    R.integer.def_download_manager_recommended_max_bytes_over_mobile);
-            if (recommendedMaxBytes > 0) {
-                loadSetting(stmt, Settings.Secure.DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE,
-                        Integer.toString(recommendedMaxBytes));
-            }
-
             loadIntegerSetting(stmt, Settings.Secure.LONG_PRESS_TIMEOUT,
                     R.integer.def_long_press_timeout_millis);
 
@@ -1999,6 +1971,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadBooleanSetting(stmt, Settings.Global.AIRPLANE_MODE_ON,
                     R.bool.def_airplane_mode_on);
 
+            loadStringSetting(stmt, Settings.Global.AIRPLANE_MODE_RADIOS,
+                    R.string.def_airplane_mode_radios);
+
+            loadStringSetting(stmt, Settings.Global.AIRPLANE_MODE_TOGGLEABLE_RADIOS,
+                    R.string.airplane_mode_toggleable_radios);
+
             loadBooleanSetting(stmt, Settings.Global.ASSISTED_GPS_ENABLED,
                     R.bool.assisted_gps_enabled);
 
@@ -2007,9 +1985,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         mContext.getResources().getBoolean(R.bool.def_stay_on_while_plugged_in))
                      ? 1 : 0);
 
+            loadIntegerSetting(stmt, Settings.Global.WIFI_SLEEP_POLICY,
+                    R.integer.def_wifi_sleep_policy);
+
             // --- Previously in 'secure'
             loadBooleanSetting(stmt, Settings.Global.PACKAGE_VERIFIER_ENABLE,
                     R.bool.def_package_verifier_enable);
+
+            loadBooleanSetting(stmt, Settings.Global.WIFI_ON,
+                    R.bool.def_wifi_on);
+
+            loadBooleanSetting(stmt, Settings.Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
+                    R.bool.def_networks_available_notification_on);
 
             loadBooleanSetting(stmt, Settings.Global.BLUETOOTH_ON,
                     R.bool.def_bluetooth_on);
@@ -2022,6 +2009,20 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             loadBooleanSetting(stmt, Settings.Global.DEVICE_PROVISIONED,
                     R.bool.def_device_provisioned);
+
+            final int maxBytes = mContext.getResources().getInteger(
+                    R.integer.def_download_manager_max_bytes_over_mobile);
+            if (maxBytes > 0) {
+                loadSetting(stmt, Settings.Global.DOWNLOAD_MAX_BYTES_OVER_MOBILE,
+                        Integer.toString(maxBytes));
+            }
+
+            final int recommendedMaxBytes = mContext.getResources().getInteger(
+                    R.integer.def_download_manager_recommended_max_bytes_over_mobile);
+            if (recommendedMaxBytes > 0) {
+                loadSetting(stmt, Settings.Global.DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE,
+                        Integer.toString(recommendedMaxBytes));
+            }
 
             // Mobile Data default, based on build
             loadSetting(stmt, Settings.Global.MOBILE_DATA,
