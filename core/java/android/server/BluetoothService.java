@@ -1692,8 +1692,8 @@ public class BluetoothService extends IBluetooth.Stub {
 
     private void registerForAirplaneMode(IntentFilter filter) {
         final ContentResolver resolver = mContext.getContentResolver();
-        final String airplaneModeRadios = Settings.System.getString(resolver,
-                Settings.System.AIRPLANE_MODE_RADIOS);
+        final String airplaneModeRadios = Settings.Global.getString(resolver,
+                Settings.Global.AIRPLANE_MODE_RADIOS);
         final String toggleableRadios = Settings.Global.getString(resolver,
                 Settings.Global.AIRPLANE_MODE_TOGGLEABLE_RADIOS);
 
