@@ -3103,6 +3103,8 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.DEVICE_PROVISIONED);
             MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_DENSITY_FORCED);
             MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_SIZE_FORCED);
+            MOVED_TO_GLOBAL.add(Settings.Global.DOWNLOAD_MAX_BYTES_OVER_MOBILE);
+            MOVED_TO_GLOBAL.add(Settings.Global.DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE);
             MOVED_TO_GLOBAL.add(Settings.Global.INSTALL_NON_MARKET_APPS);
             MOVED_TO_GLOBAL.add(Settings.Global.MOBILE_DATA);
             MOVED_TO_GLOBAL.add(Settings.Global.USB_MASS_STORAGE_ENABLED);
@@ -5109,23 +5111,6 @@ public final class Settings {
                 "throttle_max_ntp_cache_age_sec";
 
         /**
-         * The maximum size, in bytes, of a download that the download manager will transfer over
-         * a non-wifi connection.
-         * @hide
-         */
-        public static final String DOWNLOAD_MAX_BYTES_OVER_MOBILE =
-                "download_manager_max_bytes_over_mobile";
-
-        /**
-         * The recommended maximum size, in bytes, of a download that the download manager should
-         * transfer over a non-wifi connection. Over this size, the use will be warned, but will
-         * have the option to start the download over the mobile connection anyway.
-         * @hide
-         */
-        public static final String DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE =
-                "download_manager_recommended_max_bytes_over_mobile";
-
-        /**
          * ms during which to consume extra events related to Inet connection condition
          * after a transtion to fully-connected
          * @hide
@@ -5449,6 +5434,23 @@ public final class Settings {
          * @hide
          */
         public static final String DISPLAY_SIZE_FORCED = "display_size_forced";
+
+        /**
+         * The maximum size, in bytes, of a download that the download manager will transfer over
+         * a non-wifi connection.
+         * @hide
+         */
+        public static final String DOWNLOAD_MAX_BYTES_OVER_MOBILE =
+                "download_manager_max_bytes_over_mobile";
+
+        /**
+         * The recommended maximum size, in bytes, of a download that the download manager should
+         * transfer over a non-wifi connection. Over this size, the use will be warned, but will
+         * have the option to start the download over the mobile connection anyway.
+         * @hide
+         */
+        public static final String DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE =
+                "download_manager_recommended_max_bytes_over_mobile";
 
         /**
          * Whether the package installer should allow installation of apps downloaded from

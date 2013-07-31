@@ -34,8 +34,12 @@ import java.util.Map;
 public abstract class AbstractCursor implements CrossProcessCursor {
     private static final String TAG = "Cursor";
 
-    DataSetObservable mDataSetObservable = new DataSetObservable();
-    ContentObservable mContentObservable = new ContentObservable();
+    protected ContentResolver mContentResolver;
+
+    private ContentObserver mSelfObserver;
+
+    private final DataSetObservable mDataSetObservable = new DataSetObservable();
+    private final ContentObservable mContentObservable = new ContentObservable();
 
     Bundle mExtras = Bundle.EMPTY;
 
@@ -318,7 +322,7 @@ public abstract class AbstractCursor implements CrossProcessCursor {
      */
     protected void onChange(boolean selfChange) {
         synchronized (mSelfObserverLock) {
-            mContentObservable.dispatchChange(selfChange);
+            mContentObservable.dispatchChange(selfChange, null);
             if (mNotifyUri != null && selfChange) {
                 mContentResolver.notifyChange(mNotifyUri, mSelfObserver);
             }
@@ -458,10 +462,8 @@ public abstract class AbstractCursor implements CrossProcessCursor {
      * pointing at.
      */
     protected Long mCurrentRowID;
-    protected ContentResolver mContentResolver;
     protected boolean mClosed = false;
     private Uri mNotifyUri;
-    private ContentObserver mSelfObserver;
     final private Object mSelfObserverLock = new Object();
     private boolean mSelfObserverRegistered;
 }
