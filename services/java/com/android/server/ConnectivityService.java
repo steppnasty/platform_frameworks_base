@@ -2802,8 +2802,8 @@ private NetworkStateTracker makeWimaxStateTracker() {
     }
 
     private void handleDeprecatedGlobalHttpProxy() {
-        String proxy = Settings.Secure.getString(mContext.getContentResolver(),
-                Settings.Secure.HTTP_PROXY);
+        String proxy = Settings.Global.getString(mContext.getContentResolver(),
+                Settings.Global.HTTP_PROXY);
         if (!TextUtils.isEmpty(proxy)) {
             String data[] = proxy.split(":");
             String proxyHost =  data[0];
