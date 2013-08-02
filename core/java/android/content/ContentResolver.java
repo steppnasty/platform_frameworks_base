@@ -27,7 +27,6 @@ import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.database.CrossProcessCursorWrapper;
 import android.database.Cursor;
-import android.database.CursorWrapper;
 import android.database.IContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
@@ -35,10 +34,10 @@ import android.os.CancellationSignal;
 import android.os.DeadObjectException;
 import android.os.IBinder;
 import android.os.ICancellationSignal;
+import android.os.OperationCanceledException;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.os.StrictMode;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.text.TextUtils;
@@ -212,6 +211,7 @@ public abstract class ContentResolver {
      * @return A MIME type for the content, or null if the URL is invalid or the type is unknown
      */
     public final String getType(Uri url) {
+        // XXX would like to have an acquireExistingUnstableProvider for this.
         IContentProvider provider = acquireExistingProvider(url);
         if (provider != null) {
             try {
@@ -613,34 +613,62 @@ public abstract class ContentResolver {
             if ("r".equals(mode)) {
                 return openTypedAssetFileDescriptor(uri, "*/*", null);
             } else {
-                IContentProvider provider = acquireProvider(uri);
-                if (provider == null) {
+                IContentProvider unstableProvider = acquireUnstableProvider(uri);
+                if (unstableProvider == null) {
                     throw new FileNotFoundException("No content provider: " + uri);
                 }
+                IContentProvider stableProvider = null;
+                AssetFileDescriptor fd = null;
+
                 try {
-                    AssetFileDescriptor fd = provider.openAssetFile(uri, mode);
-                    if(fd == null) {
-                        // The provider will be released by the finally{} clause
-                        return null;
+                    try {
+                        fd = unstableProvider.openAssetFile(uri, mode);
+                        if (fd == null) {
+                            // The provider will be released by the finally{} clause
+                            return null;
+                        }
+                    } catch (DeadObjectException e) {
+                        // The remote process has died...  but we only hold an unstable
+                        // reference though, so we might recover!!!  Let's try!!!!
+                        // This is exciting!!1!!1!!!!1
+                        unstableProviderDied(unstableProvider);
+                        stableProvider = acquireProvider(uri);
+                        if (stableProvider == null) {
+                            throw new FileNotFoundException("No content provider: " + uri);
+                        }
+                        fd = stableProvider.openAssetFile(uri, mode);
+                        if (fd == null) {
+                            // The provider will be released by the finally{} clause
+                            return null;
+                        }
                     }
+
+                    if (stableProvider == null) {
+                        stableProvider = acquireProvider(uri);
+                    }
+                    releaseUnstableProvider(unstableProvider);
                     ParcelFileDescriptor pfd = new ParcelFileDescriptorInner(
-                            fd.getParcelFileDescriptor(), provider);
+                            fd.getParcelFileDescriptor(), stableProvider);
 
                     // Success!  Don't release the provider when exiting, let
                     // ParcelFileDescriptorInner do that when it is closed.
-                    provider = null;
+                    stableProvider = null;
 
                     return new AssetFileDescriptor(pfd, fd.getStartOffset(),
                             fd.getDeclaredLength());
+
                 } catch (RemoteException e) {
-                    // Somewhat pointless, as Activity Manager will kill this
-                    // process shortly anyway if the depdendent ContentProvider dies.
-                    throw new FileNotFoundException("Dead content provider: " + uri);
+                    // Whatever, whatever, we'll go away.
+                    throw new FileNotFoundException(
+                            "Failed opening content provider: " + uri);
                 } catch (FileNotFoundException e) {
                     throw e;
                 } finally {
-                    if (provider != null) {
-                        releaseProvider(provider);
+                    if (stableProvider != null) {
+                        releaseProvider(stableProvider);
+                    }
+                    if (unstableProvider != null) {
+                        releaseUnstableProvider(unstableProvider);
                     }
                 }
             }
@@ -677,32 +705,62 @@ public abstract class ContentResolver {
      */
     public final AssetFileDescriptor openTypedAssetFileDescriptor(Uri uri,
             String mimeType, Bundle opts) throws FileNotFoundException {
-        IContentProvider provider = acquireProvider(uri);
-        if (provider == null) {
+        IContentProvider unstableProvider = acquireUnstableProvider(uri);
+        if (unstableProvider == null) {
             throw new FileNotFoundException("No content provider: " + uri);
         }
+        IContentProvider stableProvider = null;
+        AssetFileDescriptor fd = null;
+
         try {
-            AssetFileDescriptor fd = provider.openTypedAssetFile(uri, mimeType, opts);
-            if (fd == null) {
-                // The provider will be released by the finally{} clause
-                return null;
+            try {
+                fd = unstableProvider.openTypedAssetFile(uri, mimeType, opts);
+                if (fd == null) {
+                    // The provider will be released by the finally{} clause
+                    return null;
+                }
+            } catch (DeadObjectException e) {
+                // The remote process has died...  but we only hold an unstable
+                // reference though, so we might recover!!!  Let's try!!!!
+                // This is exciting!!1!!1!!!!1
+                unstableProviderDied(unstableProvider);
+                stableProvider = acquireProvider(uri);
+                if (stableProvider == null) {
+                    throw new FileNotFoundException("No content provider: " + uri);
+                }
+                fd = stableProvider.openTypedAssetFile(uri, mimeType, opts);
+                if (fd == null) {
+                    // The provider will be released by the finally{} clause
+                    return null;
+                }
             }
+
+            if (stableProvider == null) {
+                stableProvider = acquireProvider(uri);
+            }
+            releaseUnstableProvider(unstableProvider);
             ParcelFileDescriptor pfd = new ParcelFileDescriptorInner(
-                    fd.getParcelFileDescriptor(), provider);
+                    fd.getParcelFileDescriptor(), stableProvider);
 
             // Success!  Don't release the provider when exiting, let
             // ParcelFileDescriptorInner do that when it is closed.
-            provider = null;
+            stableProvider = null;
 
             return new AssetFileDescriptor(pfd, fd.getStartOffset(),
                     fd.getDeclaredLength());
+
         } catch (RemoteException e) {
-            throw new FileNotFoundException("Dead content provider: " + uri);
+            // Whatever, whatever, we'll go away.
+            throw new FileNotFoundException(
+                    "Failed opening content provider: " + uri);
         } catch (FileNotFoundException e) {
             throw e;
         } finally {
-            if (provider != null) {
-                releaseProvider(provider);
+            if (stableProvider != null) {
+                releaseProvider(stableProvider);
+            }
+            if (unstableProvider != null) {
+                releaseUnstableProvider(unstableProvider);
             }
         }
     }
@@ -945,7 +1003,7 @@ public abstract class ContentResolver {
     }
 
     /**
-     * Call an provider-defined method.  This can be used to implement
+     * Call a provider-defined method.  This can be used to implement
      * read or write interfaces which are cheaper than using a Cursor and/or
      * do not fit into the traditional table model.
      *
@@ -1198,8 +1256,11 @@ public abstract class ContentResolver {
      * To register, call {@link #registerContentObserver(android.net.Uri , boolean, android.database.ContentObserver) registerContentObserver()}.
      * By default, CursorAdapter objects will get this notification.
      *
-     * @param uri
-     * @param observer The observer that originated the change, may be <code>null</null>
+     * @param uri The uri of the content that was changed.
+     * @param observer The observer that originated the change, may be <code>null</null>.
+     * The observer that originated the change will only receive the notification if it
+     * has requested to receive self-change notifications by implementing
+     * {@link ContentObserver#deliverSelfNotifications()} to return true.
      */
     public void notifyChange(Uri uri, ContentObserver observer) {
         notifyChange(uri, observer, true /* sync to network */);
@@ -1374,6 +1435,8 @@ public abstract class ContentResolver {
 
     /**
      * Check if the provider should be synced when a network tickle is received
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_SETTINGS}.
      *
      * @param account the account whose setting we are querying
      * @param authority the provider whose setting we are querying
@@ -1389,6 +1452,8 @@ public abstract class ContentResolver {
 
     /**
      * Set whether or not the provider is synced when it receives a network tickle.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#WRITE_SYNC_SETTINGS}.
      *
      * @param account the account whose setting we are querying
      * @param authority the provider whose behavior is being controlled
@@ -1419,6 +1484,9 @@ public abstract class ContentResolver {
      * {@link #SYNC_EXTRAS_INITIALIZE}, {@link #SYNC_EXTRAS_FORCE},
      * {@link #SYNC_EXTRAS_EXPEDITED}, {@link #SYNC_EXTRAS_MANUAL} set to true.
      * If any are supplied then an {@link IllegalArgumentException} will be thrown.
+     *
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#WRITE_SYNC_SETTINGS}.
      *
      * @param account the account to specify in the sync
      * @param authority the provider to specify in the sync request
@@ -1456,6 +1524,8 @@ public abstract class ContentResolver {
     /**
      * Remove a periodic sync. Has no affect if account, authority and extras don't match
      * an existing periodic sync.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#WRITE_SYNC_SETTINGS}.
      *
      * @param account the account of the periodic sync to remove
      * @param authority the provider of the periodic sync to remove
@@ -1478,6 +1548,8 @@ public abstract class ContentResolver {
 
     /**
      * Get the list of information about the periodic syncs for the given account and authority.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_SETTINGS}.
      *
      * @param account the account whose periodic syncs we are querying
      * @param authority the provider whose periodic syncs we are querying
@@ -1499,6 +1571,8 @@ public abstract class ContentResolver {
 
     /**
      * Check if this account/provider is syncable.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_SETTINGS}.
      * @return >0 if it is syncable, 0 if not, and <0 if the state isn't known yet.
      */
     public static int getIsSyncable(Account account, String authority) {
@@ -1511,6 +1585,8 @@ public abstract class ContentResolver {
 
     /**
      * Set whether this account/provider is syncable.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#WRITE_SYNC_SETTINGS}.
      * @param syncable >0 denotes syncable, 0 means not syncable, <0 means unknown
      */
     public static void setIsSyncable(Account account, String authority, int syncable) {
@@ -1525,6 +1601,8 @@ public abstract class ContentResolver {
     /**
      * Gets the master auto-sync setting that applies to all the providers and accounts.
      * If this is false then the per-provider auto-sync setting is ignored.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_SETTINGS}.
      *
      * @return the master auto-sync setting that applies to all the providers and accounts
      */
@@ -1539,6 +1617,8 @@ public abstract class ContentResolver {
     /**
      * Sets the master auto-sync setting that applies to all the providers and accounts.
      * If this is false then the per-provider auto-sync setting is ignored.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#WRITE_SYNC_SETTINGS}.
      *
      * @param sync the master auto-sync setting that applies to all the providers and accounts
      */
@@ -1554,6 +1634,8 @@ public abstract class ContentResolver {
     /**
      * Returns true if there is currently a sync operation for the given
      * account or authority in the pending list, or actively being processed.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_STATS}.
      * @param account the account whose setting we are querying
      * @param authority the provider whose behavior is being queried
      * @return true if a sync is active for the given account or authority.
@@ -1568,6 +1650,9 @@ public abstract class ContentResolver {
 
     /**
      * If a sync is active returns the information about it, otherwise returns null.
+     * <p>
+     * This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_STATS}.
      * <p>
      * @return the SyncInfo for the currently active sync or null if one is not active.
      * @deprecated
@@ -1592,6 +1677,10 @@ public abstract class ContentResolver {
     /**
      * Returns a list with information about all the active syncs. This list will be empty
      * if there are no active syncs.
+     * <p>
+     * This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_STATS}.
+     * <p>
      * @return a List of SyncInfo objects for the currently active syncs.
      */
     public static List<SyncInfo> getCurrentSyncs() {
@@ -1619,6 +1708,8 @@ public abstract class ContentResolver {
 
     /**
      * Return true if the pending status is true of any matching authorities.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#READ_SYNC_STATS}.
      * @param account the account whose setting we are querying
      * @param authority the provider whose behavior is being queried
      * @return true if there is a pending sync with the matching account and authority
@@ -1796,7 +1887,6 @@ public abstract class ContentResolver {
 
     private final class ParcelFileDescriptorInner extends ParcelFileDescriptor {
         private final IContentProvider mContentProvider;
-        public static final String TAG="ParcelFileDescriptorInner";
         private boolean mReleaseProviderFlag = false;
 
         ParcelFileDescriptorInner(ParcelFileDescriptor pfd, IContentProvider icp) {
