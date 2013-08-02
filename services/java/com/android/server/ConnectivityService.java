@@ -2841,8 +2841,8 @@ private NetworkStateTracker makeWimaxStateTracker() {
 
         void observe(Context context) {
             ContentResolver resolver = context.getContentResolver();
-            resolver.registerContentObserver(Settings.Secure.getUriFor(
-                    Settings.Secure.HTTP_PROXY), false, this);
+            resolver.registerContentObserver(Settings.Global.getUriFor(
+                    Settings.Global.HTTP_PROXY), false, this);
         }
 
         @Override
