@@ -195,9 +195,15 @@ public final class StrictMode {
      */
     private static final int DETECT_VM_INSTANCE_LEAKS = 0x1000;  // for VmPolicy
 
+    /**
+     * @hide
+     */
+    public static final int DETECT_VM_REGISTRATION_LEAKS = 0x2000;  // for VmPolicy
+
     private static final int ALL_VM_DETECT_BITS =
             DETECT_VM_CURSOR_LEAKS | DETECT_VM_CLOSABLE_LEAKS |
-            DETECT_VM_ACTIVITY_LEAKS | DETECT_VM_INSTANCE_LEAKS;
+            DETECT_VM_ACTIVITY_LEAKS | DETECT_VM_INSTANCE_LEAKS |
+            DETECT_VM_REGISTRATION_LEAKS;
 
     /**
      * @hide
@@ -618,8 +624,8 @@ public final class StrictMode {
              * but will likely expand in future releases.
              */
             public Builder detectAll() {
-                return enable(DETECT_VM_ACTIVITY_LEAKS |
-                        DETECT_VM_CURSOR_LEAKS | DETECT_VM_CLOSABLE_LEAKS);
+                return enable(DETECT_VM_ACTIVITY_LEAKS | DETECT_VM_CURSOR_LEAKS
+                        | DETECT_VM_CLOSABLE_LEAKS | DETECT_VM_REGISTRATION_LEAKS);
             }
 
             /**
@@ -1183,7 +1189,7 @@ public final class StrictMode {
             // throttled back to 60fps via SurfaceFlinger/View
             // invalidates, _not_ by posting frame updates every 16
             // milliseconds.
-            threadHandler.get().post(new Runnable() {
+            threadHandler.get().postAtFrontOfQueue(new Runnable() {
                     public void run() {
                         long loopFinishTime = SystemClock.uptimeMillis();
 
@@ -1499,6 +1505,13 @@ public final class StrictMode {
     /**
      * @hide
      */
+    public static boolean vmRegistrationLeaksEnabled() {
+        return (sVmPolicyMask & DETECT_VM_REGISTRATION_LEAKS) != 0;
+    }
+
+    /**
+     * @hide
+     */
     public static void onSqliteObjectLeaked(String message, Throwable originStack) {
         onVmPolicyViolation(message, originStack);
     }
@@ -1507,6 +1520,20 @@ public final class StrictMode {
      * @hide
      */
     public static void onWebViewMethodCalledOnWrongThread(Throwable originStack) {
+        onVmPolicyViolation(null, originStack);
+    }
+
+    /**
+     * @hide
+     */
+    public static void onIntentReceiverLeaked(Throwable originStack) {
+        onVmPolicyViolation(null, originStack);
+    }
+
+    /**
+     * @hide
+     */
+    public static void onServiceConnectionLeaked(Throwable originStack) {
         onVmPolicyViolation(null, originStack);
     }
 
