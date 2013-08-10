@@ -147,4 +147,6 @@ interface IAudioService {
     int getMasterStreamType();
 
     AudioRoutesInfo startWatchingRoutes(in IAudioRoutesObserver observer);
+
+    boolean isCameraSoundForced();
 }

@@ -802,6 +802,25 @@ static void android_hardware_Camera_setDisplayOrientation(JNIEnv *env, jobject t
     }
 }
 
+static jboolean android_hardware_Camera_enableShutterSound(JNIEnv *env, jobject thiz,
+        jboolean enabled)
+{
+    ALOGV("enableShutterSound");
+    sp<Camera> camera = get_native_camera(env, thiz, NULL);
+    if (camera == 0) return JNI_FALSE;
+
+    int32_t value = (enabled == JNI_TRUE) ? 1 : 0;
+    status_t rc = camera->sendCommand(CAMERA_CMD_ENABLE_SHUTTER_SOUND, value, 0);
+    if (rc == NO_ERROR) {
+        return JNI_TRUE;
+    } else if (rc == PERMISSION_DENIED) {
+        return JNI_FALSE;
+    } else {
+        jniThrowRuntimeException(env, "enable shutter sound failed");
+        return JNI_FALSE;
+    }
+}
+
 static void android_hardware_Camera_startFaceDetection(JNIEnv *env, jobject thiz,
         jint type)
 {
@@ -828,6 +847,17 @@ static void android_hardware_Camera_stopFaceDetection(JNIEnv *env, jobject thiz)
 
     if (camera->sendCommand(CAMERA_CMD_STOP_FACE_DETECTION, 0, 0) != NO_ERROR) {
         jniThrowRuntimeException(env, "stop face detection failed");
+    }
+}
+
+static void android_hardware_Camera_enableFocusMoveCallback(JNIEnv *env, jobject thiz, jint enable)
+{
+    ALOGV("enableFocusMoveCallback");
+    sp<Camera> camera = get_native_camera(env, thiz, NULL);
+    if (camera == 0) return;
+
+    if (camera->sendCommand(CAMERA_CMD_ENABLE_FOCUS_MOVE_MSG, enable, 0) != NO_ERROR) {
+        jniThrowRuntimeException(env, "enable focus move callback failed");
     }
 }
 
@@ -906,12 +936,18 @@ static JNINativeMethod camMethods[] = {
   { "setDisplayOrientation",
     "(I)V",
     (void *)android_hardware_Camera_setDisplayOrientation },
+  { "_enableShutterSound",
+    "(Z)Z",
+    (void *)android_hardware_Camera_enableShutterSound },
   { "_startFaceDetection",
     "(I)V",
     (void *)android_hardware_Camera_startFaceDetection },
   { "_stopFaceDetection",
     "()V",
     (void *)android_hardware_Camera_stopFaceDetection},
+  { "enableFocusMoveCallback",
+    "(I)V",
+    (void *)android_hardware_Camera_enableFocusMoveCallback},
 };
 
 struct field {

@@ -1000,4 +1000,7 @@
          com.android.internal.os.DeviceDockBatteryHandler interface.
          Requires config_hasDockBattery set to true. -->
     <string name="config_deviceDockBatteryHandlerLib" translatable="false"></string>
+
+    <!-- Whether camera shutter sound is forced or not  (country specific). -->
+    <bool name="config_camera_sound_forced">false</bool>
 </resources>

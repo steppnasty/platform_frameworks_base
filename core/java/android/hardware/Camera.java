@@ -18,13 +18,18 @@ package android.hardware;
 
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
+import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
+import android.media.IAudioService;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
+import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -150,6 +155,7 @@ public class Camera {
     private PreviewCallback mPreviewCallback;
     private PictureCallback mPostviewCallback;
     private AutoFocusCallback mAutoFocusCallback;
+    private AutoFocusMoveCallback mAutoFocusMoveCallback;
     private CameraDataCallback mCameraDataCallback;
     private CameraMetaDataCallback mCameraMetaDataCallback;
     private OnZoomChangeListener mZoomListener;
@@ -158,6 +164,7 @@ public class Camera {
     private boolean mOneShot;
     private boolean mWithBuffer;
     private boolean mFaceDetectionRunning = false;
+    private Object mAutoFocusCallbackLock = new Object();
 
     /**
      * Broadcast Action:  A new picture is taken by the camera, and the entry of
@@ -509,7 +516,10 @@ public class Camera {
         mRawImageCallback = null;
         mPostviewCallback = null;
         mJpegCallback = null;
-        mAutoFocusCallback = null;
+        synchronized (mAutoFocusCallbackLock) {
+            mAutoFocusCallback = null;
+        }
+        mAutoFocusMoveCallback = null;
     }
 
     private native final void _stopPreview();
@@ -890,6 +900,37 @@ public class Camera {
     private native final void native_cancelAutoFocus();
 
     /**
+     * Callback interface used to notify on auto focus start and stop.
+     *
+     * <p>This is only supported in continuous autofocus modes -- {@link
+     * Parameters#FOCUS_MODE_CONTINUOUS_VIDEO} and {@link
+     * Parameters#FOCUS_MODE_CONTINUOUS_PICTURE}. Applications can show
+     * autofocus animation based on this.</p>
+     */
+    public interface AutoFocusMoveCallback
+    {
+        /**
+         * Called when the camera auto focus starts or stops.
+         *
+         * @param start true if focus starts to move, false if focus stops to move
+         * @param camera the Camera service object
+         */
+        void onAutoFocusMoving(boolean start, Camera camera);
+    }
+
+    /**
+     * Sets camera auto-focus move callback.
+     *
+     * @param cb the callback to run
+     */
+    public void setAutoFocusMoveCallback(AutoFocusMoveCallback cb) {
+        mAutoFocusMoveCallback = cb;
+        enableFocusMoveCallback((mAutoFocusMoveCallback != null) ? 1 : 0);
+    }
+
+    private native void enableFocusMoveCallback(int enable);
+
+    /**
      * @hide
      */
 
@@ -1157,6 +1198,46 @@ public class Camera {
      * @see #setPreviewDisplay(SurfaceHolder)
      */
     public native final void setDisplayOrientation(int degrees);
+
+    /**
+     * <p>Enable or disable the default shutter sound when taking a picture.</p>
+     *
+     * <p>By default, the camera plays the system-defined camera shutter sound
+     * when {@link #takePicture} is called. Using this method, the shutter sound
+     * can be disabled. It is strongly recommended that an alternative shutter
+     * sound is played in the {@link ShutterCallback} when the system shutter
+     * sound is disabled.</p>
+     *
+     * <p>Note that devices may not always allow disabling the camera shutter
+     * sound. If the shutter sound state cannot be set to the desired value,
+     * this method will return false. {@link CameraInfo#canDisableShutterSound}
+     * can be used to determine whether the device will allow the shutter sound
+     * to be disabled.</p>
+     *
+     * @param enabled whether the camera should play the system shutter sound
+     *                when {@link #takePicture takePicture} is called.
+     * @return {@code true} if the shutter sound state was successfully
+     *         changed. {@code false} if the shutter sound state could not be
+     *         changed. {@code true} is also returned if shutter sound playback
+     *         is already set to the requested state.
+     * @see #takePicture
+     * @see CameraInfo#canDisableShutterSound
+     * @see ShutterCallback
+     */
+    public final boolean enableShutterSound(boolean enabled) {
+        if (!enabled) {
+            IBinder b = ServiceManager.getService(Context.AUDIO_SERVICE);
+            IAudioService audioService = IAudioService.Stub.asInterface(b);
+            try {
+                if (audioService.isCameraSoundForced()) return false;
+            } catch (RemoteException e) {
+                Log.e(TAG, "Audio service is unavailable for queries");
+            }
+        }
+        return _enableShutterSound(enabled);
+    }
+
+    private native final boolean _enableShutterSound(boolean enabled);
 
     /**
      * Callback interface for zoom changes during a smooth zoom operation.
@@ -1947,6 +2028,14 @@ public class Camera {
          * optimized for barcode reading.
          */
         public static final String SCENE_MODE_BARCODE = "barcode";
+
+        /**
+         * Capture a scene using high dynamic range imaging techniques. The
+         * camera will return an image that has an extended dynamic range
+         * compared to a regular capture. Capturing such an image may take
+         * longer than a regular capture.
+         */
+        public static final String SCENE_MODE_HDR = "hdr";
 
         /**
          * Auto-focus mode. Applications should call {@link

@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.RandomAccess;
 import java.util.Set;
 
@@ -1712,6 +1713,36 @@ public abstract class Uri implements Parcelable, Comparable<Uri> {
         }
         flag = flag.toLowerCase();
         return (!"false".equals(flag) && !"0".equals(flag));
+    }
+
+    /**
+     * Return an equivalent URI with a lowercase scheme component.
+     * This aligns the Uri with Android best practices for
+     * intent filtering.
+     *
+     * <p>For example, "HTTP://www.android.com" becomes
+     * "http://www.android.com"
+     *
+     * <p>All URIs received from outside Android (such as user input,
+     * or external sources like Bluetooth, NFC, or the Internet) should
+     * be normalized before they are used to create an Intent.
+     *
+     * <p class="note">This method does <em>not</em> validate bad URI's,
+     * or 'fix' poorly formatted URI's - so do not use it for input validation.
+     * A Uri will always be returned, even if the Uri is badly formatted to
+     * begin with and a scheme component cannot be found.
+     *
+     * @return normalized Uri (never null)
+     * @see {@link android.content.Intent#setData}
+     * @see {@link #setNormalizedData}
+     */
+    public Uri normalizeScheme() {
+        String scheme = getScheme();
+        if (scheme == null) return this;  // give up
+        String lowerScheme = scheme.toLowerCase(Locale.US);
+        if (scheme.equals(lowerScheme)) return this;  // no change
+
+        return buildUpon().scheme(lowerScheme).build();
     }
 
     /** Identifies a null parcelled Uri. */

@@ -61,7 +61,7 @@ final class NativeDaemonConnector implements Runnable, Handler.Callback, Watchdo
 
     private AtomicInteger mSequenceNumber;
 
-    private static final int DEFAULT_TIMEOUT = 1 * 60 * 1000; /* 1 minute */
+    private static final int DEFAULT_TIMEOUT = 2 * 60 * 1000; /* 2 minutes */
     private static final long WARN_EXECUTE_DELAY_MS = 500; /* .5 sec */
 
     /** Lock held whenever communicating with native daemon. */

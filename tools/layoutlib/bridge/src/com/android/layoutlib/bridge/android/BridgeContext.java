@@ -1262,6 +1262,14 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public void sendStickyOrderedBroadcastAsUser(Intent intent,
+            UserHandle user, BroadcastReceiver resultReceiver,
+            Handler scheduler, int initialCode, String initialData,
+            Bundle initialExtras) {
+        // pass
+    }
+
+    @Override
     public void removeStickyBroadcastAsUser(Intent intent, UserHandle user) {
         // pass
     }

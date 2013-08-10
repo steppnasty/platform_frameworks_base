@@ -259,8 +259,6 @@ public class MockContext extends Context {
         startActivity(intent);
     }
 
-    
-
     @Override
     public void startActivities(Intent[] intents) {
         throw new UnsupportedOperationException();
@@ -349,6 +347,14 @@ public class MockContext extends Context {
     }
 
     @Override
+    public void sendStickyOrderedBroadcastAsUser(Intent intent,
+            UserHandle user, BroadcastReceiver resultReceiver,
+            Handler scheduler, int initialCode, String initialData,
+            Bundle initialExtras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void removeStickyBroadcastAsUser(Intent intent, UserHandle user) {
         throw new UnsupportedOperationException();
     }
@@ -400,6 +406,12 @@ public class MockContext extends Context {
 
     @Override
     public boolean bindService(Intent service, ServiceConnection conn, int flags) {
+        throw new UnsupportedOperationException();
+    }
+
+    /** @hide */
+    @Override
+    public boolean bindService(Intent service, ServiceConnection conn, int flags, int userId) {
         throw new UnsupportedOperationException();
     }
 

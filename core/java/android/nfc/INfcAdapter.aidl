@@ -43,5 +43,7 @@ interface INfcAdapter
 
     void setForegroundDispatch(in PendingIntent intent,
             in IntentFilter[] filters, in TechListParcel techLists);
+    void setNdefPushCallback(in INdefPushCallback callback);
+
     void setForegroundNdefPush(in NdefMessage msg, in INdefPushCallback callback);
 }

@@ -44,6 +44,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -4776,6 +4777,35 @@ public class Intent implements Parcelable, Cloneable {
     }
 
     /**
+     * (Usually optional) Normalize and set both the data Uri and an explicit
+     * MIME data type.  This method should very rarely be used -- it allows you
+     * to override the MIME type that would ordinarily be inferred from the
+     * data with your own type given here.
+     *
+     * <p>The data Uri and the MIME type are normalize using
+     * {@link android.net.Uri#normalizeScheme} and {@link #normalizeMimeType}
+     * before they are set, so really this is just a convenience method for
+     * <pre>
+     * setDataAndType(data.normalize(), Intent.normalizeMimeType(type))
+     * </pre>
+     *
+     * @param data The Uri of the data this intent is now targeting.
+     * @param type The MIME type of the data being handled by this intent.
+     *
+     * @return Returns the same Intent object, for chaining multiple calls
+     * into a single statement.
+     *
+     * @see #setType
+     * @see #setData
+     * @see #setDataAndType
+     * @see #normalizeMimeType
+     * @see android.net.Uri#normalizeScheme
+     */
+    public Intent setDataAndTypeAndNormalize(Uri data, String type) {
+        return setDataAndType(data.normalizeScheme(), normalizeMimeType(type));
+    }
+
+    /**
      * Add a new category to the intent.  Categories provide additional detail
      * about the action the intent is perform.  When resolving an intent, only
      * activities that provide <em>all</em> of the requested categories will be
@@ -6517,5 +6547,39 @@ public class Intent implements Parcelable, Cloneable {
         }
 
         return intent;
+    }
+
+    /**
+     * Normalize a MIME data type.
+     *
+     * <p>A normalized MIME type has white-space trimmed,
+     * content-type parameters removed, and is lower-case.
+     * This aligns the type with Android best practices for
+     * intent filtering.
+     *
+     * <p>For example, "text/plain; charset=utf-8" becomes "text/plain".
+     * "text/x-vCard" becomes "text/x-vcard".
+     *
+     * <p>All MIME types received from outside Android (such as user input,
+     * or external sources like Bluetooth, NFC, or the Internet) should
+     * be normalized before they are used to create an Intent.
+     *
+     * @param type MIME data type to normalize
+     * @return normalized MIME data type, or null if the input was null
+     * @see {@link #setType}
+     * @see {@link #setTypeAndNormalize}
+     */
+    public static String normalizeMimeType(String type) {
+        if (type == null) {
+            return null;
+        }
+
+        type = type.trim().toLowerCase(Locale.US);
+
+        final int semicolonIndex = type.indexOf(';');
+        if (semicolonIndex != -1) {
+            type = type.substring(0, semicolonIndex);
+        }
+        return type;
     }
 }

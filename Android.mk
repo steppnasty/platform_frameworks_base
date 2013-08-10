@@ -346,8 +346,8 @@ fwbase_dirs_to_document := \
 # include definition of libcore_to_document
 include $(LOCAL_PATH)/../../libcore/Docs.mk
 
-# include definition of libfilterfw_to_document
-include $(LOCAL_PATH)/../../system/media/mca/Docs.mk
+# include definition of junit_to_document
+include external/junit/Common.mk
 
 non_base_dirs := \
 	../../external/apache-http/src/org/apache/http
@@ -372,7 +372,7 @@ html_dirs := \
 common_src_files := \
 	$(call find-other-html-files, $(html_dirs)) \
 	$(addprefix ../../libcore/, $(call libcore_to_document, $(LOCAL_PATH)/../../libcore)) \
-	$(addprefix ../../system/media/mca/, $(call libfilterfw_to_document, $(LOCAL_PATH)/../../system/media/mca)) \
+	$(addprefix ../../external/junit/, $(call junit_to_document, $(LOCAL_PATH)/../../external/junit))
 
 # These are relative to frameworks/base
 framework_docs_LOCAL_SRC_FILES := \

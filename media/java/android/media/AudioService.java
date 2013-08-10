@@ -422,6 +422,19 @@ public class AudioService extends IAudioService.Stub implements OnFinished {
 
         mForcedUseForComm = AudioSystem.FORCE_NONE;
         createAudioSystemThread();
+
+        boolean cameraSoundForced = mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_camera_sound_forced);
+        mCameraSoundForced = new Boolean(cameraSoundForced);
+        sendMsg(mAudioHandler,
+                MSG_SET_FORCE_USE,
+                SENDMSG_QUEUE,
+                AudioSystem.FOR_SYSTEM,
+                cameraSoundForced ?
+                        AudioSystem.FORCE_SYSTEM_ENFORCED : AudioSystem.FORCE_NONE,
+                null,
+                0);
+
         readPersistedSettings();
         mSettingsObserver = new SettingsObserver();
         updateStreamVolumeAlias(false /*updateVolumes*/);
@@ -5060,6 +5073,23 @@ streamType]],
             AudioRoutesInfo routes = new AudioRoutesInfo(mCurAudioRoutes);
             mRoutesObservers.register(observer);
             return routes;
+        }
+    }
+
+    //==========================================================================================
+    // Camera shutter sound policy.
+    // config_camera_sound_forced configuration option in config.xml defines if the camera shutter
+    // sound is forced (sound even if the device is in silent mode) or not. This option is false by
+    // default and can be overridden by country specific overlay in values-mccXXX/config.xml.
+    //==========================================================================================
+
+    // cached value of com.android.internal.R.bool.config_camera_sound_forced
+    private Boolean mCameraSoundForced;
+
+    // called by android.hardware.Camera to populate CameraInfo.canDisableShutterSound
+    public boolean isCameraSoundForced() {
+        synchronized (mCameraSoundForced) {
+            return mCameraSoundForced;
         }
     }
 
