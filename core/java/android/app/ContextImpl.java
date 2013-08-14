@@ -960,6 +960,20 @@ class ContextImpl extends Context {
         startActivities(intents, null);
     }
 
+    /** @hide */
+    @Override
+    public void startActivitiesAsUser(Intent[] intents, Bundle options, UserHandle userHandle) {
+        if ((intents[0].getFlags()&Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
+            throw new AndroidRuntimeException(
+                    "Calling startActivities() from outside of an Activity "
+                    + " context requires the FLAG_ACTIVITY_NEW_TASK flag on first Intent."
+                    + " Is this really what you want?");
+        }
+        mMainThread.getInstrumentation().execStartActivitiesAsUser(
+            getOuterContext(), mMainThread.getApplicationThread(), null,
+            (Activity)null, intents, options, userHandle.getIdentifier());
+    }
+
     @Override
     public void startActivities(Intent[] intents, Bundle options) {
         warnIfCallingFromSystemProcess();
@@ -1376,10 +1390,13 @@ class ContextImpl extends Context {
         return bindService(service, conn, flags, UserHandle.getUserId(Process.myUid()));
     }
 
+    /** @hide */
     @Override
-    public boolean bindService(Intent service, ServiceConnection conn,
-            int flags, int userHandle) {
+    public boolean bindService(Intent service, ServiceConnection conn, int flags, int userHandle) {
         IServiceConnection sd;
+        if (conn == null) {
+            throw new IllegalArgumentException("connection is null");
+        }
         if (mPackageInfo != null) {
             sd = mPackageInfo.getServiceDispatcher(conn, getOuterContext(),
                     mMainThread.getHandler(), flags);
@@ -1410,6 +1427,9 @@ class ContextImpl extends Context {
 
     @Override
     public void unbindService(ServiceConnection conn) {
+        if (conn == null) {
+            throw new IllegalArgumentException("connection is null");
+        }
         if (mPackageInfo != null) {
             IServiceConnection sd = mPackageInfo.forgetServiceDispatcher(
                     getOuterContext(), conn);
@@ -1871,10 +1891,6 @@ class ContextImpl extends Context {
             return mReceiverRestrictedContext;
         }
         return mReceiverRestrictedContext = new ReceiverRestrictedContext(getOuterContext());
-    }
-
-    final void setActivityToken(IBinder token) {
-        mActivityToken = token;
     }
 
     final void setOuterContext(Context context) {
