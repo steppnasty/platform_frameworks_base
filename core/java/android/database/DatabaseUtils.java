@@ -30,6 +30,7 @@ import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteFullException;
 import android.database.sqlite.SQLiteProgram;
 import android.database.sqlite.SQLiteStatement;
+import android.os.OperationCanceledException;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.text.TextUtils;
@@ -49,9 +50,6 @@ public class DatabaseUtils {
     private static final String TAG = "DatabaseUtils";
 
     private static final boolean DEBUG = false;
-    private static final boolean LOCAL_LOGV = false;
-
-    private static final String[] countProjection = new String[]{"count(*)"};
 
     /** One of the values returned by {@link #getSqlStatementType(String)}. */
     public static final int STATEMENT_SELECT = 1;
@@ -107,6 +105,9 @@ public class DatabaseUtils {
             code = 9;
         } else if (e instanceof OperationApplicationException) {
             code = 10;
+        } else if (e instanceof OperationCanceledException) {
+            code = 11;
+            logException = false;
         } else {
             reply.writeException(e);
             Log.e(TAG, "Writing exception to parcel", e);
@@ -178,6 +179,8 @@ public class DatabaseUtils {
                 throw new SQLiteDiskIOException(msg);
             case 9:
                 throw new SQLiteException(msg);
+            case 11:
+                throw new OperationCanceledException(msg);
             default:
                 reply.readException(code, msg);
         }
@@ -263,63 +266,56 @@ public class DatabaseUtils {
         if (position < 0 || position >= cursor.getCount()) {
             return;
         }
-        window.acquireReference();
-        try {
-            final int oldPos = cursor.getPosition();
-            final int numColumns = cursor.getColumnCount();
-            window.clear();
-            window.setStartPosition(position);
-            window.setNumColumns(numColumns);
-            if (cursor.moveToPosition(position)) {
-                do {
-                    if (!window.allocRow()) {
-                        break;
-                    }
-                    for (int i = 0; i < numColumns; i++) {
-                        final int type = cursor.getType(i);
-                        final boolean success;
-                        switch (type) {
-                            case Cursor.FIELD_TYPE_NULL:
-                                success = window.putNull(position, i);
-                                break;
+        final int oldPos = cursor.getPosition();
+        final int numColumns = cursor.getColumnCount();
+        window.clear();
+        window.setStartPosition(position);
+        window.setNumColumns(numColumns);
+        if (cursor.moveToPosition(position)) {
+            do {
+                if (!window.allocRow()) {
+                    break;
+                }
+                for (int i = 0; i < numColumns; i++) {
+                    final int type = cursor.getType(i);
+                    final boolean success;
+                    switch (type) {
+                        case Cursor.FIELD_TYPE_NULL:
+                            success = window.putNull(position, i);
+                            break;
 
-                            case Cursor.FIELD_TYPE_INTEGER:
-                                success = window.putLong(cursor.getLong(i), position, i);
-                                break;
+                        case Cursor.FIELD_TYPE_INTEGER:
+                            success = window.putLong(cursor.getLong(i), position, i);
+                            break;
 
-                            case Cursor.FIELD_TYPE_FLOAT:
-                                success = window.putDouble(cursor.getDouble(i), position, i);
-                                break;
+                        case Cursor.FIELD_TYPE_FLOAT:
+                            success = window.putDouble(cursor.getDouble(i), position, i);
+                            break;
 
-                            case Cursor.FIELD_TYPE_BLOB: {
-                                final byte[] value = cursor.getBlob(i);
-                                success = value != null ? window.putBlob(value, position, i)
-                                        : window.putNull(position, i);
-                                break;
-                            }
-
-                            default: // assume value is convertible to String
-                            case Cursor.FIELD_TYPE_STRING: {
-                                final String value = cursor.getString(i);
-                                success = value != null ? window.putString(value, position, i)
-                                        : window.putNull(position, i);
-                                break;
-                            }
+                        case Cursor.FIELD_TYPE_BLOB: {
+                            final byte[] value = cursor.getBlob(i);
+                            success = value != null ? window.putBlob(value, position, i)
+                                    : window.putNull(position, i);
+                            break;
                         }
-                        if (!success) {
-                            window.freeLastRow();
+
+                        default: // assume value is convertible to String
+                        case Cursor.FIELD_TYPE_STRING: {
+                            final String value = cursor.getString(i);
+                            success = value != null ? window.putString(value, position, i)
+                                    : window.putNull(position, i);
                             break;
                         }
                     }
-                    position += 1;
-                } while (cursor.moveToNext());
-            }
-            cursor.moveToPosition(oldPos);
-        } catch (IllegalStateException e){
-            // simply ignore it
-        } finally {
-            window.releaseReference();
+                    if (!success) {
+                        window.freeLastRow();
+                        break;
+                    }
+                }
+                position += 1;
+            } while (cursor.moveToNext());
         }
+        cursor.moveToPosition(oldPos);
     }
 
     /**
@@ -964,10 +960,15 @@ public class DatabaseUtils {
     }
 
     /**
-     * This class allows users to do multiple inserts into a table but
-     * compile the SQL insert statement only once, which may increase
-     * performance.
+     * This class allows users to do multiple inserts into a table using
+     * the same statement.
+     * <p>
+     * This class is not thread-safe.
+     * </p>
+     *
+     * @deprecated Use {@link SQLiteStatement} instead.
      */
+    @Deprecated
     public static class InsertHelper {
         private final SQLiteDatabase mDb;
         private final String mTableName;
@@ -984,6 +985,13 @@ public class DatabaseUtils {
          * table_info(...)" command that we depend on.
          */
         public static final int TABLE_INFO_PRAGMA_COLUMNNAME_INDEX = 1;
+
+        /**
+         * This field was accidentally exposed in earlier versions of the platform
+         * so we can hide it but we can't remove it.
+         *
+         * @hide
+         */
         public static final int TABLE_INFO_PRAGMA_DEFAULT_INDEX = 4;
 
         /**
@@ -1037,7 +1045,7 @@ public class DatabaseUtils {
             sb.append(sbv);
 
             mInsertSQL = sb.toString();
-            if (LOCAL_LOGV) Log.v(TAG, "insert statement is " + mInsertSQL);
+            if (DEBUG) Log.v(TAG, "insert statement is " + mInsertSQL);
         }
 
         private SQLiteStatement getStatement(boolean allowReplace) throws SQLException {
@@ -1070,24 +1078,35 @@ public class DatabaseUtils {
          * @return the row ID of the newly inserted row, or -1 if an
          * error occurred
          */
-        private synchronized long insertInternal(ContentValues values, boolean allowReplace) {
+        private long insertInternal(ContentValues values, boolean allowReplace) {
+            // Start a transaction even though we don't really need one.
+            // This is to help maintain compatibility with applications that
+            // access InsertHelper from multiple threads even though they never should have.
+            // The original code used to lock the InsertHelper itself which was prone
+            // to deadlocks.  Starting a transaction achieves the same mutual exclusion
+            // effect as grabbing a lock but without the potential for deadlocks.
+            mDb.beginTransactionNonExclusive();
             try {
                 SQLiteStatement stmt = getStatement(allowReplace);
                 stmt.clearBindings();
-                if (LOCAL_LOGV) Log.v(TAG, "--- inserting in table " + mTableName);
+                if (DEBUG) Log.v(TAG, "--- inserting in table " + mTableName);
                 for (Map.Entry<String, Object> e: values.valueSet()) {
                     final String key = e.getKey();
                     int i = getColumnIndex(key);
                     DatabaseUtils.bindObjectToProgram(stmt, i, e.getValue());
-                    if (LOCAL_LOGV) {
+                    if (DEBUG) {
                         Log.v(TAG, "binding " + e.getValue() + " to column " +
                               i + " (" + key + ")");
                     }
                 }
-                return stmt.executeInsert();
+                long result = stmt.executeInsert();
+                mDb.setTransactionSuccessful();
+                return result;
             } catch (SQLException e) {
                 Log.e(TAG, "Error inserting " + values + " into table  " + mTableName, e);
                 return -1;
+            } finally {
+                mDb.endTransaction();
             }
         }
 
@@ -1224,7 +1243,7 @@ public class DatabaseUtils {
                         + "execute");
             }
             try {
-                if (LOCAL_LOGV) Log.v(TAG, "--- doing insert or replace in table " + mTableName);
+                if (DEBUG) Log.v(TAG, "--- doing insert or replace in table " + mTableName);
                 return mPreparedStatement.executeInsert();
             } catch (SQLException e) {
                 Log.e(TAG, "Error executing InsertHelper with table " + mTableName, e);

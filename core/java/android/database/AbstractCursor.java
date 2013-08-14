@@ -34,14 +34,45 @@ import java.util.Map;
 public abstract class AbstractCursor implements CrossProcessCursor {
     private static final String TAG = "Cursor";
 
-    protected ContentResolver mContentResolver;
+    /**
+     * @deprecated This is never updated by this class and should not be used
+     */
+    @Deprecated
+    protected HashMap<Long, Map<String, Object>> mUpdatedRows;
 
+    protected int mPos;
+
+    /**
+     * This must be set to the index of the row ID column by any
+     * subclass that wishes to support updates.
+     *
+     * @deprecated This field should not be used.
+     */
+    @Deprecated
+    protected int mRowIdColumnIndex;
+
+    /**
+     * If {@link #mRowIdColumnIndex} is not -1 this contains contains the value of
+     * the column at {@link #mRowIdColumnIndex} for the current row this cursor is
+     * pointing at.
+     *
+     * @deprecated This field should not be used.
+     */
+    @Deprecated
+    protected Long mCurrentRowID;
+
+    protected boolean mClosed;
+    protected ContentResolver mContentResolver;
+    private Uri mNotifyUri;
+
+    private final Object mSelfObserverLock = new Object();
     private ContentObserver mSelfObserver;
+    private boolean mSelfObserverRegistered;
 
     private final DataSetObservable mDataSetObservable = new DataSetObservable();
     private final ContentObservable mContentObservable = new ContentObservable();
 
-    Bundle mExtras = Bundle.EMPTY;
+    private Bundle mExtras = Bundle.EMPTY;
 
     /* -------------------------------------------------------- */
     /* These need to be implemented by subclasses */
@@ -289,23 +320,6 @@ public abstract class AbstractCursor implements CrossProcessCursor {
         }
     }
 
-    /**
-     * This is hidden until the data set change model has been re-evaluated.
-     * @hide
-     */
-    protected void notifyDataSetChange() {
-        mDataSetObservable.notifyChanged();
-    }
-
-    /**
-     * This is hidden until the data set change model has been re-evaluated.
-     * @hide
-     */
-    protected DataSetObservable getDataSetObservable() {
-        return mDataSetObservable;
-
-    }
-
     public void registerDataSetObserver(DataSetObserver observer) {
         mDataSetObservable.registerObserver(observer);
     }
@@ -416,6 +430,9 @@ public abstract class AbstractCursor implements CrossProcessCursor {
         if (mSelfObserver != null && mSelfObserverRegistered == true) {
             mContentResolver.unregisterContentObserver(mSelfObserver);
         }
+        try {
+            if (!mClosed) close();
+        } catch(Exception e) { }
     }
 
     /**
@@ -442,28 +459,4 @@ public abstract class AbstractCursor implements CrossProcessCursor {
             }
         }
     }
-
-    /**
-     * @deprecated This is never updated by this class and should not be used
-     */
-    @Deprecated
-    protected HashMap<Long, Map<String, Object>> mUpdatedRows;
-
-    /**
-     * This must be set to the index of the row ID column by any
-     * subclass that wishes to support updates.
-     */
-    protected int mRowIdColumnIndex;
-
-    protected int mPos;
-    /**
-     * If {@link #mRowIdColumnIndex} is not -1 this contains contains the value of
-     * the column at {@link #mRowIdColumnIndex} for the current row this cursor is
-     * pointing at.
-     */
-    protected Long mCurrentRowID;
-    protected boolean mClosed = false;
-    private Uri mNotifyUri;
-    final private Object mSelfObserverLock = new Object();
-    private boolean mSelfObserverRegistered;
 }

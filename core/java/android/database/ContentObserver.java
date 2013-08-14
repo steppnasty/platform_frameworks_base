@@ -20,63 +20,19 @@ import android.net.Uri;
 import android.os.Handler;
 
 /**
- * Receives call backs for changes to content. Must be implemented by objects which are added
- * to a {@link ContentObservable}.
+ * Receives call backs for changes to content.
+ * Must be implemented by objects which are added to a {@link ContentObservable}.
  */
 public abstract class ContentObserver {
+    private final Object mLock = new Object();
+    private Transport mTransport; // guarded by mLock
 
-    private Transport mTransport;
-
-    // Protects mTransport
-    private Object lock = new Object();
-
-    /* package */ Handler mHandler;
-
-    private final class NotificationRunnable implements Runnable {
-        private boolean mSelfChange;
-        private final Uri mUri;
-
-        public NotificationRunnable(boolean selfChange, Uri uri) {
-            mSelfChange = selfChange;
-            mUri = uri;
-        }
-
-        public void run() {
-            ContentObserver.this.onChange(mSelfChange, mUri);
-        }
-    }
-
-    private static final class Transport extends IContentObserver.Stub {
-        ContentObserver mContentObserver;
-
-        public Transport(ContentObserver contentObserver) {
-            mContentObserver = contentObserver;
-        }
-
-        public boolean deliverSelfNotifications() {
-            ContentObserver contentObserver = mContentObserver;
-            if (contentObserver != null) {
-                return contentObserver.deliverSelfNotifications();
-            }
-            return false;
-        }
-
-        public void onChange(boolean selfChange, Uri uri) {
-            ContentObserver contentObserver = mContentObserver;
-            if (contentObserver != null) {
-                contentObserver.dispatchChange(selfChange, uri);
-            }
-        }
-
-        public void releaseContentObserver() {
-            mContentObserver = null;
-        }
-    }
+    Handler mHandler;
 
     /**
-     * onChange() will happen on the provider Handler.
+     * Creates a content observer.
      *
-     * @param handler The handler to run {@link #onChange} on.
+     * @param handler The handler to run {@link #onChange} on, or null if none.
      */
     public ContentObserver(Handler handler) {
         mHandler = handler;
@@ -88,7 +44,7 @@ public abstract class ContentObserver {
      * {@hide}
      */
     public IContentObserver getContentObserver() {
-        synchronized(lock) {
+        synchronized (mLock) {
             if (mTransport == null) {
                 mTransport = new Transport(this);
             }
@@ -103,8 +59,8 @@ public abstract class ContentObserver {
      * {@hide}
      */
     public IContentObserver releaseContentObserver() {
-        synchronized(lock) {
-            Transport oldTransport = mTransport;
+        synchronized (mLock) {
+            final Transport oldTransport = mTransport;
             if (oldTransport != null) {
                 oldTransport.releaseContentObserver();
                 mTransport = null;
@@ -114,8 +70,13 @@ public abstract class ContentObserver {
     }
 
     /**
-     * Returns true if this observer is interested in notifications for changes
-     * made through the cursor the observer is registered with.
+     * Returns true if this observer is interested receiving self-change notifications.
+     *
+     * Subclasses should override this method to indicate whether the observer
+     * is interested in receiving notifications for changes that it made to the
+     * content itself.
+     *
+     * @return True if self-change notifications should be delivered to the observer.
      */
     public boolean deliverSelfNotifications() {
         return false;
@@ -202,6 +163,41 @@ public abstract class ContentObserver {
             onChange(selfChange, uri);
         } else {
             mHandler.post(new NotificationRunnable(selfChange, uri));
+        }
+    }
+
+    private final class NotificationRunnable implements Runnable {
+        private final boolean mSelfChange;
+        private final Uri mUri;
+
+        public NotificationRunnable(boolean selfChange, Uri uri) {
+            mSelfChange = selfChange;
+            mUri = uri;
+        }
+
+        @Override
+        public void run() {
+            ContentObserver.this.onChange(mSelfChange, mUri);
+        }
+    }
+
+    private static final class Transport extends IContentObserver.Stub {
+        private ContentObserver mContentObserver;
+
+        public Transport(ContentObserver contentObserver) {
+            mContentObserver = contentObserver;
+        }
+
+        @Override
+        public void onChange(boolean selfChange, Uri uri) {
+            ContentObserver contentObserver = mContentObserver;
+            if (contentObserver != null) {
+                contentObserver.dispatchChange(selfChange, uri);
+            }
+        }
+
+        public void releaseContentObserver() {
+            mContentObserver = null;
         }
     }
 }

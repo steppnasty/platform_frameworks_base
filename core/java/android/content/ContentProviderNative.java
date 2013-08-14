@@ -17,11 +17,11 @@
 package android.content;
 
 import android.content.res.AssetFileDescriptor;
+import android.database.BulkCursorDescriptor;
 import android.database.BulkCursorNative;
 import android.database.BulkCursorToCursorAdaptor;
 import android.database.Cursor;
 import android.database.CursorToBulkCursorAdaptor;
-import android.database.CursorWindow;
 import android.database.DatabaseUtils;
 import android.database.IBulkCursor;
 import android.database.IContentObserver;
@@ -42,8 +42,6 @@ import java.util.ArrayList;
  * {@hide}
  */
 abstract public class ContentProviderNative extends Binder implements IContentProvider {
-    private static final String TAG = "ContentProvider";
-
     public ContentProviderNative()
     {
         attachInterface(this, descriptor);
@@ -117,20 +115,14 @@ abstract public class ContentProviderNative extends Binder implements IContentPr
                     if (cursor != null) {
                         CursorToBulkCursorAdaptor adaptor = new CursorToBulkCursorAdaptor(
                                 cursor, observer, getProviderName());
-                        final IBinder binder = adaptor.asBinder();
-                        final int count = adaptor.count();
-                        final int index = BulkCursorToCursorAdaptor.findRowIdColumnIndex(
-                                adaptor.getColumnNames());
-                        final boolean wantsAllOnMoveCalls = adaptor.getWantsAllOnMoveCalls();
+                        BulkCursorDescriptor d = adaptor.getBulkCursorDescriptor();
 
                         reply.writeNoException();
-                        reply.writeStrongBinder(binder);
-                        reply.writeInt(count);
-                        reply.writeInt(index);
-                        reply.writeInt(wantsAllOnMoveCalls ? 1 : 0);
+                        reply.writeInt(1);
+                        d.writeToParcel(reply, Parcelable.PARCELABLE_WRITE_RETURN_VALUE);
                     } else {
                         reply.writeNoException();
-                        reply.writeStrongBinder(null);
+                        reply.writeInt(0);
                     }
 
                     return true;
@@ -373,12 +365,9 @@ final class ContentProviderProxy implements IContentProvider
 
             DatabaseUtils.readExceptionFromParcel(reply);
 
-            IBulkCursor bulkCursor = BulkCursorNative.asInterface(reply.readStrongBinder());
-            if (bulkCursor != null) {
-                int rowCount = reply.readInt();
-                int idColumnPosition = reply.readInt();
-                boolean wantsAllOnMoveCalls = reply.readInt() != 0;
-                adaptor.initialize(bulkCursor, rowCount, idColumnPosition, wantsAllOnMoveCalls);
+            if (reply.readInt() != 0) {
+                BulkCursorDescriptor d = BulkCursorDescriptor.CREATOR.createFromParcel(reply);
+                adaptor.initialize(d);
             } else {
                 adaptor.close();
                 adaptor = null;
