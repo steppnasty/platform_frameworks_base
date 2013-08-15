@@ -159,9 +159,6 @@ public:
             PixelFormat* format, uint32_t reqWidth, uint32_t reqHeight,
             uint32_t minLayerZ, uint32_t maxLayerZ);
 
-    virtual status_t                    turnElectronBeamOff(int32_t mode);
-    virtual status_t                    turnElectronBeamOn(int32_t mode);
-
             void                        screenReleased(DisplayID dpy);
             void                        screenAcquired(DisplayID dpy);
 
@@ -311,11 +308,6 @@ private:
                     uint32_t reqWidth, uint32_t reqHeight,
                     uint32_t minLayerZ, uint32_t maxLayerZ);
 
-            status_t turnElectronBeamOffImplLocked(int32_t mode);
-            status_t turnElectronBeamOnImplLocked(int32_t mode);
-            status_t electronBeamOffAnimationImplLocked();
-            status_t electronBeamOnAnimationImplLocked();
-
             void        debugFlashRegions();
             void        debugShowFPS() const;
             void        drawWormhole() const;
@@ -364,7 +356,6 @@ private:
                 Region                      mWormholeRegion;
                 bool                        mVisibleRegionsDirty;
                 bool                        mHwWorkListDirty;
-                int32_t                     mElectronBeamAnimationMode;
                 Vector< sp<LayerBase> >     mVisibleLayersSortedByZ;
 
 

@@ -76,11 +76,6 @@ public:
         eAnimation              = 0x02,
     };
 
-    enum {
-        eElectronBeamAnimationOn  = 0x01,
-        eElectronBeamAnimationOff = 0x10
-    };
-
     /* create connection with surface flinger, requires
      * ACCESS_SURFACE_FLINGER permission
      */
@@ -111,9 +106,6 @@ public:
             uint32_t reqWidth, uint32_t reqHeight,
             uint32_t minLayerZ, uint32_t maxLayerZ) = 0;
 
-    virtual status_t turnElectronBeamOff(int32_t mode) = 0;
-    virtual status_t turnElectronBeamOn(int32_t mode) = 0;
-
     /* verify that an ISurfaceTexture was created by SurfaceFlinger.
      */
     virtual bool authenticateSurfaceTexture(
@@ -141,8 +133,6 @@ public:
         SET_TRANSACTION_STATE,
         SET_ORIENTATION,
         CAPTURE_SCREEN,
-        TURN_ELECTRON_BEAM_OFF,
-        TURN_ELECTRON_BEAM_ON,
         AUTHENTICATE_SURFACE,
 #ifdef QCOM_HDMI_OUT
         EXTERNAL_DISPLAY,
