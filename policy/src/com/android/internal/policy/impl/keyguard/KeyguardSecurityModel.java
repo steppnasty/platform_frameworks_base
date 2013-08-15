@@ -86,17 +86,14 @@ public class KeyguardSecurityModel {
             final int security = mLockPatternUtils.getKeyguardStoredPasswordQuality();
             switch (security) {
                 case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC:
-                    if (mLockPatternUtils.isLockPasswordEnabled()) {
-                        mode = SecurityMode.PIN;
-                    }
+                    mode = mLockPatternUtils.isLockPasswordEnabled() ?
+                            SecurityMode.PIN : SecurityMode.None;
                     break;
-
                 case DevicePolicyManager.PASSWORD_QUALITY_ALPHABETIC:
                 case DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC:
                 case DevicePolicyManager.PASSWORD_QUALITY_COMPLEX:
-                    if (mLockPatternUtils.isLockPasswordEnabled()) {
-                        mode = SecurityMode.Password;
-                    }
+                    mode = mLockPatternUtils.isLockPasswordEnabled() ?
+                            SecurityMode.Password : SecurityMode.None;
                     break;
 
                 case DevicePolicyManager.PASSWORD_QUALITY_SOMETHING:
@@ -108,7 +105,7 @@ public class KeyguardSecurityModel {
                     break;
 
                 default:
-                    throw new IllegalStateException("Unknown unlock mode:" + security);
+                    throw new IllegalStateException("Unknown unlock mode:" + mode);
             }
         }
         return mode;
