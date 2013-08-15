@@ -37,6 +37,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.RemoteException;
+import android.os.SchedulingPolicyService;
 import android.os.ServiceManager;
 import android.os.StrictMode;
 import android.os.SystemClock;
@@ -245,6 +246,10 @@ class ServerThread extends Thread {
             Slog.i(TAG, "Telephony Registry");
             ServiceManager.addService("telephony.registry", new TelephonyRegistry(context));
 
+            Slog.i(TAG, "Scheduling Policy");
+            ServiceManager.addService(Context.SCHEDULING_POLICY_SERVICE,
+                    new SchedulingPolicyService());
+
             AttributeCache.init(context);
 
             if (!display.waitForDefaultDisplay()) {
@@ -329,7 +334,7 @@ class ServerThread extends Thread {
 
             Slog.i(TAG, "Window Manager");
             wm = WindowManagerService.main(context, power, display, inputManager,
-                    device, uiHandler, wmHandler,
+                    uiHandler, wmHandler,
                     factoryTest != SystemServer.FACTORY_TEST_LOW_LEVEL,
                     !firstBoot, onlyCore);
             ServiceManager.addService(Context.WINDOW_SERVICE, wm);

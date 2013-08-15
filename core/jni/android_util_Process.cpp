@@ -21,6 +21,7 @@
 #include <binder/IPCThreadState.h>
 #include <binder/ProcessState.h>
 #include <binder/IServiceManager.h>
+#include <cutils/sched_policy.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
@@ -32,7 +33,6 @@
 #include <sys/errno.h>
 #include <sys/resource.h>
 #include <sys/types.h>
-#include <cutils/sched_policy.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -50,7 +50,9 @@ Mutex gKeyCreateMutex;
 static pthread_key_t gBgKey = -1;
 #endif
 
-static void signalExceptionForPriorityError(JNIEnv* env, jobject obj, int err)
+// For both of these, err should be in the errno range (positive), not a status_t (negative)
+
+static void signalExceptionForPriorityError(JNIEnv* env, int err)
 {
     switch (err) {
         case EINVAL:
@@ -169,11 +171,11 @@ jint android_os_Process_getGidForName(JNIEnv* env, jobject clazz, jstring name)
     return -1;
 }
 
-void android_os_Process_setThreadGroup(JNIEnv* env, jobject clazz, int pid, jint grp)
+void android_os_Process_setThreadGroup(JNIEnv* env, jobject clazz, int tid, jint grp)
 {
-    ALOGV("%s pid=%d grp=%d", __func__, pid, grp);
+    ALOGV("%s tid=%d grp=%d", __func__, tid, grp);
     SchedPolicy sp = (SchedPolicy) grp;
-    int res = set_sched_policy(pid, sp);
+    int res = set_sched_policy(tid, sp);
     if (res != NO_ERROR) {
         signalExceptionForGroupError(env, -res);
     }
@@ -181,7 +183,7 @@ void android_os_Process_setThreadGroup(JNIEnv* env, jobject clazz, int pid, jint
 
 void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jint grp)
 {
-    ALOGV("%s pid=%d grp%d", __func__, pid, grp);
+    ALOGV("%s pid=%d grp=%d", __func__, pid, grp);
     DIR *d;
     FILE *fp;
     char proc_path[255];
@@ -191,6 +193,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         signalExceptionForGroupError(env, EINVAL);
         return;
     }
+
     bool isDefault = false;
     if (grp < 0) {
         grp = SP_FOREGROUND;
@@ -212,7 +215,7 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         close(fd);
     }
 
-    if (grp == SP_BACKGROUND) {
+    if (sp == SP_BACKGROUND) {
         ALOGD("setProcessGroup: vvv pid %d (%s)", pid, cmdline);
     } else {
         ALOGD("setProcessGroup: ^^^ pid %d (%s)", pid, cmdline);
@@ -240,6 +243,14 @@ void android_os_Process_setProcessGroup(JNIEnv* env, jobject clazz, int pid, jin
         }
 
         t_pri = getpriority(PRIO_PROCESS, t_pid);
+
+        if (t_pri <= ANDROID_PRIORITY_AUDIO) {
+            int scheduler = sched_getscheduler(t_pid);
+            if ((scheduler == SCHED_FIFO) || (scheduler == SCHED_RR)) {
+                // This task wants to stay in it's current audio group so it can keep it's budget
+                continue;
+            }
+        }
 
         if (isDefault) {
             if (t_pri >= ANDROID_PRIORITY_BACKGROUND) {
@@ -274,6 +285,21 @@ static void android_os_Process_setCanSelfBackground(JNIEnv* env, jobject clazz, 
 #endif
 }
 
+void android_os_Process_setThreadScheduler(JNIEnv* env, jclass clazz,
+                                              jint tid, jint policy, jint pri)
+{
+#ifdef HAVE_SCHED_SETSCHEDULER
+    struct sched_param param;
+    param.sched_priority = pri;
+    int rc = sched_setscheduler(tid, policy, &param);
+    if (rc) {
+        signalExceptionForPriorityError(env, errno);
+    }
+#else
+    signalExceptionForPriorityError(env, ENOSYS);
+#endif
+}
+
 void android_os_Process_setThreadPriority(JNIEnv* env, jobject clazz,
                                               jint pid, jint pri)
 {
@@ -295,7 +321,7 @@ void android_os_Process_setThreadPriority(JNIEnv* env, jobject clazz,
     int rc = androidSetThreadPriority(pid, pri);
     if (rc != 0) {
         if (rc == INVALID_OPERATION) {
-            signalExceptionForPriorityError(env, clazz, errno);
+            signalExceptionForPriorityError(env, errno);
         } else {
             signalExceptionForGroupError(env, errno);
         }
@@ -318,7 +344,7 @@ jint android_os_Process_getThreadPriority(JNIEnv* env, jobject clazz,
     errno = 0;
     jint pri = getpriority(PRIO_PROCESS, pid);
     if (errno != 0) {
-        signalExceptionForPriorityError(env, clazz, errno);
+        signalExceptionForPriorityError(env, errno);
     }
     //ALOGI("Returning priority of %d: %d\n", pid, pri);
     return pri;
@@ -960,6 +986,7 @@ static const JNINativeMethod methods[] = {
     {"getUidForName",       "(Ljava/lang/String;)I", (void*)android_os_Process_getUidForName},
     {"getGidForName",       "(Ljava/lang/String;)I", (void*)android_os_Process_getGidForName},
     {"setThreadPriority",   "(II)V", (void*)android_os_Process_setThreadPriority},
+    {"setThreadScheduler",  "(III)V", (void*)android_os_Process_setThreadScheduler},
     {"setCanSelfBackground", "(Z)V", (void*)android_os_Process_setCanSelfBackground},
     {"setThreadPriority",   "(I)V", (void*)android_os_Process_setCallingThreadPriority},
     {"getThreadPriority",   "(I)I", (void*)android_os_Process_getThreadPriority},

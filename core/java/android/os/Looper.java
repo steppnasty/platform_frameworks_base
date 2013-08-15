@@ -61,9 +61,9 @@ public class Looper {
     final Thread mThread;
     volatile boolean mRun;
 
-    private Printer mLogging = null;
+    private Printer mLogging;
 
-    /** Initialize the current thread as a looper.
+     /** Initialize the current thread as a looper.
       * This gives you a chance to create handlers that then reference
       * this looper, before actually starting the loop. Be sure to call
       * {@link #loop()} after calling this method, and end it by calling
@@ -109,63 +109,49 @@ public class Looper {
      * {@link #quit()} to end the loop.
      */
     public static void loop() {
-        Looper me = myLooper();
+        final Looper me = myLooper();
         if (me == null) {
             throw new RuntimeException("No Looper; Looper.prepare() wasn't called on this thread.");
         }
-        MessageQueue queue = me.mQueue;
-        
+        final MessageQueue queue = me.mQueue;
+
         // Make sure the identity of this thread is that of the local process,
         // and keep track of what that identity token actually is.
         Binder.clearCallingIdentity();
         final long ident = Binder.clearCallingIdentity();
-        
-        while (true) {
+
+        for (;;) {
             Message msg = queue.next(); // might block
-            if (msg != null) {
-                if (msg.target == null) {
-                    // No target is a magic identifier for the quit message.
-                    return;
-                }
-
-                long wallStart = 0;
-                long threadStart = 0;
-
-                // This must be in a local variable, in case a UI event sets the logger
-                Printer logging = me.mLogging;
-                if (logging != null) {
-                    logging.println(">>>>> Dispatching to " + msg.target + " " +
-                            msg.callback + ": " + msg.what);
-                    wallStart = SystemClock.currentTimeMicro();
-                    threadStart = SystemClock.currentThreadTimeMicro();
-                }
-
-                msg.target.dispatchMessage(msg);
-
-                if (logging != null) {
-                    long wallTime = SystemClock.currentTimeMicro() - wallStart;
-                    long threadTime = SystemClock.currentThreadTimeMicro() - threadStart;
-
-                    logging.println("<<<<< Finished to " + msg.target + " " + msg.callback);
-                    if (logging instanceof Profiler) {
-                        ((Profiler) logging).profile(msg, wallStart, wallTime,
-                                threadStart, threadTime);
-                    }
-                }
-
-                // Make sure that during the course of dispatching the
-                // identity of the thread wasn't corrupted.
-                final long newIdent = Binder.clearCallingIdentity();
-                if (ident != newIdent) {
-                    Log.wtf(TAG, "Thread identity changed from 0x"
-                            + Long.toHexString(ident) + " to 0x"
-                            + Long.toHexString(newIdent) + " while dispatching to "
-                            + msg.target.getClass().getName() + " "
-                            + msg.callback + " what=" + msg.what);
-                }
-                
-                msg.recycle();
+            if (msg == null) {
+                // No message indicates that the message queue is quitting.
+                return;
             }
+
+            // This must be in a local variable, in case a UI event sets the logger
+            Printer logging = me.mLogging;
+            if (logging != null) {
+                logging.println(">>>>> Dispatching to " + msg.target + " " +
+                        msg.callback + ": " + msg.what);
+            }
+
+            msg.target.dispatchMessage(msg);
+
+            if (logging != null) {
+                logging.println("<<<<< Finished to " + msg.target + " " + msg.callback);
+            }
+
+            // Make sure that during the course of dispatching the
+            // identity of the thread wasn't corrupted.
+            final long newIdent = Binder.clearCallingIdentity();
+            if (ident != newIdent) {
+                Log.wtf(TAG, "Thread identity changed from 0x"
+                        + Long.toHexString(ident) + " to 0x"
+                        + Long.toHexString(newIdent) + " while dispatching to "
+                        + msg.target.getClass().getName() + " "
+                        + msg.callback + " what=" + msg.what);
+            }
+
+            msg.recycle();
         }
     }
 
@@ -291,13 +277,5 @@ public class Looper {
 
     public String toString() {
         return "Looper{" + Integer.toHexString(System.identityHashCode(this)) + "}";
-    }
-
-    /**
-     * @hide
-     */
-    public static interface Profiler {
-        void profile(Message message, long wallStart, long wallTime,
-                long threadStart, long threadTime);
     }
 }

@@ -2189,6 +2189,17 @@ public abstract class Context {
 
     /**
      * Use with {@link #getSystemService} to retrieve a
+     * {@link android.os.SchedulingPolicyService} for managing scheduling policy.
+     *
+     * @see #getSystemService
+     * @see android.os.SchedulingPolicyService
+     *
+     * @hide
+     */
+    public static final String SCHEDULING_POLICY_SERVICE = "scheduling_policy";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
      * {@link android.os.UserManager} for managing users on devices that support multiple users.
      *
      * @see #getSystemService

@@ -770,7 +770,7 @@ public class LockPatternUtils {
      * @param pattern The pattern.
      * @return The pattern in string form.
      */
-    public String patternToString(List<LockPatternView.Cell> pattern) {
+    public static String patternToString(List<LockPatternView.Cell> pattern) {
         if (pattern == null) {
             return "";
         }
@@ -779,7 +779,7 @@ public class LockPatternUtils {
         byte[] res = new byte[patternSize];
         for (int i = 0; i < patternSize; i++) {
             LockPatternView.Cell cell = pattern.get(i);
-            res[i] = (byte) (cell.getRow() * getLockPatternSize() + cell.getColumn());
+            res[i] = (byte) (cell.getRow() * 3 + cell.getColumn());
         }
         return new String(res);
     }

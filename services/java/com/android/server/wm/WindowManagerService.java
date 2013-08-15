@@ -41,9 +41,7 @@ import static android.view.WindowManager.LayoutParams.TYPE_UNIVERSE_BACKGROUND;
 import static android.view.WindowManager.LayoutParams.TYPE_WALLPAPER;
 
 import com.android.internal.app.IBatteryStats;
-import com.android.internal.app.ThemeUtils;
 
-import com.android.internal.os.IDeviceHandler;
 import com.android.internal.policy.PolicyManager;
 import com.android.internal.policy.impl.PhoneWindowManager;
 import com.android.internal.view.IInputContext;
@@ -301,13 +299,6 @@ public class WindowManagerService extends IWindowManager.Stub
 
     private static final float THUMBNAIL_ANIMATION_DECELERATE_FACTOR = 1.5f;
 
-
-    private BroadcastReceiver mThemeChangeReceiver = new BroadcastReceiver() {
-        public void onReceive(Context context, Intent intent) {
-            mUiContext = null;
-        }
-    };
-
     final BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -323,7 +314,6 @@ public class WindowManagerService extends IWindowManager.Stub
     int mCurrentUserId;
 
     final Context mContext;
-    private Context mUiContext;
 
     final boolean mHaveInputMethods;
 
@@ -331,7 +321,7 @@ public class WindowManagerService extends IWindowManager.Stub
 
     final boolean mLimitedAlphaCompositing;
 
-    final WindowManagerPolicy mPolicy;
+    final WindowManagerPolicy mPolicy = PolicyManager.makeNewWindowManager();
 
     final IActivityManager mActivityManager;
 
@@ -770,7 +760,7 @@ public class WindowManagerService extends IWindowManager.Stub
 
     public static WindowManagerService main(final Context context,
             final PowerManagerService pm, final DisplayManagerService dm,
-            final InputManagerService im, final IDeviceHandler device,
+            final InputManagerService im,
             final Handler uiHandler, final Handler wmHandler,
             final boolean haveInputMethods, final boolean showBootMsgs,
             final boolean onlyCore) {
@@ -779,7 +769,7 @@ public class WindowManagerService extends IWindowManager.Stub
             @Override
             public void run() {
                 holder[0] = new WindowManagerService(context, pm, dm, im,
-                        device, uiHandler, haveInputMethods, showBootMsgs, onlyCore);
+                        uiHandler, haveInputMethods, showBootMsgs, onlyCore);
             }
         }, 0);
         return holder[0];
@@ -801,7 +791,7 @@ public class WindowManagerService extends IWindowManager.Stub
 
     private WindowManagerService(Context context, PowerManagerService pm,
             DisplayManagerService displayManager, InputManagerService inputManager,
-            IDeviceHandler device, Handler uiHandler,
+            Handler uiHandler,
             boolean haveInputMethods, boolean showBootMsgs, boolean onlyCore) {
         mContext = context;
         mHaveInputMethods = haveInputMethods;
@@ -811,7 +801,6 @@ public class WindowManagerService extends IWindowManager.Stub
                 com.android.internal.R.bool.config_sf_limitedAlpha);
         mDisplayManagerService = displayManager;
         mHeadless = displayManager.isHeadless();
-        mPolicy = PolicyManager.makeNewWindowManager(device);
 
         mDisplayManager = (DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);
         mDisplayManager.registerDisplayListener(this, null);
@@ -867,15 +856,6 @@ public class WindowManagerService extends IWindowManager.Stub
         } finally {
             Surface.closeTransaction();
         }
-
-        ThemeUtils.registerThemeChangeReceiver(mContext, mThemeChangeReceiver);
-    }
-
-    private Context getUiContext() {
-        if (mUiContext == null) {
-            mUiContext = ThemeUtils.createUiContext(mContext);
-        }
-        return mUiContext != null ? mUiContext : mContext;
     }
 
     public InputMonitor getInputMonitor() {
@@ -5477,13 +5457,13 @@ public class WindowManagerService extends IWindowManager.Stub
     // Called by window manager policy.  Not exposed externally.
     @Override
     public void shutdown(boolean confirm) {
-        ShutdownThread.shutdown(getUiContext(), confirm);
+        ShutdownThread.shutdown(mContext, confirm);
     }
 
     // Called by window manager policy.  Not exposed externally.
     @Override
     public void rebootSafeMode(boolean confirm) {
-        ShutdownThread.rebootSafeMode(getUiContext(), confirm);
+        ShutdownThread.rebootSafeMode(mContext, confirm);
     }
 
     public void setInputFilter(IInputFilter filter) {
@@ -5491,12 +5471,6 @@ public class WindowManagerService extends IWindowManager.Stub
             throw new SecurityException("Requires FILTER_EVENTS permission");
         }
         mInputManager.setInputFilter(filter);
-    }
-
-    // Called by window manager policy.  Not exposed externally.
-    @Override
-    public void reboot() {
-        ShutdownThread.reboot(getUiContext(), null, true);
     }
 
     public void setCurrentUser(final int newUserId) {
@@ -5914,8 +5888,6 @@ public class WindowManagerService extends IWindowManager.Stub
 
             // The screenshot API does not apply the current screen rotation.
             rot = getDefaultDisplayContentLocked().getDisplay().getRotation();
-            // Allow for abnormal hardware orientation
-            rot = (rot + (android.os.SystemProperties.getInt("ro.sf.hwrotation",0) / 90 )) % 4;
 
             int fw = frame.width();
             int fh = frame.height();
