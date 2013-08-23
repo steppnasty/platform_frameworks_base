@@ -36,6 +36,7 @@ public class ToggleSlider extends RelativeLayout
     private static final String TAG = "StatusBar.ToggleSlider";
 
     public interface Listener {
+        public void onInit(ToggleSlider v);
         public void onChanged(ToggleSlider v, boolean tracking, boolean checked, int value);
     }
 
@@ -75,6 +76,14 @@ public class ToggleSlider extends RelativeLayout
         a.recycle();
     }
 
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (mListener != null) {
+            mListener.onInit(this);
+        }
+    }
+
     public void onCheckedChanged(CompoundButton toggle, boolean checked) {
         Drawable thumb;
         Drawable slider;
@@ -90,7 +99,7 @@ public class ToggleSlider extends RelativeLayout
             slider = res.getDrawable(
                     com.android.internal.R.drawable.scrubber_progress_horizontal_holo_dark);
         }
-        //mSlider.setThumb(thumb);
+        mSlider.setThumb(thumb);
         mSlider.setProgressDrawable(slider);
 
         if (mListener != null) {

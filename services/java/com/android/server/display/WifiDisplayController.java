@@ -174,14 +174,14 @@ final class WifiDisplayController implements DumpUtils.Dump {
 
         final ContentResolver resolver = mContext.getContentResolver();
         resolver.registerContentObserver(Settings.Global.getUriFor(
-                Settings.Secure.WIFI_DISPLAY_ON), false, settingsObserver);
+                Settings.Global.WIFI_DISPLAY_ON), false, settingsObserver);
         updateSettings();
     }
 
     private void updateSettings() {
         final ContentResolver resolver = mContext.getContentResolver();
         mWifiDisplayOnSetting = Settings.Global.getInt(resolver,
-                Settings.Secure.WIFI_DISPLAY_ON, 0) != 0;
+                Settings.Global.WIFI_DISPLAY_ON, 0) != 0;
 
         updateWfdEnableState();
     }

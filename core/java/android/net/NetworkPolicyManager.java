@@ -134,6 +134,21 @@ public class NetworkPolicyManager {
         }
     }
 
+    public void setRestrictBackground(boolean restrictBackground) {
+        try {
+            mService.setRestrictBackground(restrictBackground);
+        } catch (RemoteException e) {
+        }
+    }
+
+    public boolean getRestrictBackground() {
+        try {
+            return mService.getRestrictBackground();
+        } catch (RemoteException e) {
+            return false;
+        }
+    }
+
     /**
      * Compute the last cycle boundary for the given {@link NetworkPolicy}. For
      * example, if cycle day is 20th, and today is June 15th, it will return May

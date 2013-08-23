@@ -18,31 +18,16 @@ package com.android.systemui.statusbar.policy;
 
 import com.android.internal.view.RotationPolicy;
 
-import android.content.ContentResolver;
 import android.content.Context;
-import android.database.ContentObserver;
-import android.os.AsyncTask;
-import android.os.Handler;
-import android.os.RemoteException;
-import android.os.ServiceManager;
-import android.provider.Settings;
-import android.util.Log;
-import android.util.Slog;
-import android.view.IWindowManager;
+import android.os.UserHandle;
 import android.widget.CompoundButton;
 
-/**
- * TODO: Listen for changes to the setting.
- */
-public class AutoRotateController implements CompoundButton.OnCheckedChangeListener {
-    private static final String TAG = "StatusBar.AutoRotateController";
-
-    private Context mContext;
-    private CompoundButton mCheckBox;
+public final class AutoRotateController implements CompoundButton.OnCheckedChangeListener {
+    private final Context mContext;
+    private final CompoundButton mCheckbox;
     private final RotationLockCallbacks mCallbacks;
 
     private boolean mAutoRotation;
-    private boolean mSystemUpdate;
 
     private final RotationPolicy.RotationPolicyListener mRotationPolicyListener =
             new RotationPolicy.RotationPolicyListener() {
@@ -52,29 +37,23 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
         }
     };
 
-    private ContentObserver mAccelerometerRotationObserver = new ContentObserver(new Handler()) {
-        @Override
-        public void onChange(boolean selfChange) {
-            updateAccelerometerRotationCheckbox();
-        }
-    };
-
     public AutoRotateController(Context context, CompoundButton checkbox,
             RotationLockCallbacks callbacks) {
         mContext = context;
-        mAutoRotation = getAutoRotation();
-        mCheckBox = checkbox;
+        mCheckbox = checkbox;
         mCallbacks = callbacks;
-        checkbox.setChecked(mAutoRotation);
-        checkbox.setOnCheckedChangeListener(this);
+
+        mCheckbox.setOnCheckedChangeListener(this);
+
+        RotationPolicy.registerRotationPolicyListener(context, mRotationPolicyListener,
+                UserHandle.USER_ALL);
+        updateState();
     }
 
     public void onCheckedChanged(CompoundButton view, boolean checked) {
-        if (mSystemUpdate)
-            return;
-
         if (checked != mAutoRotation) {
-            setAutoRotation(checked);
+            mAutoRotation = checked;
+            RotationPolicy.setRotationLock(mContext, !checked);
         }
     }
 
@@ -85,43 +64,11 @@ public class AutoRotateController implements CompoundButton.OnCheckedChangeListe
 
     private void updateState() {
         mAutoRotation = !RotationPolicy.isRotationLocked(mContext);
-        mCheckBox.setChecked(mAutoRotation);
+        mCheckbox.setChecked(mAutoRotation);
 
         boolean visible = RotationPolicy.isRotationLockToggleVisible(mContext);
         mCallbacks.setRotationLockControlVisibility(visible);
-        mCheckBox.setEnabled(visible);
-    }
-
-    private void updateAccelerometerRotationCheckbox() {
-        mSystemUpdate = true;
-        mCheckBox.setChecked(Settings.System.getInt(
-                mContext.getContentResolver(),
-                Settings.System.ACCELEROMETER_ROTATION, 0) != 0);
-        mSystemUpdate = false;
-    }
-
-    private boolean getAutoRotation() {
-        ContentResolver cr = mContext.getContentResolver();
-        return 0 != Settings.System.getInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0);
-    }
-
-    private void setAutoRotation(final boolean autorotate) {
-        mAutoRotation = autorotate;
-        AsyncTask.execute(new Runnable() {
-            public void run() {
-                try {
-                    IWindowManager wm = IWindowManager.Stub.asInterface(
-                            ServiceManager.getService(Context.WINDOW_SERVICE));
-                    if (autorotate) {
-                        wm.thawRotation();
-                    } else {
-                        wm.freezeRotation(-1);
-                    }
-                } catch (RemoteException exc) {
-                    Log.w(TAG, "Unable to save auto-rotate setting");
-                }
-            }
-        });
+        mCheckbox.setEnabled(visible);
     }
 
     public interface RotationLockCallbacks {

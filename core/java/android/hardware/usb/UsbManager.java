@@ -178,6 +178,14 @@ public class UsbManager {
     public static final String USB_FUNCTION_PTP = "ptp";
 
     /**
+     * Name of the audio source USB function.
+     * Used in extras for the {@link #ACTION_USB_STATE} broadcast
+     *
+     * {@hide}
+     */
+    public static final String USB_FUNCTION_AUDIO_SOURCE = "audio_source";
+
+    /**
      * Name of the Accessory USB function.
      * Used in extras for the {@link #ACTION_USB_STATE} broadcast
      *

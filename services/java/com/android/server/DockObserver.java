@@ -16,8 +16,6 @@
 
 package com.android.server;
 
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -31,7 +29,6 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.UEventObserver;
 import android.provider.Settings;
-import android.server.BluetoothService;
 import android.util.Log;
 import android.util.Slog;
 
@@ -146,16 +143,10 @@ class DockObserver extends UEventObserver {
                         intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
                         intent.putExtra(Intent.EXTRA_DOCK_STATE, mDockState);
 
-                        // Check if this is Bluetooth Dock
-                        String address = BluetoothService.readDockBluetoothAddress();
-                        if (address != null)
-                            intent.putExtra(BluetoothDevice.EXTRA_DEVICE,
-                                    BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address));
-
                         // User feedback to confirm dock connection. Particularly
                         // useful for flaky contact pins...
-                        if (Settings.System.getInt(cr,
-                                Settings.System.DOCK_SOUNDS_ENABLED, 1) == 1)
+                        if (Settings.Global.getInt(cr,
+                                Settings.Global.DOCK_SOUNDS_ENABLED, 1) == 1)
                         {
                             String whichSound = null;
                             if (mDockState == Intent.EXTRA_DOCK_STATE_UNDOCKED) {

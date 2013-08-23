@@ -20,7 +20,6 @@ import android.app.DownloadManager;
 import android.app.backup.BackupManager;
 import android.content.Context;
 import android.media.MediaPlayer;
-import android.net.NetworkStats.NonMonotonicException;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 
@@ -44,6 +43,13 @@ public class TrafficStats {
      * The return value to indicate that the device does not support the statistic.
      */
     public final static int UNSUPPORTED = -1;
+
+    /** @hide */
+    public static final long KB_IN_BYTES = 1024;
+    /** @hide */
+    public static final long MB_IN_BYTES = KB_IN_BYTES * 1024;
+    /** @hide */
+    public static final long GB_IN_BYTES = MB_IN_BYTES * 1024;
 
     /**
      * Special UID value used when collecting {@link NetworkStatsHistory} for
@@ -193,15 +199,13 @@ public class TrafficStats {
                 throw new IllegalStateException("not profiling data");
             }
 
-            try {
-                // subtract starting values and return delta
-                final NetworkStats profilingStop = getDataLayerSnapshotForUid(context);
-                final NetworkStats profilingDelta = profilingStop.subtract(sActiveProfilingStart);
-                sActiveProfilingStart = null;
-                return profilingDelta;
-            } catch (NonMonotonicException e) {
-                throw new RuntimeException(e);
-            }
+            
+            // subtract starting values and return delta
+            final NetworkStats profilingStop = getDataLayerSnapshotForUid(context);
+            final NetworkStats profilingDelta = NetworkStats.subtract(
+                    profilingStop, sActiveProfilingStart, null, null);
+            sActiveProfilingStart = null;
+            return profilingDelta;
         }
     }
 
@@ -232,6 +236,19 @@ public class TrafficStats {
             statsService.incrementOperationCount(uid, tag, operationCount);
         } catch (RemoteException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /** {@hide} */
+    public static void closeQuietly(INetworkStatsSession session) {
+        // TODO: move to NetworkStatsService once it exists
+        if (session != null) {
+            try {
+                session.close();
+            } catch (RuntimeException rethrown) {
+                throw rethrown;
+            } catch (Exception ignored) {
+            }
         }
     }
 

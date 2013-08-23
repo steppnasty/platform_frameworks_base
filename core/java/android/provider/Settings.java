@@ -906,14 +906,27 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_ON);
             MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_RADIOS);
             MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_TOGGLEABLE_RADIOS);
+            MOVED_TO_GLOBAL.add(Settings.Global.AUTO_TIME);
+            MOVED_TO_GLOBAL.add(Settings.Global.AUTO_TIME_ZONE);
+            MOVED_TO_GLOBAL.add(Settings.Global.CAR_DOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.CAR_UNDOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.DESK_DOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.DESK_UNDOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.DOCK_SOUNDS_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.LOCK_SOUND);
             MOVED_TO_GLOBAL.add(Settings.Global.UNLOCK_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.LOW_BATTERY_SOUND);
+            MOVED_TO_GLOBAL.add(Settings.Global.POWER_SOUNDS_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.STAY_ON_WHILE_PLUGGED_IN);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SLEEP_POLICY);
+            MOVED_TO_GLOBAL.add(Settings.Global.MODE_RINGER);
             MOVED_TO_GLOBAL.add(Settings.Global.WINDOW_ANIMATION_SCALE);
             MOVED_TO_GLOBAL.add(Settings.Global.TRANSITION_ANIMATION_SCALE);
             MOVED_TO_GLOBAL.add(Settings.Global.ANIMATOR_DURATION_SCALE);
+            MOVED_TO_GLOBAL.add(Settings.Global.FANCY_IME_ANIMATIONS);
             MOVED_TO_GLOBAL.add(Settings.Global.COMPATIBILITY_MODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.EMERGENCY_TONE);
+            MOVED_TO_GLOBAL.add(Settings.Global.CALL_AUTO_RETRY);
             MOVED_TO_GLOBAL.add(Settings.Global.DEBUG_APP);
             MOVED_TO_GLOBAL.add(Settings.Global.WAIT_FOR_DEBUGGER);
             MOVED_TO_GLOBAL.add(Settings.Global.SHOW_PROCESSES);
@@ -1393,18 +1406,22 @@ public final class Settings {
         public static final String RADIO_WIFI = Global.RADIO_WIFI;
 
         /**
+         * @deprecated Use {@link android.provider.Settings.Global#RADIO_WIMAX} instead
          * {@hide}
          */
-        public static final String RADIO_WIMAX = "wimax";
+        @Deprecated
+        public static final String RADIO_WIMAX = Global.RADIO_WIMAX;
+
         /**
          * Constant for use in AIRPLANE_MODE_RADIOS to specify Cellular radio.
          */
         public static final String RADIO_CELL = "cell";
 
         /**
-         * Constant for use in AIRPLANE_MODE_RADIOS to specify NFC radio.
+         * @deprecated Use {@link android.provider.Settings.Global#RADIO_NFC} instead
          */
-        public static final String RADIO_NFC = "nfc";
+        @Deprecated
+        public static final String RADIO_NFC = Global.RADIO_NFC;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#AIRPLANE_MODE_RADIOS} instead
@@ -1777,10 +1794,10 @@ public final class Settings {
         public static final String MODE_VOLUME_OVERLAY = "mode_volume_overlay";
 
         /**
-         * Ringer mode. This is used internally, changing this value will not
-         * change the ringer mode. See AudioManager.
+         * @deprecated Use {@link android.provider.Settings.Global#MODE_RINGER} instead
          */
-        public static final String MODE_RINGER = "mode_ringer";
+        @Deprecated
+        public static final String MODE_RINGER = Global.MODE_RINGER;
 
         /**
          * Determines which streams are affected by ringer mode changes. The
@@ -2003,16 +2020,18 @@ public final class Settings {
         public static final String WALLPAPER_ACTIVITY = "wallpaper_activity";
 
         /**
-         * Value to specify if the user prefers the date, time and time zone
-         * to be automatically fetched from the network (NITZ). 1=yes, 0=no
+         * @deprecated Use {@link android.provider.Settings.Global#AUTO_TIME}
+         * instead
          */
-        public static final String AUTO_TIME = "auto_time";
+        @Deprecated
+        public static final String AUTO_TIME = Global.AUTO_TIME;
 
         /**
-         * Value to specify if the user prefers the time zone
-         * to be automatically fetched from the network (NITZ). 1=yes, 0=no
+         * @deprecated Use {@link android.provider.Settings.Global#AUTO_TIME_ZONE}
+         * instead
          */
-        public static final String AUTO_TIME_ZONE = "auto_time_zone";
+        @Deprecated
+        public static final String AUTO_TIME_ZONE = Global.AUTO_TIME_ZONE;
 
         /**
          * Display times as 12 or 24 hours
@@ -2065,13 +2084,6 @@ public final class Settings {
          */
         @Deprecated
         public static final String ANIMATOR_DURATION_SCALE = Global.ANIMATOR_DURATION_SCALE;
-
-        /**
-         * Scaling factor for normal window animations. Setting to 0 will disable window
-         * animations.
-         * @hide
-         */
-        public static final String FANCY_IME_ANIMATIONS = "fancy_ime_animations";
 
         /**
          * Control whether the accelerometer will be used to change screen
@@ -2146,23 +2158,6 @@ public final class Settings {
          * @hide
          */
         public static final String DTMF_TONE_TYPE_WHEN_DIALING = "dtmf_tone_type";
-
-        /**
-         * CDMA only settings
-         * Emergency Tone  0 = Off
-         *                 1 = Alert
-         *                 2 = Vibrate
-         * @hide
-         */
-        public static final String EMERGENCY_TONE = "emergency_tone";
-
-        /**
-         * CDMA only settings
-         * Whether the auto retry is enabled. The value is
-         * boolean (1 or 0).
-         * @hide
-         */
-        public static final String CALL_AUTO_RETRY = "call_auto_retry";
 
         /**
          * Whether the hearing aid is enabled. The value is
@@ -2250,16 +2245,20 @@ public final class Settings {
                 "window_orientation_listener_log";
 
         /**
-         * Whether to play a sound for low-battery alerts.
+         * @deprecated Use {@link android.provider.Settings.Global#POWER_SOUNDS_ENABLED}
+         * instead
          * @hide
          */
-        public static final String POWER_SOUNDS_ENABLED = "power_sounds_enabled";
+        @Deprecated
+        public static final String POWER_SOUNDS_ENABLED = Global.POWER_SOUNDS_ENABLED;
 
         /**
-         * Whether to play a sound for dock events.
+         * @deprecated Use {@link android.provider.Settings.Global#DOCK_SOUNDS_ENABLED}
+         * instead
          * @hide
          */
-        public static final String DOCK_SOUNDS_ENABLED = "dock_sounds_enabled";
+        @Deprecated
+        public static final String DOCK_SOUNDS_ENABLED = Global.DOCK_SOUNDS_ENABLED;
 
         /**
          * Whether to play sounds when the keyguard is shown and dismissed.
@@ -2286,34 +2285,44 @@ public final class Settings {
         public static final String LOCKSCREEN_VIBRATE_DISABLED = "lockscreen.vibrate_disabled";
 
         /**
-         * URI for the low battery sound file.
+         * @deprecated Use {@link android.provider.Settings.Global#LOW_BATTERY_SOUND}
+         * instead
          * @hide
          */
-        public static final String LOW_BATTERY_SOUND = "low_battery_sound";
+        @Deprecated
+        public static final String LOW_BATTERY_SOUND = Global.LOW_BATTERY_SOUND;
 
         /**
-         * URI for the desk dock "in" event sound.
+         * @deprecated Use {@link android.provider.Settings.Global#DESK_DOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String DESK_DOCK_SOUND = "desk_dock_sound";
+        @Deprecated
+        public static final String DESK_DOCK_SOUND = Global.DESK_DOCK_SOUND;
 
         /**
-         * URI for the desk dock "out" event sound.
+         * @deprecated Use {@link android.provider.Settings.Global#DESK_UNDOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String DESK_UNDOCK_SOUND = "desk_undock_sound";
+        @Deprecated
+        public static final String DESK_UNDOCK_SOUND = Global.DESK_UNDOCK_SOUND;
 
         /**
-         * URI for the car dock "in" event sound.
+         * @deprecated Use {@link android.provider.Settings.Global#CAR_DOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String CAR_DOCK_SOUND = "car_dock_sound";
+        @Deprecated
+        public static final String CAR_DOCK_SOUND = Global.CAR_DOCK_SOUND;
 
         /**
-         * URI for the car dock "out" event sound.
+         * @deprecated Use {@link android.provider.Settings.Global#CAR_UNDOCK_SOUND}
+         * instead
          * @hide
          */
-        public static final String CAR_UNDOCK_SOUND = "car_undock_sound";
+        @Deprecated
+        public static final String CAR_UNDOCK_SOUND = Global.CAR_UNDOCK_SOUND;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#LOCK_SOUND}
@@ -2763,7 +2772,7 @@ public final class Settings {
             SCREEN_AUTO_BRIGHTNESS_ADJ,
             VIBRATE_INPUT_DEVICES,
             VIBRATE_ON,
-            MODE_RINGER,
+            MODE_RINGER,                // moved to global
             MODE_RINGER_STREAMS_AFFECTED,
             MUTE_STREAMS_AFFECTED,
             VOLUME_VOICE,
@@ -2785,23 +2794,21 @@ public final class Settings {
             TEXT_AUTO_CAPS,
             TEXT_AUTO_PUNCTUATE,
             TEXT_SHOW_PASSWORD,
-            AUTO_TIME,
-            AUTO_TIME_ZONE,
+            AUTO_TIME,                  // moved to global
+            AUTO_TIME_ZONE,             // moved to global
             TIME_12_24,
             DATE_FORMAT,
             ACCELEROMETER_ROTATION,
             USER_ROTATION,
             DTMF_TONE_WHEN_DIALING,
             DTMF_TONE_TYPE_WHEN_DIALING,
-            EMERGENCY_TONE,
-            CALL_AUTO_RETRY,
             HEARING_AID,
             TTY_MODE,
             NOISE_SUPPRESSION,
             SOUND_EFFECTS_ENABLED,
             HAPTIC_FEEDBACK_ENABLED,
-            POWER_SOUNDS_ENABLED,
-            DOCK_SOUNDS_ENABLED,
+            POWER_SOUNDS_ENABLED,       // moved to global
+            DOCK_SOUNDS_ENABLED,        // moved to global
             LOCKSCREEN_SOUNDS_ENABLED,
             SHOW_WEB_SUGGESTIONS,
             NOTIFICATION_LIGHT_PULSE,
@@ -2869,10 +2876,10 @@ public final class Settings {
         public static final String LOGGING_ID = Secure.LOGGING_ID;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#NETWORK_PREFERENCE} instead
+         * @deprecated Use {@link android.provider.Settings.Global#NETWORK_PREFERENCE} instead
          */
         @Deprecated
-        public static final String NETWORK_PREFERENCE = Secure.NETWORK_PREFERENCE;
+        public static final String NETWORK_PREFERENCE = Global.NETWORK_PREFERENCE;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Secure#PARENTAL_CONTROL_ENABLED}
@@ -3099,7 +3106,13 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.ADB_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.ASSISTED_GPS_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.BLUETOOTH_ON);
+            MOVED_TO_GLOBAL.add(Settings.Global.CDMA_CELL_BROADCAST_SMS);
+            MOVED_TO_GLOBAL.add(Settings.Global.CDMA_ROAMING_MODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.CDMA_SUBSCRIPTION_MODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.DATA_ACTIVITY_TIMEOUT_MOBILE);
+            MOVED_TO_GLOBAL.add(Settings.Global.DATA_ACTIVITY_TIMEOUT_WIFI);
             MOVED_TO_GLOBAL.add(Settings.Global.DATA_ROAMING);
+            MOVED_TO_GLOBAL.add(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.DEVICE_PROVISIONED);
             MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_DENSITY_FORCED);
             MOVED_TO_GLOBAL.add(Settings.Global.DISPLAY_SIZE_FORCED);
@@ -3107,6 +3120,43 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE);
             MOVED_TO_GLOBAL.add(Settings.Global.INSTALL_NON_MARKET_APPS);
             MOVED_TO_GLOBAL.add(Settings.Global.MOBILE_DATA);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_DEV_BUCKET_DURATION);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_DEV_DELETE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_DEV_PERSIST_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_DEV_ROTATE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_GLOBAL_ALERT_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_POLL_INTERVAL);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_REPORT_XT_OVER_DEV);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_SAMPLE_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_TIME_CACHE_MAX_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_BUCKET_DURATION);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_DELETE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_PERSIST_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_ROTATE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_TAG_BUCKET_DURATION);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_TAG_DELETE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_TAG_PERSIST_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETSTATS_UID_TAG_ROTATE_AGE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NETWORK_PREFERENCE);
+            MOVED_TO_GLOBAL.add(Settings.Global.NITZ_UPDATE_DIFF);
+            MOVED_TO_GLOBAL.add(Settings.Global.NITZ_UPDATE_SPACING);
+            MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_ERROR_POLL_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_LONG_POLL_INTERVAL_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_POLL_INTERVAL_MS);
+            MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_TRIGGER_PACKET_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.SETUP_PREPAID_DATA_SERVICE_URL);
+            MOVED_TO_GLOBAL.add(Settings.Global.TETHER_DUN_APN);
+            MOVED_TO_GLOBAL.add(Settings.Global.TETHER_DUN_REQUIRED);
+            MOVED_TO_GLOBAL.add(Settings.Global.TETHER_SUPPORTED);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_HELP_URI);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_MAX_NTP_CACHE_AGE_SEC);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_NOTIFICATION_TYPE);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_POLLING_SEC);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_RESET_DAY);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_THRESHOLD_BYTES);
+            MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_VALUE_KBITSPS);
             MOVED_TO_GLOBAL.add(Settings.Global.USB_MASS_STORAGE_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.WEB_AUTOFILL_QUERY_URL);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_COUNTRY_CODE);
@@ -3162,6 +3212,7 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.SET_GLOBAL_HTTP_PROXY);
             MOVED_TO_GLOBAL.add(Settings.Global.DEFAULT_DNS_SERVER);
             MOVED_TO_GLOBAL.add(Settings.Global.PREFERRED_NETWORK_MODE);
+            MOVED_TO_GLOBAL.add(Settings.Global.PREFERRED_CDMA_SUBSCRIPTION);
         }
 
         /** @hide */
@@ -3507,6 +3558,14 @@ public final class Settings {
         }
 
         /**
+         * @deprecated Use {@link android.provider.Settings.Global#DEVELOPMENT_SETTINGS_ENABLED}
+         * instead
+         */
+        @Deprecated
+        public static final String DEVELOPMENT_SETTINGS_ENABLED =
+                Global.DEVELOPMENT_SETTINGS_ENABLED;
+
+        /**
          * When the user has enable the option to have a "bug report" command
          * in the power menu.
          * @hide
@@ -3546,30 +3605,6 @@ public final class Settings {
          */
         @Deprecated
         public static final String BLUETOOTH_ON = Global.BLUETOOTH_ON;
-
-        /**
-         * Get the key that retrieves a bluetooth headset's priority.
-         * @hide
-         */
-        public static final String getBluetoothHeadsetPriorityKey(String address) {
-            return ("bluetooth_headset_priority_" + address.toUpperCase());
-        }
-
-        /**
-         * Get the key that retrieves a bluetooth a2dp sink's priority.
-         * @hide
-         */
-        public static final String getBluetoothA2dpSinkPriorityKey(String address) {
-            return ("bluetooth_a2dp_sink_priority_" + address.toUpperCase());
-        }
-
-        /**
-         * Get the key that retrieves a bluetooth Input Device's priority.
-         * @hide
-         */
-        public static final String getBluetoothInputDevicePriorityKey(String address) {
-            return ("bluetooth_input_device_priority_" + address.toUpperCase());
-        }
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#DATA_ROAMING} instead
@@ -3783,34 +3818,10 @@ public final class Settings {
         public static final String LOGGING_ID = "logging_id";
 
         /**
-         * User preference for which network(s) should be used. Only the
-         * connectivity service should touch this.
+         * @deprecated Use {@link android.provider.Settings.Global#NETWORK_PREFERENCE} instead
          */
-        public static final String NETWORK_PREFERENCE = "network_preference";
-
-        /**
-         * Used to disable Tethering on a device - defaults to true
-         * @hide
-         */
-        public static final String TETHER_SUPPORTED = "tether_supported";
-
-        /**
-         * Used to require DUN APN on the device or not - defaults to a build config value
-         * which defaults to false
-         * @hide
-         */
-        public static final String TETHER_DUN_REQUIRED = "tether_dun_required";
-
-        /**
-         * Used to hold a gservices-provisioned apn value for DUN.  If set, or the
-         * corresponding build config values are set it will override the APN DB
-         * values.
-         * Consists of a comma seperated list of strings:
-         * "name,apn,proxy,port,username,password,server,mmsc,mmsproxy,mmsport,mcc,mnc,auth,type"
-         * note that empty fields can be ommitted: "name,apn,,,,,,,,,310,260,,DUN"
-         * @hide
-         */
-        public static final String TETHER_DUN_APN = "tether_dun_apn";
+        @Deprecated
+        public static final String NETWORK_PREFERENCE = Global.NETWORK_PREFERENCE;
 
         /** DHCP lease time for tethering in seconds {@hide} */
         public static final String TETHER_LEASE_TIME = "tether_lease_time";
@@ -3861,13 +3872,6 @@ public final class Settings {
          * to Gmail on the device must change to Google Mail.
          */
         public static final String USE_GOOGLE_MAIL = "use_google_mail";
-
-        /**
-         * Whether Wifi display is enabled/disabled
-         * 0=disabled. 1=enabled.
-         * @hide
-         */
-        public static final String WIFI_DISPLAY_ON = "wifi_display_on";
 
         /**
          * If accessibility is enabled.
@@ -4347,21 +4351,6 @@ public final class Settings {
                 = "allowed_geolocation_origins";
 
         /**
-         * The CDMA roaming mode 0 = Home Networks, CDMA default
-         *                       1 = Roaming on Affiliated networks
-         *                       2 = Roaming on any networks
-         * @hide
-         */
-        public static final String CDMA_ROAMING_MODE = "roaming_settings";
-
-        /**
-         * The CDMA subscription mode 0 = RUIM/SIM (default)
-         *                                1 = NV
-         * @hide
-         */
-        public static final String CDMA_SUBSCRIPTION_MODE = "subscription_mode";
-
-        /**
          * The preferred network mode   7 = Global
          *                              6 = EvDo only
          *                              5 = CDMA w/o EvDo
@@ -4384,24 +4373,6 @@ public final class Settings {
          */
         public static final String PREFERRED_TTY_MODE =
                 "preferred_tty_mode";
-
-
-        /**
-         * CDMA Cell Broadcast SMS
-         *                            0 = CDMA Cell Broadcast SMS disabled
-         *                            1 = CDMA Cell Broadcast SMS enabled
-         * @hide
-         */
-        public static final String CDMA_CELL_BROADCAST_SMS =
-                "cdma_cell_broadcast_sms";
-
-        /**
-         * The cdma subscription 0 = Subscription from RUIM, when available
-         *                       1 = Subscription from NV
-         * @hide
-         */
-        public static final String PREFERRED_CDMA_SUBSCRIPTION =
-                "preferred_cdma_subscription";
 
         /**
          * Whether the enhanced voice privacy mode is enabled.
@@ -4678,91 +4649,6 @@ public final class Settings {
          */
         @Deprecated
         public static final String WIFI_IDLE_MS = Global.WIFI_IDLE_MS;
-
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface when screen is on, to detect possible data
-         * connection problems.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_POLL_INTERVAL_MS =
-                "pdp_watchdog_poll_interval_ms";
-
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface when screen is off, to detect possible data
-         * connection problems.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_LONG_POLL_INTERVAL_MS =
-                "pdp_watchdog_long_poll_interval_ms";
-
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface after {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT}
-         * outgoing packets has been reached without incoming packets.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS =
-                "pdp_watchdog_error_poll_interval_ms";
-
-        /**
-         * The number of outgoing packets sent without seeing an incoming packet
-         * that triggers a countdown (of {@link #PDP_WATCHDOG_ERROR_POLL_COUNT}
-         * device is logged to the event log
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_TRIGGER_PACKET_COUNT =
-                "pdp_watchdog_trigger_packet_count";
-
-        /**
-         * The number of polls to perform (at {@link #PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS})
-         * after hitting {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT} before
-         * attempting data connection recovery.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_ERROR_POLL_COUNT =
-                "pdp_watchdog_error_poll_count";
-
-        /**
-         * The number of failed PDP reset attempts before moving to something more
-         * drastic: re-registering to the network.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT =
-                "pdp_watchdog_max_pdp_reset_fail_count";
-
-        /**
-         * The length of time in milli-seconds that automatic small adjustments to
-         * SystemClock are ignored if NITZ_UPDATE_DIFF is not exceeded.
-         * @hide
-         */
-        public static final String NITZ_UPDATE_SPACING = "nitz_update_spacing";
-
-        /**
-         * If the NITZ_UPDATE_DIFF time is exceeded then an automatic adjustment
-         * to SystemClock will be allowed even if NITZ_UPDATE_SPACING has not been
-         * exceeded.
-         * @hide
-         */
-        public static final String NITZ_UPDATE_DIFF = "nitz_update_diff";
-
-        /**
-         * The interval in milliseconds at which to check the number of SMS sent
-         * out without asking for use permit, to limit the un-authorized SMS
-         * usage.
-         * @hide
-         */
-        public static final String SMS_OUTGOING_CHECK_INTERVAL_MS =
-                "sms_outgoing_check_interval_ms";
-
-        /**
-         * The number of outgoing SMS sent without asking for user permit
-         * (of {@link #SMS_OUTGOING_CHECK_INTERVAL_MS}
-         * @hide
-         */
-        public static final String SMS_OUTGOING_CHECK_MAX_COUNT =
-                "sms_outgoing_check_max_count";
 
         /**
          * The global search provider chosen by the user (if multiple global
@@ -5067,50 +4953,6 @@ public final class Settings {
         public static final String SET_INSTALL_LOCATION = "set_install_location";
 
         /**
-         * The bandwidth throttle polling freqency in seconds
-         * @hide
-         */
-        public static final String THROTTLE_POLLING_SEC = "throttle_polling_sec";
-
-        /**
-         * The bandwidth throttle threshold (long)
-         * @hide
-         */
-        public static final String THROTTLE_THRESHOLD_BYTES = "throttle_threshold_bytes";
-
-        /**
-         * The bandwidth throttle value (kbps)
-         * @hide
-         */
-        public static final String THROTTLE_VALUE_KBITSPS = "throttle_value_kbitsps";
-
-        /**
-         * The bandwidth throttle reset calendar day (1-28)
-         * @hide
-         */
-        public static final String THROTTLE_RESET_DAY = "throttle_reset_day";
-
-        /**
-         * The throttling notifications we should send
-         * @hide
-         */
-        public static final String THROTTLE_NOTIFICATION_TYPE = "throttle_notification_type";
-
-        /**
-         * Help URI for data throttling policy
-         * @hide
-         */
-        public static final String THROTTLE_HELP_URI = "throttle_help_uri";
-
-        /**
-         * The length of time in Sec that we allow our notion of NTP time
-         * to be cached before we refresh it
-         * @hide
-         */
-        public static final String THROTTLE_MAX_NTP_CACHE_AGE_SEC =
-                "throttle_max_ntp_cache_age_sec";
-
-        /**
          * ms during which to consume extra events related to Inet connection condition
          * after a transtion to fully-connected
          * @hide
@@ -5127,13 +4969,6 @@ public final class Settings {
                 "inet_condition_debounce_down_delay";
 
         /**
-         * URL to open browser on to allow user to manage a prepay account
-         * @hide
-         */
-        public static final String SETUP_PREPAID_DATA_SERVICE_URL =
-                "setup_prepaid_data_service_url";
-
-        /**
          * URL to attempt a GET on to see if this is a prepay device
          * @hide
          */
@@ -5148,23 +4983,6 @@ public final class Settings {
          */
         public static final String SETUP_PREPAID_DETECTION_REDIR_HOST =
                 "setup_prepaid_detection_redir_host";
-
-        /** {@hide} */
-        public static final String NETSTATS_ENABLED = "netstats_enabled";
-        /** {@hide} */
-        public static final String NETSTATS_POLL_INTERVAL = "netstats_poll_interval";
-        /** {@hide} */
-        public static final String NETSTATS_PERSIST_THRESHOLD = "netstats_persist_threshold";
-        /** {@hide} */
-        public static final String NETSTATS_NETWORK_BUCKET_DURATION = "netstats_network_bucket_duration";
-        /** {@hide} */
-        public static final String NETSTATS_NETWORK_MAX_HISTORY = "netstats_network_max_history";
-        /** {@hide} */
-        public static final String NETSTATS_UID_BUCKET_DURATION = "netstats_uid_bucket_duration";
-        /** {@hide} */
-        public static final String NETSTATS_UID_MAX_HISTORY = "netstats_uid_max_history";
-        /** {@hide} */
-        public static final String NETSTATS_TAG_MAX_HISTORY = "netstats_tag_max_history";
 
         /** Preferred NTP server. {@hide} */
         public static final String NTP_SERVER = "ntp_server";
@@ -5323,6 +5141,16 @@ public final class Settings {
         public static final String RADIO_WIFI = "wifi";
 
         /**
+         * {@hide}
+         */
+        public static final String RADIO_WIMAX = "wimax";
+
+        /**
+         * Constant for use in AIRPLANE_MODE_RADIOS to specify NFC radio.
+         */
+        public static final String RADIO_NFC = "nfc";
+
+        /**
          * A comma separated list of radios that need to be disabled when airplane mode
          * is on. This overrides WIFI_ON and BLUETOOTH_ON, if Wi-Fi and bluetooth are
          * included in the comma separated list.
@@ -5363,6 +5191,48 @@ public final class Settings {
         public static final int WIFI_SLEEP_POLICY_NEVER = 2;
 
         /**
+         * Value to specify if the user prefers the date, time and time zone
+         * to be automatically fetched from the network (NITZ). 1=yes, 0=no
+         */
+        public static final String AUTO_TIME = "auto_time";
+
+        /**
+         * Value to specify if the user prefers the time zone
+         * to be automatically fetched from the network (NITZ). 1=yes, 0=no
+         */
+        public static final String AUTO_TIME_ZONE = "auto_time_zone";
+
+        /**
+         * URI for the car dock "in" event sound.
+         * @hide
+         */
+        public static final String CAR_DOCK_SOUND = "car_dock_sound";
+
+        /**
+         * URI for the car dock "out" event sound.
+         * @hide
+         */
+        public static final String CAR_UNDOCK_SOUND = "car_undock_sound";
+
+        /**
+         * URI for the desk dock "in" event sound.
+         * @hide
+         */
+        public static final String DESK_DOCK_SOUND = "desk_dock_sound";
+
+        /**
+         * URI for the desk dock "out" event sound.
+         * @hide
+         */
+        public static final String DESK_UNDOCK_SOUND = "desk_undock_sound";
+
+        /**
+         * Whether to play a sound for dock events.
+         * @hide
+         */
+        public static final String DOCK_SOUNDS_ENABLED = "dock_sounds_enabled";
+
+        /**
          * URI for the "device locked" (keyguard shown) sound.
          * @hide
          */
@@ -5373,6 +5243,18 @@ public final class Settings {
          * @hide
          */
         public static final String UNLOCK_SOUND = "unlock_sound";
+
+        /**
+         * URI for the low battery sound file.
+         * @hide
+         */
+        public static final String LOW_BATTERY_SOUND = "low_battery_sound";
+
+        /**
+         * Whether to play a sound for low-battery alerts.
+         * @hide
+         */
+        public static final String POWER_SOUNDS_ENABLED = "power_sounds_enabled";
 
         /**
          * URI for the "wireless charging started" sound.
@@ -5412,9 +5294,61 @@ public final class Settings {
         public static final String BLUETOOTH_ON = "bluetooth_on";
 
         /**
+         * CDMA Cell Broadcast SMS
+         *                            0 = CDMA Cell Broadcast SMS disabled
+         *                            1 = CDMA Cell Broadcast SMS enabled
+         * @hide
+         */
+        public static final String CDMA_CELL_BROADCAST_SMS =
+                "cdma_cell_broadcast_sms";
+
+        /**
+         * The CDMA roaming mode 0 = Home Networks, CDMA default
+         *                       1 = Roaming on Affiliated networks
+         *                       2 = Roaming on any networks
+         * @hide
+         */
+        public static final String CDMA_ROAMING_MODE = "roaming_settings";
+
+        /**
+         * The CDMA subscription mode 0 = RUIM/SIM (default)
+         *                                1 = NV
+         * @hide
+         */
+        public static final String CDMA_SUBSCRIPTION_MODE = "subscription_mode";
+
+        /** Inactivity timeout to track mobile data activity.
+         *
+         * If set to a positive integer, it indicates the inactivity timeout value in seconds to
+         * infer the data activity of mobile network. After a period of no activity on mobile
+         * networks with length specified by the timeout, an {@code ACTION_DATA_ACTIVITY_CHANGE}
+         * intent is fired to indicate a transition of network status from "active" to "idle". Any
+         * subsequent activity on mobile networks triggers the firing of {@code
+         * ACTION_DATA_ACTIVITY_CHANGE} intent indicating transition from "idle" to "active".
+         *
+         * Network activity refers to transmitting or receiving data on the network interfaces.
+         *
+         * Tracking is disabled if set to zero or negative value.
+         *
+         * @hide
+         */
+        public static final String DATA_ACTIVITY_TIMEOUT_MOBILE = "data_activity_timeout_mobile";
+
+        /** Timeout to tracking Wifi data activity. Same as {@code DATA_ACTIVITY_TIMEOUT_MOBILE}
+        * but for Wifi network.
+        * @hide
+        */
+       public static final String DATA_ACTIVITY_TIMEOUT_WIFI = "data_activity_timeout_wifi";
+
+        /**
          * Whether or not data roaming is enabled. (0 = false, 1 = true)
          */
         public static final String DATA_ROAMING = "data_roaming";
+
+        /**
+         * Whether user has enabled development settings.
+         */
+        public static final String DEVELOPMENT_SETTINGS_ENABLED = "development_settings_enabled";
 
         /**
          * Whether the device has been provisioned (0 = false, 1 = true)
@@ -5468,6 +5402,230 @@ public final class Settings {
          */
         public static final String MOBILE_DATA = "mobile_data";
 
+        /** {@hide} */
+        public static final String NETSTATS_ENABLED = "netstats_enabled";
+        /** {@hide} */
+        public static final String NETSTATS_POLL_INTERVAL = "netstats_poll_interval";
+        /** {@hide} */
+        public static final String NETSTATS_TIME_CACHE_MAX_AGE = "netstats_time_cache_max_age";
+        /** {@hide} */
+        public static final String NETSTATS_GLOBAL_ALERT_BYTES = "netstats_global_alert_bytes";
+        /** {@hide} */
+        public static final String NETSTATS_SAMPLE_ENABLED = "netstats_sample_enabled";
+        /** {@hide} */
+        public static final String NETSTATS_REPORT_XT_OVER_DEV = "netstats_report_xt_over_dev";
+
+        /** {@hide} */
+        public static final String NETSTATS_DEV_BUCKET_DURATION = "netstats_dev_bucket_duration";
+        /** {@hide} */
+        public static final String NETSTATS_DEV_PERSIST_BYTES = "netstats_dev_persist_bytes";
+        /** {@hide} */
+        public static final String NETSTATS_DEV_ROTATE_AGE = "netstats_dev_rotate_age";
+        /** {@hide} */
+        public static final String NETSTATS_DEV_DELETE_AGE = "netstats_dev_delete_age";
+
+        /** {@hide} */
+        public static final String NETSTATS_UID_BUCKET_DURATION = "netstats_uid_bucket_duration";
+        /** {@hide} */
+        public static final String NETSTATS_UID_PERSIST_BYTES = "netstats_uid_persist_bytes";
+        /** {@hide} */
+        public static final String NETSTATS_UID_ROTATE_AGE = "netstats_uid_rotate_age";
+        /** {@hide} */
+        public static final String NETSTATS_UID_DELETE_AGE = "netstats_uid_delete_age";
+
+        /** {@hide} */
+        public static final String NETSTATS_UID_TAG_BUCKET_DURATION = "netstats_uid_tag_bucket_duration";
+        /** {@hide} */
+        public static final String NETSTATS_UID_TAG_PERSIST_BYTES = "netstats_uid_tag_persist_bytes";
+        /** {@hide} */
+        public static final String NETSTATS_UID_TAG_ROTATE_AGE = "netstats_uid_tag_rotate_age";
+        /** {@hide} */
+        public static final String NETSTATS_UID_TAG_DELETE_AGE = "netstats_uid_tag_delete_age";
+
+        /**
+         * User preference for which network(s) should be used. Only the
+         * connectivity service should touch this.
+         */
+        public static final String NETWORK_PREFERENCE = "network_preference";
+
+        /**
+         * If the NITZ_UPDATE_DIFF time is exceeded then an automatic adjustment
+         * to SystemClock will be allowed even if NITZ_UPDATE_SPACING has not been
+         * exceeded.
+         * @hide
+         */
+        public static final String NITZ_UPDATE_DIFF = "nitz_update_diff";
+
+        /**
+         * The length of time in milli-seconds that automatic small adjustments to
+         * SystemClock are ignored if NITZ_UPDATE_DIFF is not exceeded.
+         * @hide
+         */
+        public static final String NITZ_UPDATE_SPACING = "nitz_update_spacing";
+
+        /**
+         * The interval in milliseconds at which to check packet counts on the
+         * mobile data interface when screen is on, to detect possible data
+         * connection problems.
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_POLL_INTERVAL_MS =
+                "pdp_watchdog_poll_interval_ms";
+
+        /**
+         * The interval in milliseconds at which to check packet counts on the
+         * mobile data interface when screen is off, to detect possible data
+         * connection problems.
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_LONG_POLL_INTERVAL_MS =
+                "pdp_watchdog_long_poll_interval_ms";
+
+        /**
+         * The interval in milliseconds at which to check packet counts on the
+         * mobile data interface after {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT}
+         * outgoing packets has been reached without incoming packets.
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS =
+                "pdp_watchdog_error_poll_interval_ms";
+
+        /**
+         * The number of outgoing packets sent without seeing an incoming packet
+         * that triggers a countdown (of {@link #PDP_WATCHDOG_ERROR_POLL_COUNT}
+         * device is logged to the event log
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_TRIGGER_PACKET_COUNT =
+                "pdp_watchdog_trigger_packet_count";
+
+        /**
+         * The number of polls to perform (at {@link #PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS})
+         * after hitting {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT} before
+         * attempting data connection recovery.
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_ERROR_POLL_COUNT =
+                "pdp_watchdog_error_poll_count";
+
+        /**
+         * The number of failed PDP reset attempts before moving to something more
+         * drastic: re-registering to the network.
+         * @hide
+         */
+        public static final String PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT =
+                "pdp_watchdog_max_pdp_reset_fail_count";
+
+        /**
+         * URL to open browser on to allow user to manage a prepay account
+         * @hide
+         */
+        public static final String SETUP_PREPAID_DATA_SERVICE_URL =
+               "setup_prepaid_data_service_url";
+
+        /**
+         * The interval in milliseconds at which to check the number of SMS sent out without asking
+         * for use permit, to limit the un-authorized SMS usage.
+         *
+         * @hide
+         */
+        public static final String SMS_OUTGOING_CHECK_INTERVAL_MS =
+                "sms_outgoing_check_interval_ms";
+
+        /**
+         * The number of outgoing SMS sent without asking for user permit (of {@link
+         * #SMS_OUTGOING_CHECK_INTERVAL_MS}
+         *
+         * @hide
+         */
+        public static final String SMS_OUTGOING_CHECK_MAX_COUNT =
+                "sms_outgoing_check_max_count";
+
+        /**
+         * Used to disable SMS short code confirmation - defaults to true.
+         * True indcates we will do the check, etc.  Set to false to disable.
+         * @see com.android.internal.telephony.SmsUsageMonitor
+         * @hide
+         */
+        public static final String SMS_SHORT_CODE_CONFIRMATION = "sms_short_code_confirmation";
+
+        /**
+         * Used to select which country we use to determine premium sms codes.
+         * One of com.android.internal.telephony.SMSDispatcher.PREMIUM_RULE_USE_SIM,
+         * com.android.internal.telephony.SMSDispatcher.PREMIUM_RULE_USE_NETWORK,
+         * or com.android.internal.telephony.SMSDispatcher.PREMIUM_RULE_USE_BOTH.
+         * @hide
+         */
+        public static final String SMS_SHORT_CODE_RULE = "sms_short_code_rule";
+
+        /**
+         * Used to disable Tethering on a device - defaults to true
+         * @hide
+         */
+        public static final String TETHER_SUPPORTED = "tether_supported";
+
+        /**
+         * Used to require DUN APN on the device or not - defaults to a build config value
+         * which defaults to false
+         * @hide
+         */
+        public static final String TETHER_DUN_REQUIRED = "tether_dun_required";
+
+        /**
+         * Used to hold a gservices-provisioned apn value for DUN.  If set, or the
+         * corresponding build config values are set it will override the APN DB
+         * values.
+         * Consists of a comma seperated list of strings:
+         * "name,apn,proxy,port,username,password,server,mmsc,mmsproxy,mmsport,mcc,mnc,auth,type"
+         * note that empty fields can be ommitted: "name,apn,,,,,,,,,310,260,,DUN"
+         * @hide
+         */
+        public static final String TETHER_DUN_APN = "tether_dun_apn";
+
+        /**
+         * The bandwidth throttle polling freqency in seconds
+         * @hide
+         */
+        public static final String THROTTLE_POLLING_SEC = "throttle_polling_sec";
+
+        /**
+         * The bandwidth throttle threshold (long)
+         * @hide
+         */
+        public static final String THROTTLE_THRESHOLD_BYTES = "throttle_threshold_bytes";
+
+        /**
+         * The bandwidth throttle value (kbps)
+         * @hide
+         */
+        public static final String THROTTLE_VALUE_KBITSPS = "throttle_value_kbitsps";
+
+        /**
+         * The bandwidth throttle reset calendar day (1-28)
+         * @hide
+         */
+        public static final String THROTTLE_RESET_DAY = "throttle_reset_day";
+
+        /**
+         * The throttling notifications we should send
+         * @hide
+         */
+        public static final String THROTTLE_NOTIFICATION_TYPE = "throttle_notification_type";
+
+        /**
+         * Help URI for data throttling policy
+         * @hide
+         */
+        public static final String THROTTLE_HELP_URI = "throttle_help_uri";
+
+        /**
+         * The length of time in Sec that we allow our notion of NTP time
+         * to be cached before we refresh it
+         * @hide
+         */
+        public static final String THROTTLE_MAX_NTP_CACHE_AGE_SEC =
+                "throttle_max_ntp_cache_age_sec";
+
         /**
          * USB Mass Storage Enabled
          */
@@ -5502,12 +5660,27 @@ public final class Settings {
         public static final String PACKAGE_VERIFIER_DEFAULT_RESPONSE = "verifier_default_response";
 
         /**
+         * Show package verification setting in the Settings app.
+         * 1 = show (default)
+         * 0 = hide
+         * @hide
+         */
+        public static final String PACKAGE_VERIFIER_SETTING_VISIBLE = "verifier_setting_visible";
+
+        /**
          * Run package verificaiton on apps installed through ADB/ADT/USB
          * 1 = perform package verification on ADB installs (default)
          * 0 = bypass package verification on ADB installs
          * @hide
          */
         public static final String PACKAGE_VERIFIER_INCLUDE_ADB = "verifier_verify_adb_installs";
+
+        /**
+         * Whether Wifi display is enabled/disabled
+         * 0=disabled. 1=enabled.
+         * @hide
+         */
+        public static final String WIFI_DISPLAY_ON = "wifi_display_on";
 
         /**
          * Whether to notify the user of open networks.
@@ -5647,6 +5820,12 @@ public final class Settings {
          * @hide
          */
         public static final String WTF_IS_FATAL = "wtf_is_fatal";
+
+        /**
+         * Ringer mode. This is used internally, changing this value will not
+         * change the ringer mode. See AudioManager.
+         */
+        public static final String MODE_RINGER = "mode_ringer";
 
         /**
         * Overlay display devices setting.
@@ -5923,6 +6102,40 @@ public final class Settings {
          */
         public static final String DEFAULT_DNS_SERVER = "default_dns_server";
 
+        /** {@hide} */
+        public static final String
+                BLUETOOTH_HEADSET_PRIORITY_PREFIX = "bluetooth_headset_priority_";
+        /** {@hide} */
+        public static final String
+                BLUETOOTH_A2DP_SINK_PRIORITY_PREFIX = "bluetooth_a2dp_sink_priority_";
+        /** {@hide} */
+        public static final String
+                BLUETOOTH_INPUT_DEVICE_PRIORITY_PREFIX = "bluetooth_input_device_priority_";
+
+        /**
+         * Get the key that retrieves a bluetooth headset's priority.
+         * @hide
+         */
+        public static final String getBluetoothHeadsetPriorityKey(String address) {
+            return BLUETOOTH_HEADSET_PRIORITY_PREFIX + address.toUpperCase();
+        }
+
+        /**
+         * Get the key that retrieves a bluetooth a2dp sink's priority.
+         * @hide
+         */
+        public static final String getBluetoothA2dpSinkPriorityKey(String address) {
+            return BLUETOOTH_A2DP_SINK_PRIORITY_PREFIX + address.toUpperCase();
+        }
+
+        /**
+         * Get the key that retrieves a bluetooth Input Device's priority.
+         * @hide
+         */
+        public static final String getBluetoothInputDevicePriorityKey(String address) {
+            return BLUETOOTH_INPUT_DEVICE_PRIORITY_PREFIX + address.toUpperCase();
+        }
+
         /**
          * Scaling factor for normal window animations. Setting to 0 will
          * disable window animations.
@@ -5943,12 +6156,37 @@ public final class Settings {
         public static final String ANIMATOR_DURATION_SCALE = "animator_duration_scale";
 
         /**
+         * Scaling factor for normal window animations. Setting to 0 will
+         * disable window animations.
+         *
+         * @hide
+         */
+        public static final String FANCY_IME_ANIMATIONS = "fancy_ime_animations";
+
+        /**
          * If 0, the compatibility mode is off for all applications.
          * If 1, older applications run under compatibility mode.
          * TODO: remove this settings before code freeze (bug/1907571)
          * @hide
          */
         public static final String COMPATIBILITY_MODE = "compatibility_mode";
+
+        /**
+         * CDMA only settings
+         * Emergency Tone  0 = Off
+         *                 1 = Alert
+         *                 2 = Vibrate
+         * @hide
+         */
+        public static final String EMERGENCY_TONE = "emergency_tone";
+
+        /**
+         * CDMA only settings
+         * Whether the auto retry is enabled. The value is
+         * boolean (1 or 0).
+         * @hide
+         */
+        public static final String CALL_AUTO_RETRY = "call_auto_retry";
 
         /**
          * The preferred network mode   7 = Global
@@ -5963,6 +6201,14 @@ public final class Settings {
          */
         public static final String PREFERRED_NETWORK_MODE =
                 "preferred_network_mode";
+
+        /**
+         * The cdma subscription 0 = Subscription from RUIM, when available
+         *                       1 = Subscription from NV
+         * @hide
+         */
+        public static final String PREFERRED_CDMA_SUBSCRIPTION =
+                "preferred_cdma_subscription";
 
          /**
          * Name of an application package to be debugged.
@@ -5989,6 +6235,14 @@ public final class Settings {
                 "always_finish_activities";
 
         /**
+         * Use Dock audio output for media:
+         *      0 = disabled
+         *      1 = enabled
+         * @hide
+         */
+        public static final String DOCK_AUDIO_MEDIA_ENABLED = "dock_audio_media_enabled";
+
+        /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
          *
@@ -6006,10 +6260,18 @@ public final class Settings {
          */
         public static final String[] SETTINGS_TO_BACKUP = {
             STAY_ON_WHILE_PLUGGED_IN,
+            MODE_RINGER,
+            AUTO_TIME,
+            AUTO_TIME_ZONE,
+            POWER_SOUNDS_ENABLED,
+            DOCK_SOUNDS_ENABLED,
             USB_MASS_STORAGE_ENABLED,
             ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED,
             WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
-            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY
+            WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,
+            EMERGENCY_TONE,
+            CALL_AUTO_RETRY,
+            DOCK_AUDIO_MEDIA_ENABLED
         };
 
         // Populated lazily, guarded by class object:

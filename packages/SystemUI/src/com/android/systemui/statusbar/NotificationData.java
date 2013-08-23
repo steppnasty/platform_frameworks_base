@@ -86,12 +86,13 @@ public class NotificationData {
     }
     private final ArrayList<Entry> mEntries = new ArrayList<Entry>();
     private final Comparator<Entry> mEntryCmp = new Comparator<Entry>() {
+        // sort first by score, then by when
         public int compare(Entry a, Entry b) {
             final StatusBarNotification na = a.notification;
             final StatusBarNotification nb = b.notification;
-            int priDiff = na.score - nb.score;
-            return (priDiff != 0)
-                ? priDiff
+            int d = na.score - nb.score;
+            return (d != 0)
+                ? d
                 : (int)(na.notification.when - nb.notification.when);
         }
     };
@@ -144,10 +145,6 @@ public class NotificationData {
             mEntries.remove(e);
         }
         return e;
-    }
-
-    public void clear() {
-        mEntries.clear();
     }
 
     /**

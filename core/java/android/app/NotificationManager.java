@@ -89,6 +89,11 @@ public class NotificationManager
         mContext = context;
     }
 
+    /** {@hide} */
+    public static NotificationManager from(Context context) {
+        return (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
     /**
      * Post a notification to be shown in the status bar. If a notification with
      * the same id has already been posted by your application and has not yet been canceled, it
@@ -203,7 +208,7 @@ public class NotificationManager
         String pkg = mContext.getPackageName();
         if (localLOGV) Log.v(TAG, pkg + ": cancelAll()");
         try {
-            service.cancelAllNotifications(pkg);
+            service.cancelAllNotifications(pkg, UserHandle.myUserId());
         } catch (RemoteException e) {
         }
     }

@@ -146,6 +146,18 @@ public abstract class HardwareRenderer {
     public static final String DEBUG_DIRTY_REGIONS_PROPERTY = "debug.hwui.show_dirty_regions";
 
     /**
+     * Turn on to flash hardware layers when they update.
+     *
+     * Possible values:
+     * "true", to enable hardware layers updates debugging
+     * "false", to disable hardware layers updates debugging
+     *
+     * @hide
+     */
+    public static final String DEBUG_SHOW_LAYERS_UPDATES_PROPERTY =
+            "debug.hwui.show_layers_updates";
+
+    /**
      * Turn on to show overdraw level.
      *
      * Possible values:

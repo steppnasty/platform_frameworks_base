@@ -97,6 +97,12 @@
          the SIM card. -->
     <string name="needPuk">Your SIM card is PUK-locked. Type the PUK code to unlock it.</string>
     <string name="needPuk2">Type PUK2 to unblock SIM card.</string>
+    <!-- Title for the dialog used to display the user's IMEI number [CHAR LIMIT=10] -->
+    <string name="imei">IMEI</string>
+
+    <!-- Title for the dialog used to display the user's MEID number on CDMA network
+         [CHAR LIMIT=10] -->
+    <string name="meid">MEID</string>
 
     <!-- Displayed as the title for a success/failure report enabling/disabling caller ID. -->
     <string name="ClipMmi">Incoming Caller ID</string>
@@ -3019,6 +3025,12 @@
     <!-- A notification is shown when a captive portal network is detected.  This is the notification's message. -->
     <string name="wifi_available_sign_in_detailed"><xliff:g id="wifi_network_ssid">%1$s</xliff:g></string>
 
+     <!-- A notification is shown when a captive portal network is detected.  This is the notification's title. -->
+    <string name="network_available_sign_in">Sign into network</string>
+
+    <!-- A notification is shown when a captive portal network is detected.  This is the notification's message. -->
+    <string name="network_available_sign_in_detailed"><xliff:g id="network_ssid">%1$s</xliff:g></string>
+
      <!-- A notification is shown when a user's selected SSID is later disabled due to connectivity problems.  This is the notification's title / ticker. -->
      <string name="wifi_watchdog_network_disabled">Couldn\'t connect to Wi-Fi</string>
      <!-- A notification is shown when a user's selected SSID is later disabled due to connectivity problems.  The complete alert msg is: <hotspot name> + this string, i.e. "Linksys has a poor internet connection" -->
@@ -3063,6 +3075,27 @@
     <string name="sms_control_yes">OK</string>
     <!-- See SMS_DIALOG.  This is a button choice to disallow sending the SMSes.. -->
     <string name="sms_control_no">Cancel</string>
+
+    <!-- SMS short code verification dialog. --> <skip />
+    <!-- The message text for the SMS short code confirmation dialog. [CHAR LIMIT=NONE] -->
+    <string name="sms_short_code_confirm_message">&lt;b><xliff:g id="app_name">%1$s</xliff:g>&lt;/b> would like to send a message to &lt;b><xliff:g id="dest_address">%2$s</xliff:g>&lt;/b>.</string>
+    <!-- Message details for the SMS short code confirmation dialog (possible premium short code). [CHAR LIMIT=NONE] -->
+    <string name="sms_short_code_details">This <font fgcolor="#ffffb060">may cause charges</font> on your mobile account.</string>
+    <!-- Message details for the SMS short code confirmation dialog (premium short code). [CHAR LIMIT=NONE] -->
+    <string name="sms_premium_short_code_details"><font fgcolor="#ffffb060">This will cause charges on your mobile account.</font></string>
+    <!-- Text of the approval button for the SMS short code confirmation dialog. [CHAR LIMIT=30] -->
+    <string name="sms_short_code_confirm_allow">Send</string>
+    <!-- Text of the cancel button for the SMS short code confirmation dialog. [CHAR LIMIT=30] -->
+    <string name="sms_short_code_confirm_deny">Cancel</string>
+    <!-- Text of the checkbox for the SMS short code confirmation dialog to remember the user's choice. [CHAR LIMIT=40] -->
+    <string name="sms_short_code_remember_choice">Remember my choice</string>
+    <!-- Text shown when remember checkbox is checked to inform the user how they may undo the setting. [CHAR LIMIT=40] -->
+    <string name="sms_short_code_remember_undo_instruction">You can change this later in Settings\u00A0>\u00A0Apps"</string>
+
+    <!-- Text of the approval button for the SMS short code confirmation dialog when checkbox is checked. [CHAR LIMIT=30] -->
+    <string name="sms_short_code_confirm_always_allow">Always Allow</string>
+    <!-- Text of the cancel button for the SMS short code confirmation dialog when checkbox is checked. [CHAR LIMIT=30] -->
+    <string name="sms_short_code_confirm_never_allow">Never Allow</string>
 
     <!-- SIM swap and device reboot Dialog --> <skip />
     <!-- See SIM_REMOVED_DIALOG.  This is the title of that dialog. -->
@@ -3339,6 +3372,15 @@
     <string name="vpn_text">Tap to manage the network.</string>
     <!-- The text of the notification when VPN is active with a session name. -->
     <string name="vpn_text_long">Connected to <xliff:g id="session" example="office">%s</xliff:g>. Tap to manage the network.</string>
+
+    <!-- Notification title when connecting to lockdown VPN. -->
+    <string name="vpn_lockdown_connecting">Always-on VPN connecting\u2026</string>
+    <!-- Notification title when connected to lockdown VPN. -->
+    <string name="vpn_lockdown_connected">Always-on VPN connected</string>
+    <!-- Notification title when error connecting to lockdown VPN. -->
+    <string name="vpn_lockdown_error">Always-on VPN error</string>
+    <!-- Notification body that indicates user can touch to cycle lockdown VPN connection. -->
+    <string name="vpn_lockdown_reset">Touch to reset connection</string>
 
     <!-- Localized strings for WebView -->
     <!-- Label for button in a WebView that will open a chooser to choose a file to upload -->
@@ -3854,6 +3896,12 @@
     <string name="kg_text_message_separator" product="default">" \u2014 "</string>
     <!-- The delete-widget drop target button text -->
     <string name="kg_reordering_delete_drop_target_text">Remove</string>
+
+    <!-- Message shown in dialog when user is attempting to set the music volume above the
+    recommended maximum level for headphones -->
+    <string name="safe_media_volume_warning" product="default">
+       "Raise volume above safe level?\nListening at high volume for long periods may damage your hearing."
+    </string>
 
     <!-- Text spoken when the user is performing a gesture that will enable accessibility. [CHAR LIMIT=none] -->
     <string name="continue_to_enable_accessibility">Keep holding down two fingers to enable accessibility.</string>

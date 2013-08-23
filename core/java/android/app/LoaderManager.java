@@ -212,6 +212,8 @@ class LoaderManagerImpl extends LoaderManager {
     // previously run loader until the new loader's data is available.
     final SparseArray<LoaderInfo> mInactiveLoaders = new SparseArray<LoaderInfo>();
 
+    final String mWho;
+
     Activity mActivity;
     boolean mStarted;
     boolean mRetaining;
@@ -485,7 +487,8 @@ class LoaderManagerImpl extends LoaderManager {
         }
     }
     
-    LoaderManagerImpl(Activity activity, boolean started) {
+    LoaderManagerImpl(String who, Activity activity, boolean started) {
+        mWho = who;
         mActivity = activity;
         mStarted = started;
     }

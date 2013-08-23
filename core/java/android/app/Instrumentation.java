@@ -25,14 +25,14 @@ import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.hardware.input.InputManager;
 import android.os.Bundle;
-import android.os.PerformanceCollector;
-import android.os.RemoteException;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.MessageQueue;
+import android.os.PerformanceCollector;
 import android.os.Process;
-import android.os.SystemClock;
+import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
@@ -43,7 +43,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 import android.view.Window;
-import android.view.inputmethod.InputMethodManager;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -837,14 +836,19 @@ public class Instrumentation {
             return;
         }
         KeyCharacterMap keyCharacterMap = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
-        
+
         KeyEvent[] events = keyCharacterMap.getEvents(text.toCharArray());
-        
+
         if (events != null) {
             for (int i = 0; i < events.length; i++) {
-                sendKeySync(events[i]);
+                // We have to change the time of an event before injecting it because
+                // all KeyEvents returned by KeyCharacterMap.getEvents() have the same
+                // time stamp and the system rejects too old events. Hence, it is
+                // possible for an event to become stale before it is injected if it
+                // takes too long to inject the preceding ones.
+                sendKeySync(KeyEvent.changeTimeRepeat(events[i], SystemClock.uptimeMillis(), 0));
             }
-        }        
+        }
     }
 
     /**
@@ -883,7 +887,7 @@ public class Instrumentation {
         InputManager.getInstance().injectInputEvent(newEvent,
                 InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH);
     }
-
+    
     /**
      * Sends an up and down key event sync to the currently focused window.
      * 
@@ -984,7 +988,12 @@ public class Instrumentation {
     /**
      * Perform calling of the application's {@link Application#onCreate}
      * method.  The default implementation simply calls through to that method.
-     * 
+     *
+     * <p>Note: This method will be called immediately after {@link #onCreate(Bundle)}.
+     * Often instrumentation tests start their test thread in onCreate(); you
+     * need to be careful of races between these.  (Well between it and
+     * everything else, but let's start here.)
+     *
      * @param app The application being created.
      */
     public void callApplicationOnCreate(Application app) {
@@ -1364,6 +1373,7 @@ public class Instrumentation {
      * @param intent The actual Intent to start.
      * @param requestCode Identifier for this request's result; less than zero 
      *                    if the caller is not expecting a result.
+     * @param options Addition options.
      * 
      * @return To force the return of a particular result, return an 
      *         ActivityResult object containing the desired data; otherwise
@@ -1398,6 +1408,7 @@ public class Instrumentation {
         }
         try {
             intent.setAllowFds(false);
+            intent.migrateExtraStreamToClipData();
             int result = ActivityManagerNative.getDefault()
                 .startActivity(whoThread, intent,
                         intent.resolveTypeIfNeeded(who.getContentResolver()),
@@ -1512,11 +1523,72 @@ public class Instrumentation {
         }
         try {
             intent.setAllowFds(false);
+            intent.migrateExtraStreamToClipData();
             int result = ActivityManagerNative.getDefault()
                 .startActivity(whoThread, intent,
                         intent.resolveTypeIfNeeded(who.getContentResolver()),
                         token, target != null ? target.mWho : null,
                         requestCode, 0, null, null, options);
+            checkStartActivityResult(result, intent);
+        } catch (RemoteException e) {
+        }
+        return null;
+    }
+
+    /**
+     * Like {@link #execStartActivity(Context, IBinder, IBinder, Activity, Intent, int)},
+     * but for starting as a particular user.
+     *
+     * @param who The Context from which the activity is being started.
+     * @param contextThread The main thread of the Context from which the activity
+     *                      is being started.
+     * @param token Internal token identifying to the system who is starting
+     *              the activity; may be null.
+     * @param target Which fragment is performing the start (and thus receiving
+     *               any result).
+     * @param intent The actual Intent to start.
+     * @param requestCode Identifier for this request's result; less than zero
+     *                    if the caller is not expecting a result.
+     *
+     * @return To force the return of a particular result, return an
+     *         ActivityResult object containing the desired data; otherwise
+     *         return null.  The default implementation always returns null.
+     *
+     * @throws android.content.ActivityNotFoundException
+     *
+     * @see Activity#startActivity(Intent)
+     * @see Activity#startActivityForResult(Intent, int)
+     * @see Activity#startActivityFromChild
+     *
+     * {@hide}
+     */
+    public ActivityResult execStartActivity(
+            Context who, IBinder contextThread, IBinder token, Activity target,
+            Intent intent, int requestCode, Bundle options, UserHandle user) {
+        IApplicationThread whoThread = (IApplicationThread) contextThread;
+        if (mActivityMonitors != null) {
+            synchronized (mSync) {
+                final int N = mActivityMonitors.size();
+                for (int i=0; i<N; i++) {
+                    final ActivityMonitor am = mActivityMonitors.get(i);
+                    if (am.match(who, null, intent)) {
+                        am.mHits++;
+                        if (am.isBlocking()) {
+                            return requestCode >= 0 ? am.getResult() : null;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        try {
+            intent.setAllowFds(false);
+            intent.migrateExtraStreamToClipData();
+            int result = ActivityManagerNative.getDefault()
+                .startActivityAsUser(whoThread, intent,
+                        intent.resolveTypeIfNeeded(who.getContentResolver()),
+                        token, target != null ? target.mEmbeddedID : null,
+                        requestCode, 0, null, null, options, user.getIdentifier());
             checkStartActivityResult(result, intent);
         } catch (RemoteException e) {
         }

@@ -35,6 +35,19 @@ class TelephonyIcons {
           R.drawable.stat_sys_signal_4_fully }
     };
 
+    static final int[][] QS_TELEPHONY_SIGNAL_STRENGTH = {
+        { R.drawable.ic_qs_signal_0,
+          R.drawable.ic_qs_signal_1,
+          R.drawable.ic_qs_signal_2,
+          R.drawable.ic_qs_signal_3,
+          R.drawable.ic_qs_signal_4 },
+        { R.drawable.ic_qs_signal_full_0,
+          R.drawable.ic_qs_signal_full_1,
+          R.drawable.ic_qs_signal_full_2,
+          R.drawable.ic_qs_signal_full_3,
+          R.drawable.ic_qs_signal_full_4 }
+    };
+
     static final int[][] TELEPHONY_SIGNAL_STRENGTH_ROAMING = {
         { R.drawable.stat_sys_signal_0,
           R.drawable.stat_sys_signal_1,
@@ -96,18 +109,6 @@ class TelephonyIcons {
               R.drawable.stat_sys_data_fully_connected_h,
               R.drawable.stat_sys_data_fully_connected_h,
               R.drawable.stat_sys_data_fully_connected_h }
-    };
-
-    //HPSPA+
-    static final int[][] DATA_HP = {
-            { R.drawable.stat_sys_data_connected_hp,
-              R.drawable.stat_sys_data_connected_hp,
-              R.drawable.stat_sys_data_connected_hp,
-              R.drawable.stat_sys_data_connected_hp },
-            { R.drawable.stat_sys_data_fully_connected_hp,
-              R.drawable.stat_sys_data_fully_connected_hp,
-              R.drawable.stat_sys_data_fully_connected_hp,
-              R.drawable.stat_sys_data_fully_connected_hp }
     };
 
     //CDMA

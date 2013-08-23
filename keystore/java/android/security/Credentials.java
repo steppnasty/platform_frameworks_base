@@ -59,6 +59,9 @@ public class Credentials {
     /** Key prefix for WIFI. */
     public static final String WIFI = "WIFI_";
 
+    /** Key containing suffix of lockdown VPN profile. */
+    public static final String LOCKDOWN_VPN = "LOCKDOWN_VPN";
+
     /** Data type for public keys. */
     public static final String EXTRA_PUBLIC_KEY = "KEY";
 
@@ -71,6 +74,36 @@ public class Credentials {
     // commonly used on Windows
     public static final String EXTENSION_CER = ".cer";
     public static final String EXTENSION_PFX = ".pfx";
+
+    /**
+     * Intent extra: name for the user's private key.
+     */
+    public static final String EXTRA_USER_PRIVATE_KEY_NAME = "user_private_key_name";
+
+    /**
+     * Intent extra: data for the user's private key in PEM-encoded PKCS#8.
+     */
+    public static final String EXTRA_USER_PRIVATE_KEY_DATA = "user_private_key_data";
+
+    /**
+     * Intent extra: name for the user's certificate.
+     */
+    public static final String EXTRA_USER_CERTIFICATE_NAME = "user_certificate_name";
+
+    /**
+     * Intent extra: data for the user's certificate in PEM-encoded X.509.
+     */
+    public static final String EXTRA_USER_CERTIFICATE_DATA = "user_certificate_data";
+
+    /**
+     * Intent extra: name for CA certificate chain
+     */
+    public static final String EXTRA_CA_CERTIFICATES_NAME = "ca_certificates_name";
+
+    /**
+     * Intent extra: data for CA certificate chain in PEM-encoded X.509.
+     */
+    public static final String EXTRA_CA_CERTIFICATES_DATA = "ca_certificates_data";
 
     /**
      * Convert objects to a PEM format, which is used for

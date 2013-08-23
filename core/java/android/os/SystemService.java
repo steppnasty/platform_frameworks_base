@@ -68,6 +68,13 @@ public class SystemService {
     }
 
     /**
+     * Check if given service is {@link State#STOPPED}.
+     */
+    public static boolean isStopped(String service) {
+        return State.STOPPED.equals(getState(service));
+    }
+
+    /**
      * Check if given service is {@link State#RUNNING}.
      */
     public static boolean isRunning(String service) {

@@ -635,7 +635,7 @@ class QuickSettings {
                 // TODO: Jump into the alarm application
                 Intent intent = new Intent();
                 intent.setComponent(new ComponentName(
-                        "com.android.deskclock",
+                        "com.google.android.deskclock",
                         "com.android.deskclock.AlarmClock"));
                 startSettingsActivity(intent);
             }
@@ -791,7 +791,6 @@ class QuickSettings {
     }
 
     private Runnable mDismissBrightnessDialogRunnable = new Runnable() {
-        @Override
         public void run() {
             if (mBrightnessDialog != null && mBrightnessDialog.isShowing()) {
                 mBrightnessDialog.dismiss();

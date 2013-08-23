@@ -143,6 +143,37 @@ public class ArrayUtils
         return false;
     }
 
+    public static long total(long[] array) {
+        long total = 0;
+        for (long value : array) {
+            total += value;
+        }
+        return total;
+    }
+
+    /**
+     * Appends an element to a copy of the array and returns the copy.
+     * @param array The original array, or null to represent an empty array.
+     * @param element The element to add.
+     * @param A new array that contains all of the elements of the original array
+     * with the specified element added at the end.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T[] appendElement(Class<T> kind, T[] array, T element) {
+        final T[] result;
+        final int end;
+        if (array != null) {
+            end = array.length;
+            result = (T[])Array.newInstance(kind, end + 1);
+            System.arraycopy(array, 0, result, 0, end);
+        } else {
+            end = 0;
+            result = (T[])Array.newInstance(kind, 1);
+        }
+        result[end] = element;
+        return result;
+    }
+
     public static int[] appendInt(int[] cur, int val) {
         if (cur == null) {
             return new int[] { val };

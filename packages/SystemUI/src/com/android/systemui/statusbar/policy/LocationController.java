@@ -37,6 +37,7 @@ import android.app.INotificationManager;
 import com.android.internal.statusbar.StatusBarNotification;
 
 import com.android.systemui.R;
+import com.android.systemui.statusbar.policy.BatteryController.BatteryStateChangeCallback;
 
 public class LocationController extends BroadcastReceiver {
     private static final String TAG = "StatusBar.LocationController";
@@ -99,11 +100,14 @@ public class LocationController extends BroadcastReceiver {
             if (visible) {
                 Intent gpsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
                 gpsIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, gpsIntent, 0);
+
+                PendingIntent pendingIntent = PendingIntent.getActivityAsUser(context, 0,
+                        gpsIntent, 0, null, UserHandle.CURRENT);
+                String text = mContext.getText(textResId).toString();
 
                 Notification n = new Notification.Builder(mContext)
                     .setSmallIcon(iconId)
-                    .setContentTitle(mContext.getText(textResId))
+                    .setContentTitle(text)
                     .setOngoing(true)
                     .setContentIntent(pendingIntent)
                     .getNotification();
@@ -111,6 +115,8 @@ public class LocationController extends BroadcastReceiver {
                 // Notification.Builder will helpfully fill these out for you no matter what you do
                 n.tickerView = null;
                 n.tickerText = null;
+                
+                n.priority = Notification.PRIORITY_HIGH;
 
                 int[] idOut = new int[1];
                 mNotificationService.enqueueNotificationWithTag(
@@ -120,10 +126,18 @@ public class LocationController extends BroadcastReceiver {
                         n,
                         idOut,
                         UserHandle.USER_ALL);
+
+                for (LocationGpsStateChangeCallback cb : mChangeCallbacks) {
+                    cb.onLocationGpsStateChanged(true, text);
+                }
             } else {
                 mNotificationService.cancelNotificationWithTag(
                         mContext.getPackageName(), null,
                         GPS_NOTIFICATION_ID, UserHandle.USER_ALL);
+
+                for (LocationGpsStateChangeCallback cb : mChangeCallbacks) {
+                    cb.onLocationGpsStateChanged(false, null);
+                }
             }
         } catch (android.os.RemoteException ex) {
             // well, it was worth a shot

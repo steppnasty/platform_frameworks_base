@@ -17,17 +17,18 @@
 
 package android.provider;
 
-import com.android.internal.telephony.CallerInfo;
-import com.android.internal.telephony.Connection;
-
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
+import android.provider.ContactsContract.CommonDataKinds.Callable;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.DataUsageFeedback;
 import android.text.TextUtils;
+
+import com.android.internal.telephony.CallerInfo;
+import com.android.internal.telephony.PhoneConstants;
 
 /**
  * The CallLog provider contains information about placed and received calls.
@@ -280,14 +281,14 @@ public class CallLog {
 
             // If this is a private number then set the number to Private, otherwise check
             // if the number field is empty and set the number to Unavailable
-            if (presentation == Connection.PRESENTATION_RESTRICTED) {
+            if (presentation == PhoneConstants.PRESENTATION_RESTRICTED) {
                 number = CallerInfo.PRIVATE_NUMBER;
                 if (ci != null) ci.name = "";
-            } else if (presentation == Connection.PRESENTATION_PAYPHONE) {
+            } else if (presentation == PhoneConstants.PRESENTATION_PAYPHONE) {
                 number = CallerInfo.PAYPHONE_NUMBER;
                 if (ci != null) ci.name = "";
             } else if (TextUtils.isEmpty(number)
-                    || presentation == Connection.PRESENTATION_UNKNOWN) {
+                    || presentation == PhoneConstants.PRESENTATION_UNKNOWN) {
                 number = CallerInfo.UNKNOWN_NUMBER;
                 if (ci != null) ci.name = "";
             }
@@ -326,10 +327,12 @@ public class CallLog {
                             null);
                 } else {
                     final String phoneNumber = ci.phoneNumber != null ? ci.phoneNumber : number;
-                    cursor = resolver.query(Phone.CONTENT_URI,
+                    cursor = resolver.query(
+                            Uri.withAppendedPath(Callable.CONTENT_FILTER_URI,
+                                    Uri.encode(phoneNumber)),
                             new String[] { Phone._ID },
-                            Phone.CONTACT_ID + " =? AND " + Phone.NUMBER + " =?",
-                            new String[] { String.valueOf(ci.person_id), phoneNumber},
+                            Phone.CONTACT_ID + " =?",
+                            new String[] { String.valueOf(ci.person_id) },
                             null);
                 }
 

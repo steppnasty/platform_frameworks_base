@@ -44,8 +44,6 @@ import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.server.BluetoothA2dpService;
-import android.server.BluetoothService;
 import android.server.search.SearchManagerService;
 import android.service.dreams.DreamService;
 import android.util.DisplayMetrics;
@@ -162,10 +160,8 @@ class ServerThread extends Thread {
         IPackageManager pm = null;
         Context context = null;
         WindowManagerService wm = null;
-        BluetoothService bluetooth = null;
-        BluetoothA2dpService bluetoothA2dp = null;
+        BluetoothManagerService bluetooth = null;
         DockObserver dock = null;
-        RotationSwitchObserver rotateSwitch = null;
         UsbService usb = null;
         TwilightService twilight = null;
         UiModeManagerService uiMode = null;
@@ -174,6 +170,7 @@ class ServerThread extends Thread {
         NetworkTimeUpdateService networkTimeUpdater = null;
         CpuGovernorService cpuGovernorManager = null;
         InputManagerService inputManager = null;
+        TelephonyRegistry telephonyRegistry = null;
 
         // Create a shared handler thread for UI within the system server.
         // This thread is used by at least the following components:
@@ -189,7 +186,7 @@ class ServerThread extends Thread {
                 //Looper.myLooper().setMessageLogging(new LogPrinter(
                 //        Log.VERBOSE, "WindowManagerPolicy", Log.LOG_ID_SYSTEM));
                 android.os.Process.setThreadPriority(
-                    android.os.Process.THREAD_PRIORITY_FOREGROUND);
+                        android.os.Process.THREAD_PRIORITY_FOREGROUND);
                 android.os.Process.setCanSelfBackground(false);
 
                 // For debug builds, log event loop stalls to dropbox for analysis.
@@ -244,7 +241,8 @@ class ServerThread extends Thread {
             ServiceManager.addService(Context.DISPLAY_SERVICE, display, true);
 
             Slog.i(TAG, "Telephony Registry");
-            ServiceManager.addService("telephony.registry", new TelephonyRegistry(context));
+            telephonyRegistry = new TelephonyRegistry(context);
+            ServiceManager.addService("telephony.registry", telephonyRegistry);
 
             Slog.i(TAG, "Scheduling Policy");
             ServiceManager.addService(Context.SCHEDULING_POLICY_SERVICE,
@@ -356,22 +354,9 @@ class ServerThread extends Thread {
             } else if (factoryTest == SystemServer.FACTORY_TEST_LOW_LEVEL) {
                 Slog.i(TAG, "No Bluetooth Service (factory test)");
             } else {
-                Slog.i(TAG, "Bluetooth Service");
-                bluetooth = new BluetoothService(context);
+                Slog.i(TAG, "Bluetooth Manager Service");
+                bluetooth = new BluetoothManagerService(context);
                 ServiceManager.addService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE, bluetooth);
-                bluetooth.initAfterRegistration();
-                bluetoothA2dp = new BluetoothA2dpService(context, bluetooth);
-                ServiceManager.addService(BluetoothA2dpService.BLUETOOTH_A2DP_SERVICE,
-                                          bluetoothA2dp);
-                bluetooth.initAfterA2dpRegistration();
-
-                int airplaneModeOn = Settings.Global.getInt(mContentResolver,
-                        Settings.Global.AIRPLANE_MODE_ON, 0);
-                int bluetoothOn = Settings.Global.getInt(mContentResolver,
-                    Settings.Global.BLUETOOTH_ON, 0);
-                if (airplaneModeOn == 0 && bluetoothOn != 0) {
-                    bluetooth.enable();
-                }
             }
 
             if (SystemProperties.QCOM_HARDWARE) {
@@ -388,9 +373,6 @@ class ServerThread extends Thread {
             Slog.e("System", "******************************************");
             Slog.e("System", "************ Failure starting core service", e);
         }
-
-        boolean hasRotationLock = context.getResources().getBoolean(com.android
-                .internal.R.bool.config_hasRotationLockSwitch);
 
         DevicePolicyManagerService devicePolicy = null;
         StatusBarManagerService statusBar = null;
@@ -672,21 +654,12 @@ class ServerThread extends Thread {
             }
 
             try {
-                if (hasRotationLock) {
-                    Slog.i(TAG, "Rotation Switch Observer");
-                    // Listen for switch changes
-                    rotateSwitch = new RotationSwitchObserver(context);
-                }
-            } catch (Throwable e) {
-                reportWtf("starting RotationSwitchObserver", e);
-            }
-
-            try {
-                Slog.i(TAG, "Wired Accessory Observer");
+                Slog.i(TAG, "Wired Accessory Manager");
                 // Listen for wired headset changes
-                new WiredAccessoryObserver(context);
+                inputManager.setWiredAccessoryCallbacks(
+                        new WiredAccessoryManager(context, inputManager));
             } catch (Throwable e) {
-                reportWtf("starting WiredAccessoryObserver", e);
+                reportWtf("starting WiredAccessoryManager", e);
             }
 
             try {
@@ -860,15 +833,6 @@ class ServerThread extends Thread {
             reportWtf("making Display Manager Service ready", e);
         }
 
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_APP_LAUNCH_FAILURE);
-        filter.addAction(Intent.ACTION_APP_LAUNCH_FAILURE_RESET);
-        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
-        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
-        filter.addCategory(Intent.CATEGORY_THEME_PACKAGE_INSTALLED_STATE_CHANGE);
-        filter.addDataScheme("package");
-        context.registerReceiver(new AppsLaunchFailureReceiver(), filter);
-
         // These are needed to propagate to the runnable below.
         final Context contextF = context;
         final MountService mountServiceF = mountService;
@@ -878,7 +842,6 @@ class ServerThread extends Thread {
         final NetworkPolicyManagerService networkPolicyF = networkPolicy;
         final ConnectivityService connectivityF = connectivity;
         final DockObserver dockF = dock;
-        final RotationSwitchObserver rotateSwitchF = rotateSwitch;
         final UsbService usbF = usb;
         final ThrottleService throttleF = throttle;
         final TwilightService twilightF = twilight;
@@ -894,6 +857,7 @@ class ServerThread extends Thread {
         final StatusBarManagerService statusBarF = statusBar;
         final DreamManagerService dreamyF = dreamy;
         final InputManagerService inputManagerF = inputManager;
+        final TelephonyRegistry telephonyRegistryF = telephonyRegistry;
 
         // We now tell the activity manager it is okay to run third party
         // code.  It will call back into us once it has gotten to the state
@@ -939,11 +903,6 @@ class ServerThread extends Thread {
                     if (dockF != null) dockF.systemReady();
                 } catch (Throwable e) {
                     reportWtf("making Dock Service ready", e);
-                }
-                try {
-                    if (rotateSwitchF != null) rotateSwitchF.systemReady();
-                } catch (Throwable e) {
-                    reportWtf("making Rotation Switch Service ready", e);
                 }
                 try {
                     if (usbF != null) usbF.systemReady();

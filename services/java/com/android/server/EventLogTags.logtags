@@ -133,16 +133,19 @@ option java_package com.android.server
 # ---------------------------
 # ConnectivityService.java
 # ---------------------------
-# Connectivity state changed:
-# [31-13] Reserved for future use
-# [12- 9] Network subtype (for mobile network, as defined by TelephonyManager)
-# [ 8- 3] Detailed state ordinal (as defined by NetworkInfo.DetailedState)
-# [ 2- 0] Network type (as defined by ConnectivityManager)
-50020 connectivity_state_changed (custom|1|5)
+# Connectivity state changed
+50020 connectivity_state_changed (type|1),(subtype|1),(state|1)
 
 
 # ---------------------------
 # NetworkStatsService.java
 # ---------------------------
-51100 netstats_mobile_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3),(dev_history_start|2|3)
-51101 netstats_wifi_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3),(dev_history_start|2|3)
+51100 netstats_mobile_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3)
+51101 netstats_wifi_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3)
+
+# ---------------------------
+# LockdownVpnTracker.java
+# ---------------------------
+51200 lockdown_vpn_connecting (egress_net|1)
+51201 lockdown_vpn_connected (egress_net|1)
+51202 lockdown_vpn_error (egress_net|1)

@@ -22,10 +22,12 @@ import android.os.Message;
 import android.telephony.ServiceState;
 import android.telephony.SignalStrength;
 import android.telephony.CellLocation;
+import android.telephony.CellInfo;
 import android.util.Log;
 
 import com.android.internal.telephony.IPhoneStateListener;
-import com.android.internal.telephony.Phone;
+
+import java.util.List;
 
 /**
  * A listener class for monitoring changes in specific telephony states
@@ -156,6 +158,13 @@ public class PhoneStateListener {
      */
     public static final int LISTEN_OTASP_CHANGED                            = 0x00000200;
 
+    /**
+     * Listen for changes to observed cell info.
+     *
+     * @see #onCellInfoChanged
+     */
+    public static final int LISTEN_CELL_INFO = 0x00000400;
+
     public PhoneStateListener() {
     }
 
@@ -276,6 +285,14 @@ public class PhoneStateListener {
     }
 
     /**
+     * Callback invoked when a observed cell info has changed,
+     * or new cells have been added or removed.
+     * @param cellInfo is the list of currently visible cells.
+     */
+    public void onCellInfoChanged(List<CellInfo> cellInfo) {
+    }
+
+    /**
      * The callback methods need to be called on the handler thread where
      * this object was created.  If the binder did that for us it'd be nice.
      */
@@ -323,6 +340,10 @@ public class PhoneStateListener {
         public void onOtaspChanged(int otaspMode) {
             Message.obtain(mHandler, LISTEN_OTASP_CHANGED, otaspMode, 0).sendToTarget();
         }
+
+        public void onCellInfoChanged(List<CellInfo> cellInfo) {
+            Message.obtain(mHandler, LISTEN_CELL_INFO, 0, 0, cellInfo).sendToTarget();
+        }
     };
 
     Handler mHandler = new Handler() {
@@ -360,6 +381,8 @@ public class PhoneStateListener {
                 case LISTEN_OTASP_CHANGED:
                     PhoneStateListener.this.onOtaspChanged(msg.arg1);
                     break;
+                case LISTEN_CELL_INFO:
+                    PhoneStateListener.this.onCellInfoChanged((List<CellInfo>)msg.obj);
             }
         }
     };

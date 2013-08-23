@@ -3444,9 +3444,13 @@
     </declare-styleable>
 
     <declare-styleable name="DatePicker">
-        <!-- The first year (inclusive), for example "1940". -->
+        <!-- The first year (inclusive), for example "1940".
+             {@deprecated Use minDate instead.}
+         -->
         <attr name="startYear" format="integer" />
-        <!-- The last year (inclusive), for example "2010". -->
+        <!-- The last year (inclusive), for example "2010".
+             {@deprecated Use maxDate instead.}
+         -->
         <attr name="endYear" format="integer" />
         <!-- Whether the spinners are shown. -->
         <attr name="spinnersShown" format="boolean" />
@@ -3454,10 +3458,10 @@
         <attr name="calendarViewShown" format="boolean" />
         <!-- The minimal date shown by this calendar view in mm/dd/yyyy format. -->
         <attr name="minDate" format="string" />
-        <!-- The minimal date shown by this calendar view in mm/dd/yyyy format. -->
+        <!-- The maximal date shown by this calendar view in mm/dd/yyyy format. -->
         <attr name="maxDate" format="string" />
-        <!-- @hide The layout of the time picker. -->
-        <attr name="layout" />
+        <!-- @hide The layout of the date picker. -->
+        <attr name="internalLayout" format="reference"  />
     </declare-styleable>
 
     <declare-styleable name="TwoLineListItem">
@@ -3698,27 +3702,29 @@
     <declare-styleable name="NumberPicker">
         <!-- @hide Color for the solid color background if such for optimized rendering. -->
         <attr name="solidColor" format="color|reference" />
-        <!-- @hide Whether the number picker supports fligning. -->
-        <attr name="flingable" format="boolean" />
         <!-- @hide The divider for making the selection area. -->
         <attr name="selectionDivider" format="reference" />
         <!-- @hide The height of the selection divider. -->
         <attr name="selectionDividerHeight" format="dimension" />
+        <!-- @hide The distance between the two selection dividers. -->
+        <attr name="selectionDividersDistance" format="dimension" />
         <!-- @hide The min height of the NumberPicker. -->
-        <attr name="minHeight" />
+        <attr name="internalMinHeight" format="dimension" />
         <!-- @hide The max height of the NumberPicker. -->
-        <attr name="maxHeight" />
+        <attr name="internalMaxHeight" format="dimension" />
         <!-- @hide The min width of the NumberPicker. -->
-        <attr name="minWidth" />
+        <attr name="internalMinWidth" format="dimension" />
         <!-- @hide The max width of the NumberPicker. -->
-        <attr name="maxWidth" />
-        <!-- @hide The max width of the NumberPicker. -->
-        <attr name="maxWidth" />
+        <attr name="internalMaxWidth" format="dimension" />
+        <!-- @hide The layout of the number picker. -->
+        <attr name="internalLayout" />
+        <!-- @hide The drawable for pressed virtual (increment/decrement) buttons. -->
+        <attr name="virtualButtonPressedDrawable" format="reference"/>
     </declare-styleable>
 
     <declare-styleable name="TimePicker">
         <!-- @hide The layout of the time picker. -->
-        <attr name="layout" />
+        <attr name="internalLayout" />
     </declare-styleable>
 
     <!-- ========================= -->

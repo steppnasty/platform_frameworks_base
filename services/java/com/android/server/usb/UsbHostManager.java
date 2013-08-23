@@ -39,6 +39,8 @@ import android.os.UEventObserver;
 import android.provider.Settings;
 import android.util.Slog;
 
+import com.android.internal.annotations.GuardedBy;
+
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileReader;
@@ -61,13 +63,26 @@ public class UsbHostManager {
 
     private final Context mContext;
     private final Object mLock = new Object();
-    private final UsbSettingsManager mSettingsManager;
 
-    public UsbHostManager(Context context, UsbSettingsManager settingsManager) {
+    @GuardedBy("mLock")
+    private UsbSettingsManager mCurrentSettings;
+
+    public UsbHostManager(Context context) {
         mContext = context;
-        mSettingsManager = settingsManager;
         mHostBlacklist = context.getResources().getStringArray(
                 com.android.internal.R.array.config_usbHostBlacklist);
+    }
+
+    public void setCurrentSettings(UsbSettingsManager settings) {
+        synchronized (mLock) {
+            mCurrentSettings = settings;
+        }
+    }
+
+    private UsbSettingsManager getCurrentSettings() {
+        synchronized (mLock) {
+            return mCurrentSettings;
+        }
     }
 
     private boolean isBlackListed(String deviceName) {
@@ -154,7 +169,7 @@ public class UsbHostManager {
             UsbDevice device = new UsbDevice(deviceName, vendorID, productID,
                     deviceClass, deviceSubclass, deviceProtocol, interfaces);
             mDevices.put(deviceName, device);
-            mSettingsManager.deviceAttached(device);
+            getCurrentSettings().deviceAttached(device);
         }
     }
 
@@ -163,7 +178,7 @@ public class UsbHostManager {
         synchronized (mLock) {
             UsbDevice device = mDevices.remove(deviceName);
             if (device != null) {
-                mSettingsManager.deviceDetached(device);
+                getCurrentSettings().deviceDetached(device);
             }
         }
     }
@@ -202,7 +217,7 @@ public class UsbHostManager {
                 throw new IllegalArgumentException(
                         "device " + deviceName + " does not exist or is restricted");
             }
-            mSettingsManager.checkPermission(device);
+            getCurrentSettings().checkPermission(device);
             return nativeOpenDevice(deviceName);
         }
     }

@@ -122,7 +122,10 @@ interface IAudioService {
     oneway void registerMediaButtonIntent(in PendingIntent pi, in ComponentName c);
     oneway void unregisterMediaButtonIntent(in PendingIntent pi,  in ComponentName c);
 
-    oneway void registerRemoteControlClient(in PendingIntent mediaIntent,
+    oneway void registerMediaButtonEventReceiverForCalls(in ComponentName c);
+    oneway void unregisterMediaButtonEventReceiverForCalls();
+
+    int registerRemoteControlClient(in PendingIntent mediaIntent,
            in IRemoteControlClient rcClient, in String callingPackageName);
     oneway void unregisterRemoteControlClient(in PendingIntent mediaIntent,
            in IRemoteControlClient rcClient);
@@ -145,6 +148,9 @@ interface IAudioService {
     void setRingtonePlayer(IRingtonePlayer player);
     IRingtonePlayer getRingtonePlayer();
     int getMasterStreamType();
+
+    void setWiredDeviceConnectionState(int device, int state, String name);
+    int setBluetoothA2dpDeviceConnectionState(in BluetoothDevice device, int state);
 
     AudioRoutesInfo startWatchingRoutes(in IAudioRoutesObserver observer);
 

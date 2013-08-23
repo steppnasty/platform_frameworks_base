@@ -526,18 +526,18 @@ please see styles_device_defaults.xml.
     </style>
 
     <style name="Widget.NumberPicker">
+        <item name="android:internalLayout">@android:layout/number_picker</item>
         <item name="android:orientation">vertical</item>
         <item name="android:fadingEdge">vertical</item>
         <item name="android:fadingEdgeLength">50dip</item>
-        <item name="android:flingable">false</item>
     </style>
 
     <style name="Widget.TimePicker">
-        <item name="android:layout">@android:layout/time_picker</item>
+        <item name="android:internalLayout">@android:layout/time_picker</item>
     </style>
 
     <style name="Widget.DatePicker">
-        <item name="android:layout">@android:layout/date_picker</item>
+        <item name="android:internalLayout">@android:layout/date_picker</item>
         <item name="android:calendarViewShown">false</item>
     </style>
 
@@ -1657,12 +1657,14 @@ please see styles_device_defaults.xml.
     </style>
 
     <style name="Widget.Holo.NumberPicker" parent="Widget.NumberPicker">
+        <item name="android:internalLayout">@android:layout/number_picker_with_selector_wheel</item>
         <item name="android:solidColor">@android:color/transparent</item>
-        <item name="android:flingable">true</item>
         <item name="android:selectionDivider">@android:drawable/numberpicker_selection_divider</item>
         <item name="android:selectionDividerHeight">2dip</item>
-        <item name="android:minWidth">48dip</item>
-        <item name="android:maxHeight">200dip</item>
+        <item name="android:selectionDividersDistance">48dip</item>
+        <item name="android:internalMinWidth">64dip</item>
+        <item name="android:internalMaxHeight">180dip</item>
+        <item name="virtualButtonPressedDrawable">?android:attr/selectableItemBackground</item>
     </style>
 
     <style name="Widget.Holo.TimePicker" parent="Widget.TimePicker">

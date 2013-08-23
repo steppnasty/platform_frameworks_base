@@ -33,36 +33,31 @@ import com.android.internal.statusbar.StatusBarNotification;
  * are coalesced, note that they are all idempotent.
  */
 public class CommandQueue extends IStatusBar.Stub {
-    private static final String TAG = "StatusBar.CommandQueue";
-
     private static final int INDEX_MASK = 0xffff;
     private static final int MSG_SHIFT  = 16;
     private static final int MSG_MASK   = 0xffff << MSG_SHIFT;
 
-
-    private static final int MSG_ICON                       = 1 << MSG_SHIFT;
     private static final int OP_SET_ICON    = 1;
     private static final int OP_REMOVE_ICON = 2;
 
+    private static final int MSG_ICON                       = 1 << MSG_SHIFT;
     private static final int MSG_ADD_NOTIFICATION           = 2 << MSG_SHIFT;
     private static final int MSG_UPDATE_NOTIFICATION        = 3 << MSG_SHIFT;
     private static final int MSG_REMOVE_NOTIFICATION        = 4 << MSG_SHIFT;
-
     private static final int MSG_DISABLE                    = 5 << MSG_SHIFT;
     private static final int MSG_EXPAND_NOTIFICATIONS       = 6 << MSG_SHIFT;
     private static final int MSG_COLLAPSE_PANELS            = 7 << MSG_SHIFT;
     private static final int MSG_EXPAND_SETTINGS            = 8 << MSG_SHIFT;
     private static final int MSG_SET_SYSTEMUI_VISIBILITY    = 9 << MSG_SHIFT;
-
     private static final int MSG_TOP_APP_WINDOW_CHANGED     = 10 << MSG_SHIFT;
     private static final int MSG_SHOW_IME_BUTTON            = 11 << MSG_SHIFT;
-    private static final int MSG_SET_HARD_KEYBOARD_STATUS   = 12 << MSG_SHIFT;    
+    private static final int MSG_SET_HARD_KEYBOARD_STATUS   = 12 << MSG_SHIFT;
     private static final int MSG_TOGGLE_RECENT_APPS         = 13 << MSG_SHIFT;
     private static final int MSG_PRELOAD_RECENT_APPS        = 14 << MSG_SHIFT;
     private static final int MSG_CANCEL_PRELOAD_RECENT_APPS = 15 << MSG_SHIFT;
     private static final int MSG_SET_NAVIGATION_ICON_HINTS  = 16 << MSG_SHIFT;
 
-    public static final int FLAG_EXCLUDE_NONE = 0;    
+    public static final int FLAG_EXCLUDE_NONE = 0;
     public static final int FLAG_EXCLUDE_SEARCH_PANEL = 1 << 0;
     public static final int FLAG_EXCLUDE_RECENTS_PANEL = 1 << 1;
     public static final int FLAG_EXCLUDE_NOTIFICATION_PANEL = 1 << 2;

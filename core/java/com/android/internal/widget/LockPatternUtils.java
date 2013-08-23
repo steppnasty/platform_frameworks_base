@@ -751,16 +751,13 @@ public class LockPatternUtils {
      * @param string The pattern serialized with {@link #patternToString}
      * @return The pattern.
      */
-    public List<LockPatternView.Cell> stringToPattern(String string) {
+    public static List<LockPatternView.Cell> stringToPattern(String string) {
         List<LockPatternView.Cell> result = Lists.newArrayList();
-
-        final byte size = getLockPatternSize();
-        LockPatternView.Cell.updateSize(size);
 
         final byte[] bytes = string.getBytes();
         for (int i = 0; i < bytes.length; i++) {
             byte b = bytes[i];
-            result.add(LockPatternView.Cell.of(b / size, b % size, size));
+            result.add(LockPatternView.Cell.of(b / 3, b % 3));
         }
         return result;
     }

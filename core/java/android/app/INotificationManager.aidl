@@ -24,7 +24,7 @@ import android.content.Intent;
 /** {@hide} */
 interface INotificationManager
 {
-    void cancelAllNotifications(String pkg);
+    void cancelAllNotifications(String pkg, int userId);
 
     void enqueueToast(String pkg, ITransientNotification callback, int duration);
     void cancelToast(String pkg, ITransientNotification callback);
@@ -33,5 +33,6 @@ interface INotificationManager
     void cancelNotificationWithTag(String pkg, String tag, int id, int userId);
 
     void setNotificationsEnabledForPackage(String pkg, boolean enabled);
+    boolean areNotificationsEnabledForPackage(String pkg);
 }
 

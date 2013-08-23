@@ -230,12 +230,22 @@ public class TelephonyIntents {
      * <p class="note">.
      * This is to pop up a notice to show user that the phone is in emergency callback mode
      * and atacalls and outgoing sms are blocked.
-     * 
+     *
      * <p class="note">This is a protected intent that can only be sent
      * by the system.
      */
     public static final String ACTION_SHOW_NOTICE_ECM_BLOCK_OTHERS
             = "android.intent.action.ACTION_SHOW_NOTICE_ECM_BLOCK_OTHERS";
+
+
+    /**
+     * Broadcast Action: A "secret code" has been entered in the dialer. Secret codes are
+     * of the form *#*#<code>#*#*. The intent will have the data URI:</p>
+     *
+     * <p><code>android_secret_code://&lt;code&gt;</code></p>
+     */
+    public static final String SECRET_CODE_ACTION =
+            "android.provider.Telephony.SECRET_CODE";
 
     /**
      * Broadcast Action: The Service Provider string(s) have been updated.  Activities or

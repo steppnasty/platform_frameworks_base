@@ -152,6 +152,16 @@ interface INetworkManagementService
     boolean isTetheringStarted();
 
     /**
+     * Start bluetooth reverse tethering services
+     */
+    void startReverseTethering(in String iface);
+
+    /**
+     * Stop currently running bluetooth reserse tethering services
+     */
+    void stopReverseTethering();
+
+    /**
      * Tethers the specified interface
      */
     void tetherInterface(String iface);
@@ -223,12 +233,12 @@ interface INetworkManagementService
     /**
      * Stop Wifi Access Point
      */
-    void stopAccessPoint(String wlanIface);
+    void stopAccessPoint(String iface);
 
     /**
      * Set Access Point config
      */
-    void setAccessPoint(in WifiConfiguration wifiConfig, String wlanIface, String softapIface);
+    void setAccessPoint(in WifiConfiguration wifiConfig, String iface);
 
     /**
      ** DATA USAGE RELATED
@@ -238,7 +248,8 @@ interface INetworkManagementService
      * Return global network statistics summarized at an interface level,
      * without any UID-level granularity.
      */
-    NetworkStats getNetworkStatsSummary();
+    NetworkStats getNetworkStatsSummaryDev();
+    NetworkStats getNetworkStatsSummaryXt();
 
     /**
      * Return detailed network statistics with UID-level granularity,
@@ -312,6 +323,27 @@ interface INetworkManagementService
     int getInterfaceTxThrottle(String iface);
 
     /**
+     * Sets idletimer for an interface.
+     *
+     * This either initializes a new idletimer or increases its
+     * reference-counting if an idletimer already exists for given
+     * {@code iface}.
+     *
+     * {@code label} usually represents the network type of {@code iface}.
+     * Caller should ensure that {@code label} for an {@code iface} remains the
+     * same for all calls to addIdleTimer.
+     *
+     * Every {@code addIdleTimer} should be paired with a
+     * {@link removeIdleTimer} to cleanup when the network disconnects.
+     */
+    void addIdleTimer(String iface, int timeout, String label);
+
+    /**
+     * Removes idletimer for an interface.
+     */
+    void removeIdleTimer(String iface);
+
+    /**
      * Sets the name of the default interface in the DNS resolver.
      */
     void setDefaultInterfaceForDns(String iface);
@@ -330,4 +362,11 @@ interface INetworkManagementService
      * Flush the DNS cache associated with the specified interface.
      */
     void flushInterfaceDnsCache(String iface);
+
+    void setFirewallEnabled(boolean enabled);
+    boolean isFirewallEnabled();
+    void setFirewallInterfaceRule(String iface, boolean allow);
+    void setFirewallEgressSourceRule(String addr, boolean allow);
+    void setFirewallEgressDestRule(String addr, int port, boolean allow);
+    void setFirewallUidRule(int uid, boolean allow);
 }

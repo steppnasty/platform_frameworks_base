@@ -97,6 +97,16 @@ public final class UserHandle implements Parcelable {
         }
     }
 
+    /** @hide */
+    public static boolean isApp(int uid) {
+        if (uid > 0) {
+            final int appId = getAppId(uid);
+            return appId >= Process.FIRST_APPLICATION_UID && appId <= Process.LAST_APPLICATION_UID;
+        } else {
+            return false;
+        }
+    }
+
     /**
      * Returns the user id for a given uid.
      * @hide

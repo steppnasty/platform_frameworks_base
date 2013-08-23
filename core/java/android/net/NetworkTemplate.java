@@ -186,6 +186,10 @@ public class NetworkTemplate implements Parcelable {
         return mSubscriberId;
     }
 
+    public String getNetworkId() {
+        return mNetworkId;
+    }
+
     /**
      * Test if given {@link NetworkIdentity} matches this template.
      */

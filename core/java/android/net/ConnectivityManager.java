@@ -20,6 +20,7 @@ import static com.android.internal.util.Preconditions.checkNotNull;
 
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
+import android.content.Context;
 import android.os.Binder;
 import android.os.Build.VERSION_CODES;
 import android.os.RemoteException;
@@ -88,9 +89,19 @@ public class ConnectivityManager {
      *             should always obtain network information through
      *             {@link #getActiveNetworkInfo()} or
      *             {@link #getAllNetworkInfo()}.
+     * @see #EXTRA_NETWORK_TYPE
      */
     @Deprecated
     public static final String EXTRA_NETWORK_INFO = "networkInfo";
+
+    /**
+     * Network type which triggered a {@link #CONNECTIVITY_ACTION} broadcast.
+     * Can be used with {@link #getNetworkInfo(int)} to get {@link NetworkInfo}
+     * state based on the calling application.
+     *
+     * @see android.content.Intent#getIntExtra(String, int)
+     */
+    public static final String EXTRA_NETWORK_TYPE = "networkType";
 
     /**
      * The lookup key for a boolean that indicates whether a connect event
@@ -136,14 +147,47 @@ public class ConnectivityManager {
     public static final String EXTRA_INET_CONDITION = "inetCondition";
 
     /**
+     * Broadcast action to indicate the change of data activity status
+     * (idle or active) on a network in a recent period.
+     * The network becomes active when data transimission is started, or
+     * idle if there is no data transimition for a period of time.
+     * {@hide}
+     */
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    public static final String ACTION_DATA_ACTIVITY_CHANGE = "android.net.conn.DATA_ACTIVITY_CHANGE";
+    /**
+     * The lookup key for an enum that indicates the network device type on which this data activity
+     * change happens.
+     * {@hide}
+     */
+    public static final String EXTRA_DEVICE_TYPE = "deviceType";
+    /**
+     * The lookup key for a boolean that indicates the device is active or not. {@code true} means
+     * it is actively sending or receiving data and {@code false} means it is idle.
+     * {@hide}
+     */
+    public static final String EXTRA_IS_ACTIVE = "isActive";
+
+    /**
      * Broadcast Action: The setting for background data usage has changed
      * values. Use {@link #getBackgroundDataSetting()} to get the current value.
      * <p>
      * If an application uses the network in the background, it should listen
      * for this broadcast and stop using the background data if the value is
      * {@code false}.
+     * <p>
+     *
+     * @deprecated As of {@link VERSION_CODES#ICE_CREAM_SANDWICH}, availability
+     *             of background data depends on several combined factors, and
+     *             this broadcast is no longer sent. Instead, when background
+     *             data is unavailable, {@link #getActiveNetworkInfo()} will now
+     *             appear disconnected. During first boot after a platform
+     *             upgrade, this broadcast will be sent once if
+     *             {@link #getBackgroundDataSetting()} was {@code false} before
+     *             the upgrade.
      */
     @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    @Deprecated
     public static final String ACTION_BACKGROUND_DATA_SETTING_CHANGED =
             "android.net.conn.BACKGROUND_DATA_SETTING_CHANGED";
 
@@ -286,6 +330,14 @@ public class ConnectivityManager {
 
     public static final int DEFAULT_NETWORK_PREFERENCE = TYPE_WIFI;
 
+    /**
+     * Default value for {@link Settings.Global#CONNECTIVITY_CHANGE_DELAY} in
+     * milliseconds.
+     *
+     * @hide
+     */
+    public static final int CONNECTIVITY_CHANGE_DELAY_DEFAULT = 3000;
+
     private final IConnectivityManager mService;
 
     public static boolean isNetworkTypeValid(int networkType) {
@@ -360,6 +412,14 @@ public class ConnectivityManager {
         }
     }
 
+    /**
+     * Returns details about the currently active data network. When connected,
+     * this network is the default route for outgoing connections. You should
+     * always check {@link NetworkInfo#isConnected()} before initiating network
+     * traffic. This may return {@code null} when no networks are available.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#ACCESS_NETWORK_STATE}.
+     */
     public NetworkInfo getActiveNetworkInfo() {
         try {
             return mService.getActiveNetworkInfo();
@@ -433,6 +493,8 @@ public class ConnectivityManager {
      * Tells the underlying networking system that the caller wants to
      * begin using the named feature. The interpretation of {@code feature}
      * is completely up to each networking implementation.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#CHANGE_NETWORK_STATE}.
      * @param networkType specifies which network the request pertains to
      * @param feature the name of the feature to be used
      * @return an integer value representing the outcome of the request.
@@ -453,6 +515,8 @@ public class ConnectivityManager {
      * Tells the underlying networking system that the caller is finished
      * using the named feature. The interpretation of {@code feature}
      * is completely up to each networking implementation.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#CHANGE_NETWORK_STATE}.
      * @param networkType specifies which network the request pertains to
      * @param feature the name of the feature that is no longer needed
      * @return an integer value representing the outcome of the request.
@@ -472,6 +536,8 @@ public class ConnectivityManager {
      * Ensure that a network route exists to deliver traffic to the specified
      * host via the specified network interface. An attempt to add a route that
      * already exists is ignored, but treated as successful.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#CHANGE_NETWORK_STATE}.
      * @param networkType the type of the network over which traffic to the specified
      * host is to be routed
      * @param hostAddress the IP address of the host to which the route is desired
@@ -592,6 +658,11 @@ public class ConnectivityManager {
      */
     public ConnectivityManager(IConnectivityManager service) {
         mService = checkNotNull(service, "missing IConnectivityManager");
+    }
+
+    /** {@hide} */
+    public static ConnectivityManager from(Context context) {
+        return (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
     /**
@@ -849,4 +920,24 @@ public class ConnectivityManager {
             return false;
         }
     }
+
+    /** {@hide} */
+    public boolean updateLockdownVpn() {
+        try {
+            return mService.updateLockdownVpn();
+        } catch (RemoteException e) {
+            return false;
+        }
+    }
+
+    /**
+     * {@hide}
+     */
+    public void captivePortalCheckComplete(NetworkInfo info) {
+        try {
+            mService.captivePortalCheckComplete(info);
+        } catch (RemoteException e) {
+        }
+    }
+
 }

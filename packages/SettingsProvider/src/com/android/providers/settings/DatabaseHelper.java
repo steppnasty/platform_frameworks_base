@@ -39,12 +39,14 @@ import android.os.UserHandle;
 import android.provider.Settings;
 import android.provider.Settings.Secure;
 import android.provider.Settings.Global;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.internal.content.PackageHelper;
 import com.android.internal.telephony.BaseCommands;
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.util.XmlUtils;
 import com.android.internal.widget.LockPatternUtils;
@@ -70,7 +72,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // database gets upgraded properly. At a minimum, please confirm that 'upgradeVersion'
     // is properly propagated through your change.  Not doing so will result in a loss of user
     // settings
-    private static final int DATABASE_VERSION = 89;
+    private static final int DATABASE_VERSION = 91;
 
     private Context mContext;
     private int mUserHandle;
@@ -1394,6 +1396,59 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             upgradeVersion = 89;
         }
 
+        if (upgradeVersion == 89) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    String[] prefixesToMove = {
+                            Settings.Global.BLUETOOTH_HEADSET_PRIORITY_PREFIX,
+                            Settings.Global.BLUETOOTH_A2DP_SINK_PRIORITY_PREFIX,
+                            Settings.Global.BLUETOOTH_INPUT_DEVICE_PRIORITY_PREFIX,
+                    };
+
+                    movePrefixedSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, prefixesToMove);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 90;
+        }
+
+        if (upgradeVersion == 90) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    String[] systemToGlobal = {
+                            Settings.Global.WINDOW_ANIMATION_SCALE,
+                            Settings.Global.TRANSITION_ANIMATION_SCALE,
+                            Settings.Global.ANIMATOR_DURATION_SCALE,
+                            Settings.Global.FANCY_IME_ANIMATIONS,
+                            Settings.Global.COMPATIBILITY_MODE,
+                            Settings.Global.EMERGENCY_TONE,
+                            Settings.Global.CALL_AUTO_RETRY,
+                            Settings.Global.DEBUG_APP,
+                            Settings.Global.WAIT_FOR_DEBUGGER,
+                            Settings.Global.SHOW_PROCESSES,
+                            Settings.Global.ALWAYS_FINISH_ACTIVITIES,
+                    };
+                    String[] secureToGlobal = {
+                            Settings.Global.PREFERRED_NETWORK_MODE,
+                            Settings.Global.PREFERRED_CDMA_SUBSCRIPTION,
+                    };
+
+                    moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_GLOBAL, systemToGlobal, true);
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, secureToGlobal, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 91;
+        }
+
         // *** Remember to update DATABASE_VERSION above!
 
         if (upgradeVersion != currentVersion) {
@@ -1447,6 +1502,40 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
                 deleteStmt.bindString(1, setting);
                 deleteStmt.execute();
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            if (insertStmt != null) {
+                insertStmt.close();
+            }
+            if (deleteStmt != null) {
+                deleteStmt.close();
+            }
+        }
+    }
+
+    /**
+     * Move any settings with the given prefixes from the source table to the
+     * destination table.
+     */
+    private void movePrefixedSettingsToNewTable(
+            SQLiteDatabase db, String sourceTable, String destTable, String[] prefixesToMove) {
+        SQLiteStatement insertStmt = null;
+        SQLiteStatement deleteStmt = null;
+
+        db.beginTransaction();
+        try {
+            insertStmt = db.compileStatement("INSERT INTO " + destTable
+                    + " (name,value) SELECT name,value FROM " + sourceTable
+                    + " WHERE substr(name,0,?)=?");
+            deleteStmt = db.compileStatement(
+                    "DELETE FROM " + sourceTable + " WHERE substr(name,0,?)=?");
+
+            for (String prefix : prefixesToMove) {
+                insertStmt.bindLong(1, prefix.length() + 1);
+                insertStmt.bindString(2, prefix);
+                insertStmt.execute();
             }
             db.setTransactionSuccessful();
         } finally {
@@ -1766,65 +1855,41 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             stmt = db.compileStatement("INSERT OR IGNORE INTO system(name,value)"
                     + " VALUES(?,?);");
-    
+
             loadBooleanSetting(stmt, Settings.System.DIM_SCREEN,
                     R.bool.def_dim_screen);
-            loadSetting(stmt, Settings.System.STAY_ON_WHILE_PLUGGED_IN,
-                    "1".equals(SystemProperties.get("ro.kernel.qemu")) ? 1 : 0);
             loadIntegerSetting(stmt, Settings.System.SCREEN_OFF_TIMEOUT,
                     R.integer.def_screen_off_timeout);
-    
-            // Set default cdma emergency tone
-            loadSetting(stmt, Settings.System.EMERGENCY_TONE, 0);
-    
-            // Set default cdma call auto retry
-            loadSetting(stmt, Settings.System.CALL_AUTO_RETRY, 0);
-    
+
             // Set default cdma DTMF type
             loadSetting(stmt, Settings.System.DTMF_TONE_TYPE_WHEN_DIALING, 0);
-    
+
             // Set default hearing aid
             loadSetting(stmt, Settings.System.HEARING_AID, 0);
-    
+
             // Set default tty mode
             loadSetting(stmt, Settings.System.TTY_MODE, 0);
 
-            // Set default noise suppression value
-            loadSetting(stmt, Settings.System.NOISE_SUPPRESSION, 0);
-    
-            loadBooleanSetting(stmt, Settings.System.AUTO_TIME,
-                    R.bool.def_auto_time); // Sync time to NITZ
-
-            loadBooleanSetting(stmt, Settings.System.AUTO_TIME_ZONE,
-                    R.bool.def_auto_time_zone); // Sync timezone to NITZ
-
             loadIntegerSetting(stmt, Settings.System.SCREEN_BRIGHTNESS,
                     R.integer.def_screen_brightness);
-    
+
             loadBooleanSetting(stmt, Settings.System.SCREEN_BRIGHTNESS_MODE,
                     R.bool.def_screen_brightness_automatic_mode);
-    
+
             loadDefaultAnimationSettings(stmt);
-    
+
             loadBooleanSetting(stmt, Settings.System.ACCELEROMETER_ROTATION,
                     R.bool.def_accelerometer_rotation);
-    
+
             loadDefaultHapticSettings(stmt);
-    
+
             loadBooleanSetting(stmt, Settings.System.NOTIFICATION_LIGHT_PULSE,
                     R.bool.def_notification_pulse);
-            loadSetting(stmt, Settings.Secure.SET_INSTALL_LOCATION, 0);
-            loadSetting(stmt, Settings.Global.DEFAULT_INSTALL_LOCATION,
-                    PackageHelper.APP_INSTALL_AUTO);
 
             loadUISoundEffectsSettings(stmt);
 
-            loadBooleanSetting(stmt, Settings.System.VIBRATE_IN_SILENT,
-                    R.bool.def_vibrate_in_silent);
-
             loadIntegerSetting(stmt, Settings.System.POINTER_SPEED,
                     R.integer.def_pointer_speed);
-
         } finally {
             if (stmt != null) stmt.close();
         }
@@ -1878,59 +1943,34 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             stmt = db.compileStatement("INSERT OR IGNORE INTO secure(name,value)"
                     + " VALUES(?,?);");
-    
-            // Mobile Data default, based on build
+
             loadStringSetting(stmt, Settings.Secure.LOCATION_PROVIDERS_ALLOWED,
                     R.string.def_location_providers_allowed);
-    
-            loadBooleanSetting(stmt, Settings.Global.ASSISTED_GPS_ENABLED,
-                    R.bool.assisted_gps_enabled);
-    
-            loadIntegerSetting(stmt, Settings.Secure.NETWORK_PREFERENCE,
-                    R.integer.def_network_preference);
-    
+
             String wifiWatchList = SystemProperties.get("ro.com.android.wifi-watchlist");
             if (!TextUtils.isEmpty(wifiWatchList)) {
                 loadSetting(stmt, Settings.Secure.WIFI_WATCHDOG_WATCH_LIST, wifiWatchList);
             }
-    
-            // Set the preferred network mode to 0 = Global, CDMA default
-            int type;
-            if (BaseCommands.getLteOnCdmaModeStatic() == Phone.LTE_ON_CDMA_TRUE) {
-                type = Phone.NT_MODE_GLOBAL;
-            } else {
-                type = SystemProperties.getInt("ro.telephony.default_network",
-                        RILConstants.PREFERRED_NETWORK_MODE);
-            }
-            loadSetting(stmt, Settings.Secure.PREFERRED_NETWORK_MODE, type);
-    
-            // Enable or disable Cell Broadcast SMS
-            loadSetting(stmt, Settings.Secure.CDMA_CELL_BROADCAST_SMS,
-                    RILConstants.CDMA_CELL_BROADCAST_SMS_DISABLED);
-    
-            // Set the preferred cdma subscription to 0 = Subscription from RUIM, when available
-            loadSetting(stmt, Settings.Secure.PREFERRED_CDMA_SUBSCRIPTION,
-                    RILConstants.PREFERRED_CDMA_SUBSCRIPTION);
-    
+
             // Don't do this.  The SystemServer will initialize ADB_ENABLED from a
             // persistent system property instead.
             //loadSetting(stmt, Settings.Secure.ADB_ENABLED, 0);
-    
+
             // Allow mock locations default, based on build
             loadSetting(stmt, Settings.Secure.ALLOW_MOCK_LOCATION,
                     "1".equals(SystemProperties.get("ro.allow.mock.location")) ? 1 : 0);
-    
+
             loadSecure35Settings(stmt);
-    
+
             loadBooleanSetting(stmt, Settings.Secure.MOUNT_PLAY_NOTIFICATION_SND,
                     R.bool.def_mount_play_notification_snd);
-    
+
             loadBooleanSetting(stmt, Settings.Secure.MOUNT_UMS_AUTOSTART,
                     R.bool.def_mount_ums_autostart);
-    
+
             loadBooleanSetting(stmt, Settings.Secure.MOUNT_UMS_PROMPT,
                     R.bool.def_mount_ums_prompt);
-    
+
             loadBooleanSetting(stmt, Settings.Secure.MOUNT_UMS_NOTIFY_ENABLED,
                     R.bool.def_mount_ums_notify_enabled);
 
@@ -1948,6 +1988,40 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             loadBooleanSetting(stmt, Settings.Secure.ACCESSIBILITY_SPEAK_PASSWORD,
                     R.bool.def_accessibility_speak_password);
+
+            loadStringSetting(stmt, Settings.Secure.ACCESSIBILITY_SCREEN_READER_URL,
+                    R.string.def_accessibility_screen_reader_url);
+
+            if (SystemProperties.getBoolean("ro.lockscreen.disable.default", false) == true) {
+                loadSetting(stmt, Settings.System.LOCKSCREEN_DISABLED, "1");
+            } else {
+                loadBooleanSetting(stmt, Settings.System.LOCKSCREEN_DISABLED,
+                        R.bool.def_lockscreen_disabled);
+            }
+
+            loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ENABLED,
+                    com.android.internal.R.bool.config_dreamsEnabledByDefault);
+            loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ACTIVATE_ON_DOCK,
+                    com.android.internal.R.bool.config_dreamsActivatedOnDockByDefault);
+            loadBooleanSetting(stmt, Settings.Secure.SCREENSAVER_ACTIVATE_ON_SLEEP,
+                    com.android.internal.R.bool.config_dreamsActivatedOnSleepByDefault);
+            loadStringSetting(stmt, Settings.Secure.SCREENSAVER_COMPONENTS,
+                    com.android.internal.R.string.config_dreamsDefaultComponent);
+            loadStringSetting(stmt, Settings.Secure.SCREENSAVER_DEFAULT_COMPONENT,
+                    com.android.internal.R.string.config_dreamsDefaultComponent);
+
+            loadBooleanSetting(stmt, Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_ENABLED,
+                    R.bool.def_accessibility_display_magnification_enabled);
+
+            loadFractionSetting(stmt, Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_SCALE,
+                    R.fraction.def_accessibility_display_magnification_scale, 1);
+
+            loadBooleanSetting(stmt,
+                    Settings.Secure.ACCESSIBILITY_DISPLAY_MAGNIFICATION_AUTO_UPDATE,
+                    R.bool.def_accessibility_display_magnification_auto_update);
+
+            loadBooleanSetting(stmt, Settings.Secure.USER_SETUP_COMPLETE,
+                    R.bool.def_user_setup_complete);
         } finally {
             if (stmt != null) stmt.close();
         }
@@ -1980,6 +2054,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadBooleanSetting(stmt, Settings.Global.ASSISTED_GPS_ENABLED,
                     R.bool.assisted_gps_enabled);
 
+            loadBooleanSetting(stmt, Settings.Global.AUTO_TIME,
+                    R.bool.def_auto_time); // Sync time to NITZ
+
+            loadBooleanSetting(stmt, Settings.Global.AUTO_TIME_ZONE,
+                    R.bool.def_auto_time_zone); // Sync timezone to NITZ
+
             loadSetting(stmt, Settings.Global.STAY_ON_WHILE_PLUGGED_IN,
                     ("1".equals(SystemProperties.get("ro.kernel.qemu")) ||
                         mContext.getResources().getBoolean(R.bool.def_stay_on_while_plugged_in))
@@ -1987,6 +2067,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             loadIntegerSetting(stmt, Settings.Global.WIFI_SLEEP_POLICY,
                     R.integer.def_wifi_sleep_policy);
+
+            loadSetting(stmt, Settings.Global.MODE_RINGER,
+                    AudioManager.RINGER_MODE_NORMAL);
 
             // --- Previously in 'secure'
             loadBooleanSetting(stmt, Settings.Global.PACKAGE_VERIFIER_ENABLE,
@@ -2000,6 +2083,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             loadBooleanSetting(stmt, Settings.Global.BLUETOOTH_ON,
                     R.bool.def_bluetooth_on);
+
+            // Enable or disable Cell Broadcast SMS
+            loadSetting(stmt, Settings.Global.CDMA_CELL_BROADCAST_SMS,
+                    RILConstants.CDMA_CELL_BROADCAST_SMS_DISABLED);
 
             // Data roaming default, based on build
             loadSetting(stmt, Settings.Global.DATA_ROAMING,
@@ -2030,26 +2117,63 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                             SystemProperties.get("ro.com.android.mobiledata",
                                     "true")) ? 1 : 0);
 
+            loadBooleanSetting(stmt, Settings.Global.NETSTATS_ENABLED,
+                    R.bool.def_netstats_enabled);
+
             loadBooleanSetting(stmt, Settings.Global.INSTALL_NON_MARKET_APPS,
                     R.bool.def_install_non_market_apps);
 
+            loadIntegerSetting(stmt, Settings.Global.NETWORK_PREFERENCE,
+                    R.integer.def_network_preference);
+
             loadBooleanSetting(stmt, Settings.Global.USB_MASS_STORAGE_ENABLED,
                     R.bool.def_usb_mass_storage_enabled);
+
+            loadIntegerSetting(stmt, Settings.Global.WIFI_MAX_DHCP_RETRY_COUNT,
+                    R.integer.def_max_dhcp_retries);
+
+            loadBooleanSetting(stmt, Settings.Global.WIFI_DISPLAY_ON,
+                    R.bool.def_wifi_display_on);
 
             loadStringSetting(stmt, Settings.Global.LOCK_SOUND,
                     R.string.def_lock_sound);
             loadStringSetting(stmt, Settings.Global.UNLOCK_SOUND,
                     R.string.def_unlock_sound);
+            loadIntegerSetting(stmt, Settings.Global.POWER_SOUNDS_ENABLED,
+                    R.integer.def_power_sounds_enabled);
+            loadStringSetting(stmt, Settings.Global.LOW_BATTERY_SOUND,
+                    R.string.def_low_battery_sound);
+            loadIntegerSetting(stmt, Settings.Global.DOCK_SOUNDS_ENABLED,
+                    R.integer.def_dock_sounds_enabled);
+            loadStringSetting(stmt, Settings.Global.DESK_DOCK_SOUND,
+                    R.string.def_desk_dock_sound);
+            loadStringSetting(stmt, Settings.Global.DESK_UNDOCK_SOUND,
+                    R.string.def_desk_undock_sound);
+            loadStringSetting(stmt, Settings.Global.CAR_DOCK_SOUND,
+                    R.string.def_car_dock_sound);
+            loadStringSetting(stmt, Settings.Global.CAR_UNDOCK_SOUND,
+                    R.string.def_car_undock_sound);
             loadStringSetting(stmt, Settings.Global.WIRELESS_CHARGING_STARTED_SOUND,
                     R.string.def_wireless_charging_started_sound);
 
+            loadSetting(stmt, Settings.Global.SET_INSTALL_LOCATION, 0);
             loadSetting(stmt, Settings.Global.DEFAULT_INSTALL_LOCATION,
                     PackageHelper.APP_INSTALL_AUTO);
 
+            // Set default cdma emergency tone
+            loadSetting(stmt, Settings.Global.EMERGENCY_TONE, 0);
+
+            // Set default cdma call auto retry
+            loadSetting(stmt, Settings.Global.CALL_AUTO_RETRY, 0);
+
             // Set the preferred network mode to 0 = Global, CDMA default
             int type;
+            if (TelephonyManager.getLteOnCdmaModeStatic() == PhoneConstants.LTE_ON_CDMA_TRUE) {
+                type = Phone.NT_MODE_GLOBAL;
+            } else {
                 type = SystemProperties.getInt("ro.telephony.default_network",
                         RILConstants.PREFERRED_NETWORK_MODE);
+            }
             loadSetting(stmt, Settings.Global.PREFERRED_NETWORK_MODE, type);
 
             // --- New global settings start here
@@ -2057,7 +2181,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             if (stmt != null) stmt.close();
         }
     }
-            
 
     private void loadSetting(SQLiteStatement stmt, String key, Object value) {
         stmt.bindString(1, key);

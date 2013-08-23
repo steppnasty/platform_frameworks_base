@@ -22,8 +22,10 @@ import android.net.LocalSocket;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UTFDataFormatException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charsets;
+import java.nio.charset.ModifiedUtf8;
 import java.util.ArrayList;
 
 /**
@@ -155,6 +157,15 @@ public class KeyStore {
         return mError == KEY_NOT_FOUND;
     }
 
+    private boolean importKey(byte[] keyName, byte[] key) {
+        execute('m', keyName, key);
+        return mError == NO_ERROR;
+    }
+
+    public boolean importKey(String keyName, byte[] key) {
+        return importKey(getKeyBytes(keyName), key);
+    }
+
     public int getLastError() {
         return mError;
     }
@@ -217,6 +228,21 @@ public class KeyStore {
             } catch (IOException e) {}
         }
         return null;
+    }
+
+    /**
+     * ModifiedUtf8 is used for key encoding to match the
+     * implementation of NativeCrypto.ENGINE_load_private_key.
+     */
+    private static byte[] getKeyBytes(String string) {
+        try {
+            int utfCount = (int) ModifiedUtf8.countBytes(string, false);
+            byte[] result = new byte[utfCount];
+            ModifiedUtf8.encode(result, 0, string);
+            return result;
+        } catch (UTFDataFormatException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static byte[] getBytes(String string) {
