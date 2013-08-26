@@ -128,15 +128,6 @@
                     android:layout_width="wrap_content"
                     android:paddingLeft="@dimen/status_bar_battery_cluster_padding"
                     />
-                <com.android.systemui.statusbar.policy.CircleBattery
-                    android:id="@+id/circle_battery"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.StatusBar.Battery"
-                    android:singleLine="true"
-                    android:gravity="bottom"
-                    android:paddingLeft="@dimen/status_bar_battery_cluster_padding"
-                    />
             </LinearLayout>
 
             <com.android.systemui.statusbar.policy.Clock
