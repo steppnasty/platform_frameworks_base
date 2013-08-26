@@ -112,15 +112,6 @@
                     android:layout_width="wrap_content"
                     android:paddingLeft="@dimen/status_bar_battery_cluster_padding"
                     />
-                <com.android.systemui.statusbar.policy.CircleDockBattery
-                    android:id="@+id/circle_dock_battery"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.StatusBar.Battery"
-                    android:singleLine="true"
-                    android:gravity="bottom"
-                    android:paddingLeft="@dimen/status_bar_battery_cluster_padding"
-                    />
                 <TextView
                     android:id="@+id/battery_text"
                     android:textAppearance="@style/TextAppearance.StatusBar.Battery"
