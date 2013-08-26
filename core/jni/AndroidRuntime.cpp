@@ -149,8 +149,6 @@ extern int register_android_net_wifi_WifiManager(JNIEnv* env);
 extern int register_android_text_AndroidCharacter(JNIEnv *env);
 extern int register_android_text_AndroidBidi(JNIEnv *env);
 extern int register_android_opengl_classes(JNIEnv *env);
-extern int register_android_bluetooth_BluetoothAudioGateway(JNIEnv* env);
-extern int register_android_bluetooth_BluetoothSocket(JNIEnv *env);
 extern int register_android_server_BluetoothService(JNIEnv* env);
 extern int register_android_server_BluetoothEventLoop(JNIEnv *env);
 extern int register_android_server_BluetoothA2dpService(JNIEnv* env);
@@ -1181,8 +1179,6 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_media_ToneGenerator),
 
     REG_JNI(register_android_opengl_classes),
-    REG_JNI(register_android_bluetooth_BluetoothAudioGateway),
-    REG_JNI(register_android_bluetooth_BluetoothSocket),
     REG_JNI(register_android_server_BluetoothService),
     REG_JNI(register_android_server_BluetoothEventLoop),
     REG_JNI(register_android_server_BluetoothA2dpService),
