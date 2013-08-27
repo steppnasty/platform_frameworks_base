@@ -544,6 +544,35 @@ public class ActivityManager {
     }
 
     /**
+     * Same as {@link #getRecentTasks(int, int)} but returns the recent tasks for a
+     * specific user. It requires holding
+     * the {@link android.Manifest.permission#INTERACT_ACROSS_USERS_FULL} permission.
+     * @param maxNum The maximum number of entries to return in the list.  The
+     * actual number returned may be smaller, depending on how many tasks the
+     * user has started and the maximum number the system can remember.
+     * @param flags Information about what to return.  May be any combination
+     * of {@link #RECENT_WITH_EXCLUDED} and {@link #RECENT_IGNORE_UNAVAILABLE}.
+     *
+     * @return Returns a list of RecentTaskInfo records describing each of
+     * the recent tasks.
+     *
+     * @throws SecurityException Throws SecurityException if the caller does
+     * not hold the {@link android.Manifest.permission#GET_TASKS} or the
+     * {@link android.Manifest.permission#INTERACT_ACROSS_USERS_FULL} permissions.
+     * @hide
+     */
+    public List<RecentTaskInfo> getRecentTasksForUser(int maxNum, int flags, int userId)
+            throws SecurityException {
+        try {
+            return ActivityManagerNative.getDefault().getRecentTasks(maxNum,
+                    flags, userId);
+        } catch (RemoteException e) {
+            // System dead, we will be dead too soon!
+            return null;
+        }
+    }
+
+    /**
      * Information you can retrieve about a particular task that is currently
      * "running" in the system.  Note that a running task does not mean the
      * given task actually has a process it is actively running in; it simply

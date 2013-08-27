@@ -32,7 +32,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 
-public class SwipeHelper {
+public class SwipeHelper implements Gefingerpoken {
     static final String TAG = "com.android.systemui.SwipeHelper";
     private static final boolean DEBUG = false;
     private static final boolean DEBUG_INVALIDATE = false;
@@ -56,6 +56,7 @@ public class SwipeHelper {
                                                  // where fade starts
     static final float ALPHA_FADE_END = 0.5f; // fraction of thumbnail width
                                               // beyond which alpha->0
+    private float mMinAlpha = 0f;
 
     private float mPagingTouchSlop;
     private Callback mCallback;
@@ -83,6 +84,7 @@ public class SwipeHelper {
         mVelocityTracker = VelocityTracker.obtain();
         mDensityScale = densityScale;
         mPagingTouchSlop = pagingTouchSlop;
+
         mLongPressTimeout = (long) (ViewConfiguration.getLongPressTimeout() * 1.5f); // extra long-press!
     }
 
@@ -135,6 +137,10 @@ public class SwipeHelper {
                 v.getMeasuredHeight();
     }
 
+    public void setMinAlpha(float minAlpha) {
+        mMinAlpha = minAlpha;
+    }
+
     private float getAlphaForOffset(View view) {
         float viewSize = getSize(view);
         final float fadeSize = ALPHA_FADE_END * viewSize;
@@ -145,10 +151,7 @@ public class SwipeHelper {
         } else if (pos < viewSize * (1.0f - ALPHA_FADE_START)) {
             result = 1.0f + (viewSize * ALPHA_FADE_START + pos) / fadeSize;
         }
-        // Make .03 alpha the minimum so you always see the item a bit-- slightly below
-        // .03, the item disappears entirely (as if alpha = 0) and that discontinuity looks
-        // a bit jarring
-        return Math.max(0.03f, result);
+        return Math.max(mMinAlpha, result);
     }
 
     // invalidate the view's own bounds all the way up the view hierarchy
@@ -220,6 +223,7 @@ public class SwipeHelper {
 
                 }
                 break;
+
             case MotionEvent.ACTION_MOVE:
                 if (mCurrView != null && !mLongPressSent) {
                     mVelocityTracker.addMovement(ev);
@@ -229,10 +233,13 @@ public class SwipeHelper {
                         mCallback.onBeginDrag(mCurrView);
                         mDragging = true;
                         mInitialTouchPos = getPos(ev) - getTranslation(mCurrAnimView);
+
                         removeLongPressCallback();
                     }
                 }
+
                 break;
+
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 mDragging = false;
@@ -315,6 +322,8 @@ public class SwipeHelper {
         }
 
         if (!mDragging) {
+            // We are not doing anything, make sure the long press callback
+            // is not still ticking like a bomb waiting to go off.
             removeLongPressCallback();
             return false;
         }

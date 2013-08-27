@@ -23,13 +23,17 @@
     android:layout_height="match_parent"
     android:layout_width="wrap_content"
     android:paddingLeft="@dimen/status_bar_recents_item_padding"
-    android:paddingRight="@dimen/status_bar_recents_item_padding">
+    android:paddingRight="@dimen/status_bar_recents_item_padding"
+    android:importantForAccessibility="no"
+    android:clipChildren="false">
 
     <RelativeLayout android:id="@+id/recent_item"
         android:layout_gravity="center_vertical"
         android:layout_height="wrap_content"
         android:layout_width="wrap_content"
-        android:paddingTop="@*android:dimen/status_bar_height">
+        android:paddingTop="@*android:dimen/status_bar_height"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <FrameLayout android:id="@+id/app_thumbnail"
             android:layout_width="wrap_content"
@@ -58,6 +62,7 @@
             android:maxHeight="@dimen/status_bar_recents_app_icon_max_height"
             android:scaleType="centerInside"
             android:adjustViewBounds="true"
+            android:visibility="invisible"
         />
 
         <TextView android:id="@+id/app_label"
@@ -65,7 +70,7 @@
             android:layout_height="wrap_content"
             android:textSize="@dimen/status_bar_recents_app_label_text_size"
             android:fadingEdge="horizontal"
-            android:fadingEdgeLength="@dimen/status_bar_recents_fading_edge_length"
+            android:fadingEdgeLength="@dimen/status_bar_recents_text_fading_edge_length"
             android:scrollHorizontally="true"
             android:layout_alignLeft="@id/app_thumbnail"
             android:layout_below="@id/app_thumbnail"
@@ -74,6 +79,7 @@
             android:singleLine="true"
             android:ellipsize="marquee"
             android:textColor="@color/status_bar_recents_app_label_color"
+            android:importantForAccessibility="no"
         />
 
         <TextView android:id="@+id/app_description"
@@ -81,7 +87,7 @@
             android:layout_height="wrap_content"
             android:textSize="@dimen/status_bar_recents_app_description_text_size"
             android:fadingEdge="horizontal"
-            android:fadingEdgeLength="@dimen/status_bar_recents_fading_edge_length"
+            android:fadingEdgeLength="@dimen/status_bar_recents_text_fading_edge_length"
             android:scrollHorizontally="true"
             android:layout_alignLeft="@id/app_thumbnail"
             android:layout_below="@id/app_label"

@@ -30,12 +30,14 @@ import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Process;
+import android.os.UserHandle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
 import com.android.systemui.R;
 import com.android.systemui.statusbar.phone.PhoneStatusBar;
+import com.android.systemui.statusbar.tablet.TabletStatusBar;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +46,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class RecentTasksLoader implements View.OnTouchListener {
     static final String TAG = "RecentTasksLoader";
-    static final boolean DEBUG = PhoneStatusBar.DEBUG || false;
+    static final boolean DEBUG = TabletStatusBar.DEBUG || PhoneStatusBar.DEBUG || false;
 
     private static final int DISPLAY_TASKS = 20;
     private static final int MAX_TASKS = DISPLAY_TASKS + 1; // allow extra for non-apps
@@ -134,6 +136,10 @@ public class RecentTasksLoader implements View.OnTouchListener {
 
     public ArrayList<TaskDescription> getLoadedTasks() {
         return mLoadedTasks;
+    }
+
+    public void remove(TaskDescription td) {
+        mLoadedTasks.remove(td);
     }
 
     public boolean isFirstScreenful() {
@@ -360,8 +366,8 @@ public class RecentTasksLoader implements View.OnTouchListener {
     public TaskDescription loadFirstTask() {
         final ActivityManager am = (ActivityManager) mContext.getSystemService(Context.ACTIVITY_SERVICE);
 
-        final List<ActivityManager.RecentTaskInfo> recentTasks = am.getRecentTasks(
-                1, ActivityManager.RECENT_IGNORE_UNAVAILABLE);
+        final List<ActivityManager.RecentTaskInfo> recentTasks = am.getRecentTasksForUser(
+                1, ActivityManager.RECENT_IGNORE_UNAVAILABLE, UserHandle.CURRENT.getIdentifier());
         TaskDescription item = null;
         if (recentTasks.size() > 0) {
             ActivityManager.RecentTaskInfo recentInfo = recentTasks.get(0);
