@@ -405,6 +405,7 @@ framework_docs_LOCAL_JAVA_LIBRARIES := \
 			core \
 			ext \
 			framework \
+			mms-common \
 			telephony-common \
 
 framework_docs_LOCAL_MODULE_CLASS := JAVA_LIBRARIES
