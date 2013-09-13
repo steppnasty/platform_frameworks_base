@@ -97,6 +97,8 @@ public class NetworkInfo implements Parcelable {
         stateMap.put(DetailedState.CONNECTING, State.CONNECTING);
         stateMap.put(DetailedState.AUTHENTICATING, State.CONNECTING);
         stateMap.put(DetailedState.OBTAINING_IPADDR, State.CONNECTING);
+        stateMap.put(DetailedState.VERIFYING_POOR_LINK, State.CONNECTING);
+        stateMap.put(DetailedState.CAPTIVE_PORTAL_CHECK, State.CONNECTING);
         stateMap.put(DetailedState.CONNECTED, State.CONNECTED);
         stateMap.put(DetailedState.SUSPENDED, State.SUSPENDED);
         stateMap.put(DetailedState.DISCONNECTING, State.DISCONNECTING);
