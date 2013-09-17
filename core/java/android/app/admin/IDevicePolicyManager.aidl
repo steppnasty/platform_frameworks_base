@@ -70,18 +70,19 @@ interface IDevicePolicyManager {
     
     void lockNow();
     
-    void wipeData(int flags);
+    void wipeData(int flags, int userHandle);
 
     ComponentName setGlobalProxy(in ComponentName admin, String proxySpec, String exclusionList, int userHandle);
     ComponentName getGlobalProxyAdmin(int userHandle);
 
     int setStorageEncryption(in ComponentName who, boolean encrypt, int userHandle);
     boolean getStorageEncryption(in ComponentName who, int userHandle);
-    int getStorageEncryptionStatus();
+    int getStorageEncryptionStatus(int userHandle);
 
     void setCameraDisabled(in ComponentName who, boolean disabled, int userHandle);
     boolean getCameraDisabled(in ComponentName who, int userHandle);
 
+    void setKeyguardDisabledFeatures(in ComponentName who, int which, int userHandle);
     int getKeyguardDisabledFeatures(in ComponentName who, int userHandle);
 
     void setActiveAdmin(in ComponentName policyReceiver, boolean refreshing, int userHandle);

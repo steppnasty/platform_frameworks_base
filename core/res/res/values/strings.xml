@@ -455,6 +455,21 @@
         various network features.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_camera">Camera</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_camera">Direct access to camera for image or video capture.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_appInfo">Your applications information</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_appInfo">Ability to affect behavior of other applications on your device.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_statusBar">Status Bar</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_statusBar">Change the device status bar settings.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_accounts">Your accounts</string>
     <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgroupdesc_accounts">Access the available accounts.</string>
@@ -1242,13 +1257,6 @@
         the audio record path.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permlab_camera">take pictures and videos</string>
-    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permdesc_camera">Allows application to take pictures and videos
-        with the camera. This allows the application at any time to collect
-        images the camera is seeing.</string>
-
-    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_brick" product="tablet">permanently disable tablet</string>
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_brick" product="default">permanently disable phone</string>
@@ -1750,6 +1758,10 @@
     <string name="policylab_disableCamera">Disable cameras</string>
     <!-- Description of policy access to disable all device cameras [CHAR LIMIT=110]-->
     <string name="policydesc_disableCamera">Prevent use of all device cameras</string>
+    <!-- Title of policy access to disable all device cameras [CHAR LIMIT=30]-->
+    <string name="policylab_disableKeyguardFeatures">Disable features in keyguard</string>
+    <!-- Description of policy access to disable all device cameras [CHAR LIMIT=110]-->
+    <string name="policydesc_disableKeyguardFeatures">Prevent use of some features in keyguard.</string>
 
     <!-- The order of these is important, don't reorder without changing Contacts.java --> <skip />
     <!-- Phone number types from android.provider.Contacts. This could be used when adding a new phone number for a contact, for example. -->

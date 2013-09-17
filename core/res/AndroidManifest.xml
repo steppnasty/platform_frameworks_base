@@ -721,7 +721,10 @@
     <!-- Group of permissions that are related to SD card access. -->
     <permission-group android:name="android.permission-group.STORAGE"
         android:label="@string/permgrouplab_storage"
-        android:description="@string/permgroupdesc_storage" />
+        android:icon="@drawable/perm_group_storage"
+        android:description="@string/permgroupdesc_storage"
+        android:permissionGroupFlags="personalInfo"
+        android:priority="240" />
 
     <!-- Allows an application to read from external storage.
          <p>Any app that declares the {@link #WRITE_EXTERNAL_STORAGE} permission is implicitly
@@ -749,7 +752,15 @@
         android:description="@string/permdesc_sdcardRead"
         android:protectionLevel="normal" />
 
-    <!-- Allows an application to write to external storage -->
+    <!-- Allows an application to write to external storage.
+         <p class="note"><strong>Note:</strong> If <em>both</em> your <a
+         href="{@docRoot}guide/topics/manifest/uses-sdk-element.html#min">{@code
+         minSdkVersion}</a> and <a
+         href="{@docRoot}guide/topics/manifest/uses-sdk-element.html#target">{@code
+         targetSdkVersion}</a> values are set to 3 or lower, the system implicitly
+         grants your app this permission. If you don't need this permission, be sure your <a
+         href="{@docRoot}guide/topics/manifest/uses-sdk-element.html#target">{@code
+         targetSdkVersion}</a> is 4 or higher. -->
     <permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:permissionGroup="android.permission-group.STORAGE"
         android:label="@string/permlab_sdcardWrite"
@@ -764,52 +775,44 @@
         android:description="@string/permdesc_mediaStorageWrite"
         android:protectionLevel="signature|system" />
 
-    <!-- ============================================ -->
-    <!-- Permissions for low-level system interaction -->
-    <!-- ============================================ -->
+    <!-- ================================== -->
+    <!-- Permissions for screenlock         -->
+    <!-- ================================== -->
     <eat-comment />
 
-    <!-- Group of permissions that are related to system APIs.  Many
-         of these are not permissions the user will be expected to understand,
-         and such permissions should generally be marked as "normal" protection
-         level so they don't get displayed.  This can also, however, be used
-         for miscellaneous features that provide access to the operating system,
-         such as writing the global system settings. -->
-    <permission-group android:name="android.permission-group.SYSTEM_TOOLS"
-        android:label="@string/permgrouplab_systemTools"
-        android:description="@string/permgroupdesc_systemTools" />
+    <!-- Group of permissions that are related to the screenlock. -->
+    <permission-group android:name="android.permission-group.SCREENLOCK"
+        android:label="@string/permgrouplab_storage"
+        android:icon="@drawable/perm_group_screenlock"
+        android:permissionGroupFlags="personalInfo"
+        android:description="@string/permgroupdesc_storage"
+        android:priority="230" />
 
-    <!-- Allows an application to read or write the system settings. -->
-    <permission android:name="android.permission.WRITE_SETTINGS"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
+    <!-- Allows applications to disable the keyguard -->
+    <permission android:name="android.permission.DISABLE_KEYGUARD"
+        android:permissionGroup="android.permission-group.SCREENLOCK"
         android:protectionLevel="dangerous"
-        android:label="@string/permlab_writeSettings"
-        android:description="@string/permdesc_writeSettings" />
+        android:description="@string/permdesc_disableKeyguard"
+        android:label="@string/permlab_disableKeyguard" />
 
-    <!-- Allows an application to read or write the secure system settings. -->
-    <permission android:name="android.permission.WRITE_SECURE_SETTINGS"
-        android:protectionLevel="signature|system|development"
-        android:label="@string/permlab_writeSecureSettings"
-        android:description="@string/permdesc_writeSecureSettings" />
+    <!-- ================================== -->
+    <!-- Permissions to access other installed applications  -->
+    <!-- ================================== -->
+    <eat-comment />
 
-    <!-- Allows an application to modify the Google service map. -->
-    <permission android:name="android.permission.WRITE_GSERVICES"
-        android:protectionLevel="signature|system"
-        android:label="@string/permlab_writeGservices"
-        android:description="@string/permdesc_writeGservices" />
-
-    <!-- Allows an application to expand or collapse the status bar. -->
-    <permission android:name="android.permission.EXPAND_STATUS_BAR"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
-        android:protectionLevel="normal"
-        android:label="@string/permlab_expandStatusBar"
-        android:description="@string/permdesc_expandStatusBar" />
+    <!-- Group of permissions that are related to the other applications
+         installed on the system.  Examples include such as listing
+         running apps, or killing background processes. -->
+    <permission-group android:name="android.permission-group.APP_INFO"
+        android:label="@string/permgrouplab_appInfo"
+        android:icon="@drawable/perm_group_app_info"
+        android:description="@string/permgroupdesc_appInfo"
+        android:priority="220" />
 
     <!-- Allows an application to get information about the currently
-         or recently running tasks: a thumbnail representation of the tasks,
-         what activities are running in it, etc. -->
+         or recently running tasks. -->
     <permission android:name="android.permission.GET_TASKS"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
+        android:permissionGroup="android.permission-group.APP_INFO"
         android:protectionLevel="dangerous"
         android:label="@string/permlab_getTasks"
         android:description="@string/permdesc_getTasks" />
@@ -852,17 +855,35 @@
 
     <!-- Allows an application to change the Z-order of tasks -->
     <permission android:name="android.permission.REORDER_TASKS"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
+        android:permissionGroup="android.permission-group.APP_INFO"
         android:protectionLevel="dangerous"
         android:label="@string/permlab_reorderTasks"
         android:description="@string/permdesc_reorderTasks" />
 
     <!-- @hide Allows an application to change to remove/kill tasks -->
     <permission android:name="android.permission.REMOVE_TASKS"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
+        android:permissionGroup="android.permission-group.APP_INFO"
         android:protectionLevel="signature"
         android:label="@string/permlab_removeTasks"
         android:description="@string/permdesc_removeTasks" />
+
+    <!-- ==================================================== -->
+    <!-- Permissions related to changing status bar   -->
+    <!-- ==================================================== -->
+
+    <!-- Used for permissions that change the status bar -->
+    <permission-group android:name="android.permission-group.STATUS_BAR"
+        android:label="@string/permgrouplab_statusBar"
+        android:icon="@drawable/perm_group_status_bar"
+        android:description="@string/permgroupdesc_statusBar"
+        android:priority="110" />
+
+    <!-- Allows an application to expand or collapse the status bar. -->
+    <permission android:name="android.permission.EXPAND_STATUS_BAR"
+        android:permissionGroup="android.permission-group.STATUS_BAR"
+        android:protectionLevel="normal"
+        android:label="@string/permlab_expandStatusBar"
+        android:description="@string/permdesc_expandStatusBar" />
 
     <!-- Allows an application to start any activity, regardless of permission
          protection or exported state. @hide -->
@@ -871,6 +892,31 @@
         android:protectionLevel="signature"
         android:label="@string/permlab_startAnyActivity"
         android:description="@string/permdesc_startAnyActivity" />
+
+    <!-- @deprecated The {@link android.app.ActivityManager#restartPackage}
+        API is no longer supported. -->
+    <permission android:name="android.permission.RESTART_PACKAGES"
+        android:permissionGroup="android.permission-group.APP_INFO"
+        android:protectionLevel="normal"
+        android:label="@string/permlab_killBackgroundProcesses"
+        android:description="@string/permdesc_killBackgroundProcesses" />
+
+    <!-- ============================================ -->
+    <!-- Permissions for low-level system interaction -->
+    <!-- ============================================ -->
+    <eat-comment />
+
+    <!-- Group of permissions that are related to system APIs.  Many
+         of these are not permissions the user will be expected to understand,
+         and such permissions should generally be marked as "normal" protection
+         level so they don't get displayed.  This can also, however, be used
+         for miscellaneous features that provide access to the operating system,
+         such as writing the global system settings. -->
+    <permission-group android:name="android.permission-group.SYSTEM_TOOLS"
+        android:label="@string/permgrouplab_systemTools"
+        android:icon="@drawable/perm_group_system_tools"
+        android:description="@string/permgroupdesc_systemTools"
+        android:priority="100" />
 
     <!-- @hide Change the screen compatibility mode of applications -->
     <permission android:name="android.permission.SET_SCREEN_COMPATIBILITY"
@@ -894,13 +940,18 @@
         android:label="@string/permlab_changeConfiguration"
         android:description="@string/permdesc_changeConfiguration" />
 
-    <!-- @deprecated The {@link android.app.ActivityManager#restartPackage}
-        API is no longer supported. -->
-    <permission android:name="android.permission.RESTART_PACKAGES"
+    <!-- Allows an application to read or write the system settings. -->
+    <permission android:name="android.permission.WRITE_SETTINGS"
         android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
         android:protectionLevel="normal"
-        android:label="@string/permlab_killBackgroundProcesses"
-        android:description="@string/permdesc_killBackgroundProcesses" />
+        android:label="@string/permlab_writeSettings"
+        android:description="@string/permdesc_writeSettings" />
+
+    <!-- Allows an application to modify the Google service map. -->
+    <permission android:name="android.permission.WRITE_GSERVICES"
+        android:protectionLevel="signature|system"
+        android:label="@string/permlab_writeGservices"
+        android:description="@string/permdesc_writeGservices" />
 
     <!-- Allows an application to call
         {@link android.app.ActivityManager#killBackgroundProcesses}. -->
@@ -1095,13 +1146,6 @@
         android:label="@string/permlab_asec_rename"
         android:description="@string/permdesc_asec_rename" />
 
-    <!-- Allows applications to disable the keyguard -->
-    <permission android:name="android.permission.DISABLE_KEYGUARD"
-        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
-        android:protectionLevel="dangerous"
-        android:description="@string/permdesc_disableKeyguard"
-        android:label="@string/permlab_disableKeyguard" />
-
     <!-- Allows applications to read the sync settings -->
     <permission android:name="android.permission.READ_SYNC_SETTINGS"
         android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
@@ -1212,7 +1256,15 @@
          purposes. -->
     <permission-group android:name="android.permission-group.DEVELOPMENT_TOOLS"
         android:label="@string/permgrouplab_developmentTools"
-        android:description="@string/permgroupdesc_developmentTools" />
+        android:description="@string/permgroupdesc_developmentTools"
+        android:priority="310" />
+
+    <!-- Allows an application to read or write the secure system settings. -->
+    <permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        android:permissionGroup="android.permission-group.DEVELOPMENT_TOOLS"
+        android:protectionLevel="signature|system|development"
+        android:label="@string/permlab_writeSecureSettings"
+        android:description="@string/permdesc_writeSecureSettings" />
 
     <!-- Configure an application for debugging. -->
     <permission android:name="android.permission.SET_DEBUG_APP"

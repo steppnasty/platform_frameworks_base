@@ -138,6 +138,14 @@ public final class DeviceAdminInfo implements Parcelable {
      */
     public static final int USES_POLICY_DISABLE_CAMERA = 8;
 
+    /**
+     * A type of policy that this device admin can use: disables use of keyguard features.
+     *
+     * <p>To control this policy, the device admin must have a "disable-keyguard-features"
+     * tag in the "uses-policies" section of its meta-data.
+     */
+    public static final int USES_POLICY_DISABLE_KEYGUARD_FEATURES = 9;
+
     /** @hide */
     public static class PolicyInfo {
         public final int ident;
@@ -185,6 +193,10 @@ public final class DeviceAdminInfo implements Parcelable {
         sPoliciesDisplayOrder.add(new PolicyInfo(USES_POLICY_DISABLE_CAMERA, "disable-camera",
                 com.android.internal.R.string.policylab_disableCamera,
                 com.android.internal.R.string.policydesc_disableCamera));
+        sPoliciesDisplayOrder.add(new PolicyInfo(
+                USES_POLICY_DISABLE_KEYGUARD_FEATURES, "disable-keyguard-features",
+                com.android.internal.R.string.policylab_disableKeyguardFeatures,
+                com.android.internal.R.string.policydesc_disableKeyguardFeatures));
 
         for (int i=0; i<sPoliciesDisplayOrder.size(); i++) {
             PolicyInfo pi = sPoliciesDisplayOrder.get(i);

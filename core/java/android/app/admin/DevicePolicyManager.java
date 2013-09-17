@@ -1072,7 +1072,7 @@ public class DevicePolicyManager {
     public void wipeData(int flags) {
         if (mService != null) {
             try {
-                mService.wipeData(flags);
+                mService.wipeData(flags, UserHandle.myUserId());
             } catch (RemoteException e) {
                 Log.w(TAG, "Failed talking with device policy service", e);
             }
@@ -1312,7 +1312,7 @@ public class DevicePolicyManager {
     public int getStorageEncryptionStatus(int userHandle) {
         if (mService != null) {
             try {
-                return mService.getStorageEncryptionStatus();
+                return mService.getStorageEncryptionStatus(userHandle);
             } catch (RemoteException e) {
                 Log.w(TAG, "Failed talking with device policy service", e);
             }
@@ -1364,7 +1364,31 @@ public class DevicePolicyManager {
         return false;
     }
 
-     /**
+    /**
+     * Called by an application that is administering the device to disable keyguard customizations,
+     * such as widgets. After setting this, keyguard features will be disabled according to the
+     * provided feature list.
+     *
+     * <p>The calling device admin must have requested
+     * {@link DeviceAdminInfo#USES_POLICY_DISABLE_KEYGUARD_FEATURES} to be able to call
+     * this method; if it has not, a security exception will be thrown.
+     *
+     * @param admin Which {@link DeviceAdminReceiver} this request is associated with.
+     * @param which {@link #KEYGUARD_DISABLE_FEATURES_NONE} (default),
+     * {@link #KEYGUARD_DISABLE_WIDGETS_ALL}, {@link #KEYGUARD_DISABLE_SECURE_CAMERA},
+     * {@link #KEYGUARD_DISABLE_FEATURES_ALL}
+     */
+    public void setKeyguardDisabledFeatures(ComponentName admin, int which) {
+        if (mService != null) {
+            try {
+                mService.setKeyguardDisabledFeatures(admin, which, UserHandle.myUserId());
+            } catch (RemoteException e) {
+                Log.w(TAG, "Failed talking with device policy service", e);
+            }
+        }
+    }
+
+    /**
      * Determine whether or not features have been disabled in keyguard either by the current
      * admin, if specified, or all admins.
      * @param admin The name of the admin component to check, or null to check if any admins
