@@ -226,7 +226,7 @@ android_media_MediaScanner_processFile(
 {
     ALOGV("processFile");
 
-    // Lock already hold by processDirectory
+    // Lock already held by processDirectory
     MediaScanner *mp = getNativeScanner_l(env, thiz);
     if (mp == NULL) {
         jniThrowException(env, kRunTimeException, "No scanner available");

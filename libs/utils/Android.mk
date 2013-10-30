@@ -42,6 +42,7 @@ commonSources:= \
 	Tokenizer.cpp \
 	Unicode.cpp \
 	VectorImpl.cpp \
+	WorkQueue.cpp \
 	ZipFileCRO.cpp \
 	ZipFileRO.cpp \
 	ZipUtils.cpp \

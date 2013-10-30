@@ -666,6 +666,8 @@ android.os.StrictMode$VmPolicy
 android.os.StrictMode$VmPolicy$Builder
 android.os.SystemClock
 android.os.SystemProperties
+android.os.Trace
+android.os.Trace$1
 android.os.UEventObserver
 android.os.UserHandle
 android.os.UserHandle$1
@@ -673,8 +675,17 @@ android.os.Vibrator
 android.os.storage.IMountService
 android.os.storage.IMountService$Stub
 android.os.storage.IMountService$Stub$Proxy
+android.os.storage.StorageManager
+android.os.storage.StorageVolume
+android.os.storage.StorageVolume$1
+android.preference.Preference
 android.preference.PreferenceActivity
+android.preference.PreferenceFragment
+android.preference.PreferenceFragment$OnPreferenceStartFragmentCallback
+android.preference.PreferenceGroup
 android.preference.PreferenceManager
+android.preference.PreferenceManager$OnPreferenceTreeClickListener
+android.preference.PreferenceScreen
 android.provider.BaseColumns
 android.provider.Settings$NameValueCache
 android.provider.Settings$NameValueTable
