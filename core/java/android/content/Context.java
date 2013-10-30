@@ -33,9 +33,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
+import android.os.UserManager;
 import android.util.AttributeSet;
-import android.view.Display;
 import android.view.CompatibilityInfoHolder;
+import android.view.Display;
+import android.view.WindowManager;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -62,18 +64,34 @@ public abstract class Context {
      */
     public static final int MODE_PRIVATE = 0x0000;
     /**
+     * @deprecated Creating world-readable files is very dangerous, and likely
+     * to cause security holes in applications.  It is strongly discouraged;
+     * instead, applications should use more formal mechanism for interactions
+     * such as {@link ContentProvider}, {@link BroadcastReceiver}, and
+     * {@link android.app.Service}.  There are no guarantees that this
+     * access mode will remain on a file, such as when it goes through a
+     * backup and restore.
      * File creation mode: allow all other applications to have read access
      * to the created file.
      * @see #MODE_PRIVATE
      * @see #MODE_WORLD_WRITEABLE
      */
+    @Deprecated
     public static final int MODE_WORLD_READABLE = 0x0001;
     /**
+     * @deprecated Creating world-writable files is very dangerous, and likely
+     * to cause security holes in applications.  It is strongly discouraged;
+     * instead, applications should use more formal mechanism for interactions
+     * such as {@link ContentProvider}, {@link BroadcastReceiver}, and
+     * {@link android.app.Service}.  There are no guarantees that this
+     * access mode will remain on a file, such as when it goes through a
+     * backup and restore.
      * File creation mode: allow all other applications to have write access
      * to the created file.
      * @see #MODE_PRIVATE
      * @see #MODE_WORLD_READABLE
      */
+    @Deprecated
     public static final int MODE_WORLD_WRITEABLE = 0x0002;
     /**
      * File creation mode: for use with {@link #openFileOutput}, if the file
@@ -161,7 +179,7 @@ public abstract class Context {
      * Flag for {@link #bindService}: indicates that the client application
      * binding to this service considers the service to be more important than
      * the app itself.  When set, the platform will try to have the out of
-     * memory kill the app before it kills the service it is bound to, though
+     * memory killer kill the app before it kills the service it is bound to, though
      * this is not guaranteed to be the case.
      */
     public static final int BIND_ABOVE_CLIENT = 0x0008;
@@ -570,6 +588,10 @@ public abstract class Context {
      * can read and write files placed here.
      * </ul>
      *
+     * <p>On devices with multiple users (as described by {@link UserManager}),
+     * each user has their own isolated external storage. Applications only
+     * have access to the external storage for the user they're running as.</p>
+     *
      * <p>Here is an example of typical code to manipulate a file in
      * an application's private storage:</p>
      *
@@ -599,6 +621,9 @@ public abstract class Context {
      * {@sample development/samples/ApiDemos/src/com/example/android/apis/content/ExternalStorage.java
      * private_picture}
      *
+     * <p>Writing to this path requires the
+     * {@link android.Manifest.permission#WRITE_EXTERNAL_STORAGE} permission.</p>
+     *
      * @param type The type of files directory to return.  May be null for
      * the root of the files directory or one of
      * the following Environment constants for a subdirectory:
@@ -624,6 +649,11 @@ public abstract class Context {
      * Return the directory where this application's OBB files (if there
      * are any) can be found.  Note if the application does not have any OBB
      * files, this directory may not exist.
+     *
+     * <p>On devices with multiple users (as described by {@link UserManager}),
+     * multiple users may share the same OBB storage location. Applications
+     * should ensure that multiple instances running under different users
+     * don't interfere with each other.</p>
      */
     public abstract File getObbDir();
 
@@ -657,8 +687,12 @@ public abstract class Context {
      * are some important differences:
      *
      * <ul>
-     * <li>The platform does not monitor the space available in external storage,
-     * and thus will not automatically delete these files.  Note that you should
+     * <li>The platform does not always monitor the space available in external
+     * storage, and thus may not automatically delete these files.  Currently
+     * the only time files here will be deleted by the platform is when running
+     * on {@link android.os.Build.VERSION_CODES#JELLY_BEAN_MR1} or later and
+     * {@link android.os.Environment#isExternalStorageEmulated()
+     * Environment.isExternalStorageEmulated()} returns true.  Note that you should
      * be managing the maximum space you will use for these anyway, just like
      * with {@link #getCacheDir()}.
      * <li>External files are not always available: they will disappear if the
@@ -667,6 +701,13 @@ public abstract class Context {
      * <li>There is no security enforced with these files.  All applications
      * can read and write files placed here.
      * </ul>
+     *
+     * <p>On devices with multiple users (as described by {@link UserManager}),
+     * each user has their own isolated external storage. Applications only
+     * have access to the external storage for the user they're running as.</p>
+     *
+     * <p>Writing to this path requires the
+     * {@link android.Manifest.permission#WRITE_EXTERNAL_STORAGE} permission.</p>
      *
      * @return Returns the path of the directory holding application cache files
      * on external storage.  Returns null if external storage is not currently
@@ -718,6 +759,7 @@ public abstract class Context {
      * @param mode Operating mode.  Use 0 or {@link #MODE_PRIVATE} for the
      *     default operation, {@link #MODE_WORLD_READABLE}
      *     and {@link #MODE_WORLD_WRITEABLE} to control permissions.
+     *     Use {@link #MODE_ENABLE_WRITE_AHEAD_LOGGING} to enable write-ahead logging by default.
      * @param factory An optional factory class that is called to instantiate a
      *     cursor when query is called.
      *
@@ -727,6 +769,7 @@ public abstract class Context {
      * @see #MODE_PRIVATE
      * @see #MODE_WORLD_READABLE
      * @see #MODE_WORLD_WRITEABLE
+     * @see #MODE_ENABLE_WRITE_AHEAD_LOGGING
      * @see #deleteDatabase
      */
     public abstract SQLiteDatabase openOrCreateDatabase(String name,
@@ -743,6 +786,7 @@ public abstract class Context {
      * @param mode Operating mode.  Use 0 or {@link #MODE_PRIVATE} for the
      *     default operation, {@link #MODE_WORLD_READABLE}
      *     and {@link #MODE_WORLD_WRITEABLE} to control permissions.
+     *     Use {@link #MODE_ENABLE_WRITE_AHEAD_LOGGING} to enable write-ahead logging by default.
      * @param factory An optional factory class that is called to instantiate a
      *     cursor when query is called.
      * @param errorHandler the {@link DatabaseErrorHandler} to be used when sqlite reports database
@@ -753,6 +797,7 @@ public abstract class Context {
      * @see #MODE_PRIVATE
      * @see #MODE_WORLD_READABLE
      * @see #MODE_WORLD_WRITEABLE
+     * @see #MODE_ENABLE_WRITE_AHEAD_LOGGING
      * @see #deleteDatabase
      */
     public abstract SQLiteDatabase openOrCreateDatabase(String name,
@@ -826,6 +871,8 @@ public abstract class Context {
     /**
      * @deprecated Use {@link android.app.WallpaperManager#setBitmap(Bitmap)
      * WallpaperManager.set()} instead.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#SET_WALLPAPER}.
      */
     @Deprecated
     public abstract void setWallpaper(Bitmap bitmap) throws IOException;
@@ -833,6 +880,8 @@ public abstract class Context {
     /**
      * @deprecated Use {@link android.app.WallpaperManager#setStream(InputStream)
      * WallpaperManager.set()} instead.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#SET_WALLPAPER}.
      */
     @Deprecated
     public abstract void setWallpaper(InputStream data) throws IOException;
@@ -840,28 +889,21 @@ public abstract class Context {
     /**
      * @deprecated Use {@link android.app.WallpaperManager#clear
      * WallpaperManager.clear()} instead.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#SET_WALLPAPER}.
      */
     @Deprecated
     public abstract void clearWallpaper() throws IOException;
 
     /**
-     * Launch a new activity.  You will not receive any information about when
-     * the activity exits.
-     *
-     * <p>Note that if this method is being called from outside of an
-     * {@link android.app.Activity} Context, then the Intent must include
-     * the {@link Intent#FLAG_ACTIVITY_NEW_TASK} launch flag.  This is because,
-     * without being started from an existing Activity, there is no existing
-     * task in which to place the new activity and thus it needs to be placed
-     * in its own separate task.
-     *
-     * <p>This method throws {@link ActivityNotFoundException}
-     * if there was no Activity found to run the given Intent.
+     * Same as {@link #startActivity(Intent, Bundle)} with no options
+     * specified.
      *
      * @param intent The description of the activity to start.
      *
      * @throws ActivityNotFoundException
      *
+     * @see {@link #startActivity(Intent, Bundle)}
      * @see PackageManager#resolveActivity
      */
     public abstract void startActivity(Intent intent);
@@ -995,12 +1037,8 @@ public abstract class Context {
     }
 
     /**
-     * Like {@link #startActivity(Intent)}, but taking a IntentSender
-     * to start.  If the IntentSender is for an activity, that activity will be started
-     * as if you had called the regular {@link #startActivity(Intent)}
-     * here; otherwise, its associated action will be executed (such as
-     * sending a broadcast) as if you had called
-     * {@link IntentSender#sendIntent IntentSender.sendIntent} on it.
+     * Same as {@link #startIntentSender(IntentSender, Intent, int, int, int, Bundle)}
+     * with no options specified.
      *
      * @param intent The IntentSender to launch.
      * @param fillInIntent If non-null, this will be provided as the
@@ -1010,6 +1048,9 @@ public abstract class Context {
      * @param flagsValues Desired values for any bits set in
      * <var>flagsMask</var>
      * @param extraFlags Always set to 0.
+     *
+     * @see #startActivity(Intent)
+     * @see #startIntentSender(IntentSender, Intent, int, int, int, Bundle)
      */
     public abstract void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
@@ -1292,7 +1333,6 @@ public abstract class Context {
             Handler scheduler, int initialCode, String initialData,
             Bundle initialExtras);
 
-
     /**
      * Remove the data previously sent with {@link #sendStickyBroadcast},
      * so that it is as if the sticky broadcast had never happened.
@@ -1454,9 +1494,7 @@ public abstract class Context {
      * @see #unregisterReceiver
      */
     public abstract Intent registerReceiver(BroadcastReceiver receiver,
-                                            IntentFilter filter,
-                                            String broadcastPermission,
-                                            Handler scheduler);
+            IntentFilter filter, String broadcastPermission, Handler scheduler);
 
     /**
      * @hide
@@ -1583,11 +1621,11 @@ public abstract class Context {
      * @hide like {@link #stopService(Intent)} but for a specific user.
      */
     public abstract boolean stopServiceAsUser(Intent service, UserHandle user);
-
+    
     /**
      * Connect to an application service, creating it if needed.  This defines
      * a dependency between your application and the service.  The given
-     * <var>conn</var> will receive the service object when its created and be
+     * <var>conn</var> will receive the service object when it is created and be
      * told if it dies and restarts.  The service will be considered required
      * by the system only for as long as the calling context exists.  For
      * example, if this Context is an Activity that is stopped, the service will
@@ -1596,15 +1634,15 @@ public abstract class Context {
      * <p>This function will throw {@link SecurityException} if you do not
      * have permission to bind to the given service.
      *
-     * <p class="note">Note: this method <em>can not be called from an
+     * <p class="note">Note: this method <em>can not be called from a
      * {@link BroadcastReceiver} component</em>.  A pattern you can use to
-     * communicate from an BroadcastReceiver to a Service is to call
+     * communicate from a BroadcastReceiver to a Service is to call
      * {@link #startService} with the arguments containing the command to be
      * sent, with the service calling its
      * {@link android.app.Service#stopSelf(int)} method when done executing
      * that command.  See the API demo App/Service/Service Start Arguments
      * Controller for an illustration of this.  It is okay, however, to use
-     * this method from an BroadcastReceiver that has been registered with
+     * this method from a BroadcastReceiver that has been registered with
      * {@link #registerReceiver}, since the lifetime of this BroadcastReceiver
      * is tied to another object (the one that registered it).</p>
      *
@@ -1613,6 +1651,7 @@ public abstract class Context {
      *      description (action, category, etc) to match an
      *      {@link IntentFilter} published by a service.
      * @param conn Receives information as the service is started and stopped.
+     *      This must be a valid ServiceConnection object; it must not be null.
      * @param flags Operation options for the binding.  May be 0,
      *          {@link #BIND_AUTO_CREATE}, {@link #BIND_DEBUG_UNBIND},
      *          {@link #BIND_NOT_FOREGROUND}, {@link #BIND_ABOVE_CLIENT},
@@ -1634,7 +1673,7 @@ public abstract class Context {
             int flags);
 
     /**
-     * Same as {@link #bindService(Intent, ServiceConnection, int)}, but with an explicit userId
+     * Same as {@link #bindService(Intent, ServiceConnection, int)}, but with an explicit userHandle
      * argument for use by system server and other multi-user aware code.
      * @hide
      */
@@ -1648,7 +1687,7 @@ public abstract class Context {
      * stop at any time.
      *
      * @param conn The connection interface previously supplied to
-     *             bindService().
+     *             bindService().  This parameter must not be null.
      *
      * @see #bindService
      */
@@ -1768,7 +1807,7 @@ public abstract class Context {
      * @see android.net.wifi.WifiManager
      * @see #AUDIO_SERVICE
      * @see android.media.AudioManager
-     * @see MEDIA_ROUTER_SERVICE
+     * @see #MEDIA_ROUTER_SERVICE
      * @see android.media.MediaRouter
      * @see #TELEPHONY_SERVICE
      * @see android.telephony.TelephonyManager
@@ -1848,18 +1887,6 @@ public abstract class Context {
      * @see android.app.NotificationManager
      */
     public static final String NOTIFICATION_SERVICE = "notification";
-
-    /**
-     * Use with {@link #getSystemService} to retrieve a
-     * {@link android.app.ProfileManager} for setting
-     * notification profiles.
-     * 
-     * @see #getSystemService
-     * @see android.app.ProfileManager
-     * 
-     * @hide
-     */
-    public static final String PROFILE_SERVICE = "profile";
 
     /**
      * Use with {@link #getSystemService} to retrieve a
@@ -2046,7 +2073,7 @@ public abstract class Context {
      * Use with {@link #getSystemService} to retrieve a
      * {@link android.media.MediaRouter} for controlling and managing
      * routing of media.
-     * 
+     *
      * @see #getSystemService
      * @see android.media.MediaRouter
      */
@@ -2152,6 +2179,15 @@ public abstract class Context {
 
     /**
      * Use with {@link #getSystemService} to retrieve a
+     * {@link android.bluetooth.BluetoothAdapter} for using Bluetooth.
+     *
+     * @see #getSystemService
+     * @hide
+     */
+    public static final String BLUETOOTH_SERVICE = "bluetooth";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a
      * {@link android.net.sip.SipManager} for accessing the SIP related service.
      *
      * @see #getSystemService
@@ -2168,6 +2204,17 @@ public abstract class Context {
      * @see android.harware.usb.UsbManager
      */
     public static final String USB_SERVICE = "usb";
+
+    /**
+     * Use with {@link #getSystemService} to retrieve a {@link
+     * android.hardware.SerialManager} for access to serial ports.
+     *
+     * @see #getSystemService
+     * @see android.harware.SerialManager
+     *
+     * @hide
+     */
+    public static final String SERIAL_SERVICE = "serial";
 
     /**
      * Use with {@link #getSystemService} to retrieve a

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,11 +28,12 @@ import android.content.pm.ConfigurationInfo;
 import android.content.pm.IPackageDataObserver;
 import android.content.pm.PackageManager;
 import android.content.pm.UserInfo;
-import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Point;
+import android.hardware.display.DisplayManager;
 import android.hardware.display.DisplayManagerGlobal;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
@@ -50,7 +50,6 @@ import android.util.Log;
 import android.util.Slog;
 import android.view.Display;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,11 +63,6 @@ public class ActivityManager {
 
     private final Context mContext;
     private final Handler mHandler;
-
-    /*package*/ ActivityManager(Context context, Handler handler) {
-        mContext = context;
-        mHandler = handler;
-    }
 
     /**
      * Result for IActivityManager.startActivity: an error where the
@@ -226,6 +220,11 @@ public class ActivityManager {
 
     /** @hide User operation call: given user id is the current user, can't be stopped. */
     public static final int USER_OP_IS_CURRENT = -2;
+
+    /*package*/ ActivityManager(Context context, Handler handler) {
+        mContext = context;
+        mHandler = handler;
+    }
 
     /**
      * Screen compatibility mode: the application most always run in
@@ -519,7 +518,16 @@ public class ActivityManager {
     /**
      * Return a list of the tasks that the user has recently launched, with
      * the most recent being first and older ones after in order.
-     * 
+     *
+     * <p><b>Note: this method is only intended for debugging and presenting
+     * task management user interfaces</b>.  This should never be used for
+     * core logic in an application, such as deciding between different
+     * behaviors based on the information found here.  Such uses are
+     * <em>not</em> supported, and will likely break in the future.  For
+     * example, if multiple applications can be actively running at the
+     * same time, assumptions made about the meaning of the data here for
+     * purposes of control flow will be incorrect.</p>
+     *
      * @param maxNum The maximum number of entries to return in the list.  The
      * actual number returned may be smaller, depending on how many tasks the
      * user has started and the maximum number the system can remember.
@@ -714,6 +722,15 @@ public class ActivityManager {
      * activity -- the task may have been frozen by the system, so that it
      * can be restarted in its previous state when next brought to the
      * foreground.
+     *
+     * <p><b>Note: this method is only intended for debugging and presenting
+     * task management user interfaces</b>.  This should never be used for
+     * core logic in an application, such as deciding between different
+     * behaviors based on the information found here.  Such uses are
+     * <em>not</em> supported, and will likely break in the future.  For
+     * example, if multiple applications can be actively running at the
+     * same time, assumptions made about the meaning of the data here for
+     * purposes of control flow will be incorrect.</p>
      *
      * @param maxNum The maximum number of entries to return in the list.  The
      * actual number returned may be smaller, depending on how many tasks the
@@ -1072,7 +1089,10 @@ public class ActivityManager {
 
     /**
      * Return a list of the services that are currently running.
-     * 
+     *
+     * <p><b>Note: this method is only intended for debugging or implementing
+     * service management type user interfaces.</b></p>
+     *
      * @param maxNum The maximum number of entries to return in the list.  The
      * actual number returned may be smaller, depending on how many services
      * are running.
@@ -1113,7 +1133,7 @@ public class ActivityManager {
      */
     public static class MemoryInfo implements Parcelable {
         /**
-         * The total available memory on the system.  This number should not
+         * The available memory on the system.  This number should not
          * be considered absolute: due to the nature of the kernel, a significant
          * portion of this memory is actually in use and needed for the overall
          * system to run well.
@@ -1193,6 +1213,16 @@ public class ActivityManager {
         }
     }
 
+    /**
+     * Return general information about the memory state of the system.  This
+     * can be used to help decide how to manage your own memory, though note
+     * that polling is not recommended and
+     * {@link android.content.ComponentCallbacks2#onTrimMemory(int)
+     * ComponentCallbacks2.onTrimMemory(int)} is the preferred way to do this.
+     * Also see {@link #getMyMemoryState} for how to retrieve the current trim
+     * level of your process as needed, which gives a better hint for how to
+     * manage its memory.
+     */
     public void getMemoryInfo(MemoryInfo outInfo) {
         try {
             ActivityManagerNative.getDefault().getMemoryInfo(outInfo);
@@ -1463,7 +1493,7 @@ public class ActivityManager {
          * be maintained in the future.
          */
         public int lru;
-        
+
         /**
          * Constant for {@link #importanceReasonCode}: nothing special has
          * been specified for the reason for this level.
@@ -1576,6 +1606,9 @@ public class ActivityManager {
      * Returns a list of application processes installed on external media
      * that are running on the device.
      *
+     * <p><b>Note: this method is only intended for debugging or building
+     * a user-facing process management UI.</b></p>
+     *
      * @return Returns a list of ApplicationInfo records, or null if none
      * This list ordering is not specified.
      * @hide
@@ -1590,7 +1623,10 @@ public class ActivityManager {
 
     /**
      * Returns a list of application processes that are running on the device.
-     * 
+     *
+     * <p><b>Note: this method is only intended for debugging or building
+     * a user-facing process management UI.</b></p>
+     *
      * @return Returns a list of RunningAppProcessInfo records, or null if there are no
      * running processes (it will not return an empty list).  This list ordering is not
      * specified.
@@ -1602,10 +1638,31 @@ public class ActivityManager {
             return null;
         }
     }
-    
+
+    /**
+     * Return global memory state information for the calling process.  This
+     * does not fill in all fields of the {@link RunningAppProcessInfo}.  The
+     * only fields that will be filled in are
+     * {@link RunningAppProcessInfo#pid},
+     * {@link RunningAppProcessInfo#uid},
+     * {@link RunningAppProcessInfo#lastTrimLevel},
+     * {@link RunningAppProcessInfo#importance},
+     * {@link RunningAppProcessInfo#lru}, and
+     * {@link RunningAppProcessInfo#importanceReasonCode}.
+     */
+    static public void getMyMemoryState(RunningAppProcessInfo outState) {
+        try {
+            ActivityManagerNative.getDefault().getMyMemoryState(outState);
+        } catch (RemoteException e) {
+        }
+    }
+
     /**
      * Return information about the memory usage of one or more processes.
-     * 
+     *
+     * <p><b>Note: this method is only intended for debugging or building
+     * a user-facing process management UI.</b></p>
+     *
      * @param pids The pids of the processes whose memory usage is to be
      * retrieved.
      * @return Returns an array of memory information, one for each
@@ -1698,9 +1755,10 @@ public class ActivityManager {
     public int getLauncherLargeIconDensity() {
         final Resources res = mContext.getResources();
         final int density = res.getDisplayMetrics().densityDpi;
+        final int sw = res.getConfiguration().smallestScreenWidthDp;
 
-        if ((res.getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK)
-                != Configuration.SCREENLAYOUT_SIZE_XLARGE) {
+        if (sw < 600) {
+            // Smaller than approx 7" tablets, use the regular icon size.
             return density;
         }
 
@@ -1709,12 +1767,18 @@ public class ActivityManager {
                 return DisplayMetrics.DENSITY_MEDIUM;
             case DisplayMetrics.DENSITY_MEDIUM:
                 return DisplayMetrics.DENSITY_HIGH;
+            case DisplayMetrics.DENSITY_TV:
+                return DisplayMetrics.DENSITY_XHIGH;
             case DisplayMetrics.DENSITY_HIGH:
                 return DisplayMetrics.DENSITY_XHIGH;
             case DisplayMetrics.DENSITY_XHIGH:
-                return DisplayMetrics.DENSITY_MEDIUM * 2;
+                return DisplayMetrics.DENSITY_XXHIGH;
+            case DisplayMetrics.DENSITY_XXHIGH:
+                return DisplayMetrics.DENSITY_XHIGH * 2;
             default:
-                return density;
+                // The density is some abnormal value.  Return some other
+                // abnormal value that is a reasonable scaling of it.
+                return (int)((density*1.5f)+.5f);
         }
     }
 
@@ -1727,9 +1791,10 @@ public class ActivityManager {
     public int getLauncherLargeIconSize() {
         final Resources res = mContext.getResources();
         final int size = res.getDimensionPixelSize(android.R.dimen.app_icon_size);
+        final int sw = res.getConfiguration().smallestScreenWidthDp;
 
-        if ((res.getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK)
-                != Configuration.SCREENLAYOUT_SIZE_XLARGE) {
+        if (sw < 600) {
+            // Smaller than approx 7" tablets, use the regular icon size.
             return size;
         }
 
@@ -1740,12 +1805,18 @@ public class ActivityManager {
                 return (size * DisplayMetrics.DENSITY_MEDIUM) / DisplayMetrics.DENSITY_LOW;
             case DisplayMetrics.DENSITY_MEDIUM:
                 return (size * DisplayMetrics.DENSITY_HIGH) / DisplayMetrics.DENSITY_MEDIUM;
+            case DisplayMetrics.DENSITY_TV:
+                return (size * DisplayMetrics.DENSITY_XHIGH) / DisplayMetrics.DENSITY_HIGH;
             case DisplayMetrics.DENSITY_HIGH:
                 return (size * DisplayMetrics.DENSITY_XHIGH) / DisplayMetrics.DENSITY_HIGH;
             case DisplayMetrics.DENSITY_XHIGH:
-                return (size * DisplayMetrics.DENSITY_MEDIUM * 2) / DisplayMetrics.DENSITY_XHIGH;
+                return (size * DisplayMetrics.DENSITY_XXHIGH) / DisplayMetrics.DENSITY_XHIGH;
+            case DisplayMetrics.DENSITY_XXHIGH:
+                return (size * DisplayMetrics.DENSITY_XHIGH*2) / DisplayMetrics.DENSITY_XXHIGH;
             default:
-                return size;
+                // The density is some abnormal value.  Return some other
+                // abnormal value that is a reasonable scaling of it.
+                return (int)((size*1.5f) + .5f);
         }
     }
 
@@ -1858,17 +1929,6 @@ public class ActivityManager {
         }
     }
 
-    /**
-     * @hide
-     */
-    public Configuration getConfiguration() {
-        try {
-            return ActivityManagerNative.getDefault().getConfiguration();
-        } catch (RemoteException e) {
-            return null;
-        }
-    }
-
     /** @hide */
     public static int getCurrentUser() {
         UserInfo ui;
@@ -1924,19 +1984,6 @@ public class ActivityManager {
             return ActivityManagerNative.getDefault().isUserRunning(userid, false);
         } catch (RemoteException e) {
             return false;
-        }
-    }
-
-    /**
-     * @throws SecurityException Throws SecurityException if the caller does
-     * not hold the {@link android.Manifest.permission#CHANGE_CONFIGURATION} permission.
-     *
-     * @hide
-     */
-    public void updateConfiguration(Configuration values) throws SecurityException {
-        try {
-            ActivityManagerNative.getDefault().updateConfiguration(values);
-        } catch (RemoteException e) {
         }
     }
 }

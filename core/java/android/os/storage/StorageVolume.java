@@ -24,12 +24,15 @@ import android.os.UserHandle;
 import java.io.File;
 
 /**
- * A class representing a storage volume
+ * Description of a storage volume and its capabilities, including the
+ * filesystem path where it may be mounted.
+ *
  * @hide
  */
 public class StorageVolume implements Parcelable {
 
-    //private static final String TAG = "StorageVolume";
+    // TODO: switch to more durable token
+    private int mStorageId;
 
     private final File mPath;
     private final int mDescriptionId;
@@ -38,8 +41,7 @@ public class StorageVolume implements Parcelable {
     private final boolean mEmulated;
     private final int mMtpReserveSpace;
     private final boolean mAllowMassStorage;
-    private int mStorageId;
-    /** maximum file size for the storage, or zero for no limit */
+    /** Maximum file size for the storage, or zero for no limit */
     private final long mMaxFileSize;
     /** When set, indicates exclusive ownership of this volume */
     private final UserHandle mOwner;
@@ -230,19 +232,22 @@ public class StorageVolume implements Parcelable {
         }
     };
 
+    @Override
     public int describeContents() {
         return 0;
     }
 
+    @Override
     public void writeToParcel(Parcel parcel, int flags) {
         parcel.writeInt(mStorageId);
         parcel.writeString(mPath.toString());
         parcel.writeInt(mDescriptionId);
+        parcel.writeInt(mPrimary ? 1 : 0);
         parcel.writeInt(mRemovable ? 1 : 0);
         parcel.writeInt(mEmulated ? 1 : 0);
-        parcel.writeInt(mStorageId);
         parcel.writeInt(mMtpReserveSpace);
         parcel.writeInt(mAllowMassStorage ? 1 : 0);
         parcel.writeLong(mMaxFileSize);
+        parcel.writeParcelable(mOwner, flags);
     }
 }

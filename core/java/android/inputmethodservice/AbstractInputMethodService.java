@@ -200,6 +200,13 @@ public abstract class AbstractInputMethodService extends Service
         return new IInputMethodWrapper(this, mInputMethod);
     }
     
+    /**
+     * Implement this to handle trackball events on your input method.
+     *
+     * @param event The motion event being received.
+     * @return True if the event was handled in this function, false otherwise.
+     * @see View#onTrackballEvent
+     */
     public boolean onTrackballEvent(MotionEvent event) {
         return false;
     }

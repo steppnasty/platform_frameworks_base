@@ -82,24 +82,41 @@ public class PackageStats implements Parcelable {
     public String toString() {
         final StringBuilder sb = new StringBuilder("PackageStats{");
         sb.append(Integer.toHexString(System.identityHashCode(this)));
-        sb.append(" packageName=");
+        sb.append(" ");
         sb.append(packageName);
-        sb.append(",codeSize=");
-        sb.append(codeSize);
-        sb.append(",dataSize=");
-        sb.append(dataSize);
-        sb.append(",cacheSize=");
-        sb.append(cacheSize);
-        sb.append(",externalCodeSize=");
-        sb.append(externalCodeSize);
-        sb.append(",externalDataSize=");
-        sb.append(externalDataSize);
-        sb.append(",externalCacheSize=");
-        sb.append(externalCacheSize);
-        sb.append(",externalMediaSize=");
-        sb.append(externalMediaSize);
-        sb.append(",externalObbSize=");
-        sb.append(externalObbSize);
+        if (codeSize != 0) {
+            sb.append(" code=");
+            sb.append(codeSize);
+        }
+        if (dataSize != 0) {
+            sb.append(" data=");
+            sb.append(dataSize);
+        }
+        if (cacheSize != 0) {
+            sb.append(" cache=");
+            sb.append(cacheSize);
+        }
+        if (externalCodeSize != 0) {
+            sb.append(" extCode=");
+            sb.append(externalCodeSize);
+        }
+        if (externalDataSize != 0) {
+            sb.append(" extData=");
+            sb.append(externalDataSize);
+        }
+        if (externalCacheSize != 0) {
+            sb.append(" extCache=");
+            sb.append(externalCacheSize);
+        }
+        if (externalMediaSize != 0) {
+            sb.append(" media=");
+            sb.append(externalMediaSize);
+        }
+        if (externalObbSize != 0) {
+            sb.append(" obb=");
+            sb.append(externalObbSize);
+        }
+        sb.append("}");
         return sb.toString();
     }
 

@@ -277,11 +277,11 @@ public abstract class ApplicationThreadNative extends Binder
             Bundle coreSettings = data.readBundle();
             bindApplication(packageName, info,
                             providers, testName, profileName, profileFd, autoStopProfiler,
-                            testArgs, testWatcher, testMode, openGlTrace, restrictedBackupMode, persistent,
-                            config, compatInfo, services, coreSettings);
+                            testArgs, testWatcher, testMode, openGlTrace, restrictedBackupMode,
+                            persistent, config, compatInfo, services, coreSettings);
             return true;
         }
-        
+
         case SCHEDULE_EXIT_TRANSACTION:
         {
             data.enforceInterface(IApplicationThread.descriptor);
@@ -353,7 +353,7 @@ public abstract class ApplicationThreadNative extends Binder
             }
             return true;
         }
-
+        
         case DUMP_PROVIDER_TRANSACTION: {
             data.enforceInterface(IApplicationThread.descriptor);
             ParcelFileDescriptor fd = data.readFileDescriptor();
@@ -981,7 +981,7 @@ class ApplicationThreadProxy implements IApplicationThread {
         mRemote.transact(DUMP_SERVICE_TRANSACTION, data, null, IBinder.FLAG_ONEWAY);
         data.recycle();
     }
-
+    
     public void dumpProvider(FileDescriptor fd, IBinder token, String[] args)
             throws RemoteException {
         Parcel data = Parcel.obtain();

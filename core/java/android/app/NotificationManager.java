@@ -17,10 +17,9 @@
 package android.app;
 
 import android.content.Context;
-import android.os.Binder;
-import android.os.RemoteException;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.util.Log;
@@ -125,6 +124,9 @@ public class NotificationManager
         int[] idOut = new int[1];
         INotificationManager service = getService();
         String pkg = mContext.getPackageName();
+        if (notification.sound != null) {
+            notification.sound = notification.sound.getCanonicalUri();
+        }
         if (localLOGV) Log.v(TAG, pkg + ": notify(" + id + ", " + notification + ")");
         try {
             service.enqueueNotificationWithTag(pkg, tag, id, notification, idOut,

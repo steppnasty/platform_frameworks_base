@@ -38,11 +38,21 @@ public class DisplayMetrics {
     public static final int DENSITY_MEDIUM = 160;
 
     /**
-     * Standard quantized DPI for 720p TV screens.  Applications should
-     * generally not worry about this density, instead targeting
-     * {@link #DENSITY_XHIGH} for 1080p TV screens.  For situations where
-     * output is needed for a 720p screen, the UI elements can be scaled
-     * automatically by the platform.
+     * This is a secondary density, added for some common screen configurations.
+     * It is recommended that applications not generally target this as a first
+     * class density -- that is, don't supply specific graphics for this
+     * density, instead allow the platform to scale from other densities
+     * (typically {@link #DENSITY_HIGH}) as
+     * appropriate.  In most cases (such as using bitmaps in
+     * {@link android.graphics.drawable.Drawable}) the platform
+     * can perform this scaling at load time, so the only cost is some slight
+     * startup runtime overhead.
+     *
+     * <p>This density was original introduced to correspond with a
+     * 720p TV screen: the density for 1080p televisions is
+     * {@link #DENSITY_XHIGH}, and the value here provides the same UI
+     * size for a TV running at 720p.  It has also found use in 7" tablets,
+     * when these devices have 1280x720 displays.
      */
     public static final int DENSITY_TV = 213;
 
@@ -196,14 +206,65 @@ public class DisplayMetrics {
     public void setToDefaults() {
         widthPixels = 0;
         heightPixels = 0;
-        density = DENSITY_DEVICE / (float) DENSITY_DEFAULT;
-        densityDpi = DENSITY_DEVICE;
+        density =  DENSITY_DEVICE / (float) DENSITY_DEFAULT;
+        densityDpi =  DENSITY_DEVICE;
         scaledDensity = density;
         xdpi = DENSITY_DEVICE;
         ydpi = DENSITY_DEVICE;
-        noncompatWidthPixels = 0;
-        noncompatHeightPixels = 0;
+        noncompatWidthPixels = widthPixels;
+        noncompatHeightPixels = heightPixels;
+        noncompatDensity = density;
         noncompatDensityDpi = densityDpi;
+        noncompatScaledDensity = scaledDensity;
+        noncompatXdpi = xdpi;
+        noncompatYdpi = ydpi;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof DisplayMetrics && equals((DisplayMetrics)o);
+    }
+
+    /**
+     * Returns true if these display metrics equal the other display metrics.
+     *
+     * @param other The display metrics with which to compare.
+     * @return True if the display metrics are equal.
+     */
+    public boolean equals(DisplayMetrics other) {
+        return equalsPhysical(other)
+                && scaledDensity == other.scaledDensity
+                && noncompatScaledDensity == other.noncompatScaledDensity;
+    }
+
+    /**
+     * Returns true if the physical aspects of the two display metrics
+     * are equal.  This ignores the scaled density, which is a logical
+     * attribute based on the current desired font size.
+     *
+     * @param other The display metrics with which to compare.
+     * @return True if the display metrics are equal.
+     * @hide
+     */
+    public boolean equalsPhysical(DisplayMetrics other) {
+        return other != null
+                && widthPixels == other.widthPixels
+                && heightPixels == other.heightPixels
+                && density == other.density
+                && densityDpi == other.densityDpi
+                && xdpi == other.xdpi
+                && ydpi == other.ydpi
+                && noncompatWidthPixels == other.noncompatWidthPixels
+                && noncompatHeightPixels == other.noncompatHeightPixels
+                && noncompatDensity == other.noncompatDensity
+                && noncompatDensityDpi == other.noncompatDensityDpi
+                && noncompatXdpi == other.noncompatXdpi
+                && noncompatYdpi == other.noncompatYdpi;
+    }
+
+    @Override
+    public int hashCode() {
+        return widthPixels * heightPixels * densityDpi;
     }
 
     @Override

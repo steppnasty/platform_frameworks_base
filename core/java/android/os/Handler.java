@@ -137,6 +137,9 @@ public class Handler {
     /**
      * Use the provided {@link Looper} instead of the default one and take a callback
      * interface in which to handle messages.
+     *
+     * @param looper The looper, must not be null.
+     * @param callback The callback interface in which to handle messages, or null.
      */
     public Handler(Looper looper, Callback callback) {
         this(looper, callback, false);
@@ -573,20 +576,15 @@ public class Handler {
      *         the looper is quit before the delivery time of the message
      *         occurs then the message will be dropped.
      */
-    public boolean sendMessageAtTime(Message msg, long uptimeMillis)
-    {
-        boolean sent = false;
+    public boolean sendMessageAtTime(Message msg, long uptimeMillis) {
         MessageQueue queue = mQueue;
-        if (queue != null) {
-            msg.target = this;
-            sent = queue.enqueueMessage(msg, uptimeMillis);
-        }
-        else {
+        if (queue == null) {
             RuntimeException e = new RuntimeException(
-                this + " sendMessageAtTime() called with no mQueue");
+                    this + " sendMessageAtTime() called with no mQueue");
             Log.w("Looper", e.getMessage(), e);
+            return false;
         }
-        return sent;
+        return enqueueMessage(queue, msg, uptimeMillis);
     }
 
     /**
@@ -601,20 +599,23 @@ public class Handler {
      *         message queue.  Returns false on failure, usually because the
      *         looper processing the message queue is exiting.
      */
-    public final boolean sendMessageAtFrontOfQueue(Message msg)
-    {
-        boolean sent = false;
+    public final boolean sendMessageAtFrontOfQueue(Message msg) {
         MessageQueue queue = mQueue;
-        if (queue != null) {
-            msg.target = this;
-            sent = queue.enqueueMessage(msg, 0);
-        }
-        else {
+        if (queue == null) {
             RuntimeException e = new RuntimeException(
                 this + " sendMessageAtTime() called with no mQueue");
             Log.w("Looper", e.getMessage(), e);
+            return false;
         }
-        return sent;
+        return enqueueMessage(queue, msg, 0);
+    }
+
+    private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMillis) {
+        msg.target = this;
+        if (mAsynchronous) {
+            msg.setAsynchronous(true);
+        }
+        return queue.enqueueMessage(msg, uptimeMillis);
     }
 
     /**
@@ -627,7 +628,7 @@ public class Handler {
 
     /**
      * Remove any pending posts of messages with code 'what' and whose obj is
-     * 'object' that are in the message queue.  If <var>token</var> is null,
+     * 'object' that are in the message queue.  If <var>object</var> is null,
      * all messages will be removed.
      */
     public final void removeMessages(int what, Object object) {
@@ -707,20 +708,20 @@ public class Handler {
         }
     }
 
-    private final Message getPostMessage(Runnable r) {
+    private static Message getPostMessage(Runnable r) {
         Message m = Message.obtain();
         m.callback = r;
         return m;
     }
 
-    private final Message getPostMessage(Runnable r, Object token) {
+    private static Message getPostMessage(Runnable r, Object token) {
         Message m = Message.obtain();
         m.obj = token;
         m.callback = r;
         return m;
     }
 
-    private final void handleCallback(Message message) {
+    private static void handleCallback(Message message) {
         message.callback.run();
     }
 

@@ -21,9 +21,7 @@ package android.os;
  */
 public final class UserHandle implements Parcelable {
     /**
-     * Range of IDs allocated for a user.
-     *
-     * @hide
+     * @hide Range of uids allocated for a user.
      */
     public static final int PER_USER_RANGE = 100000;
 
@@ -59,9 +57,9 @@ public final class UserHandle implements Parcelable {
     public static final UserHandle OWNER = new UserHandle(USER_OWNER);
 
     /**
-     * Enable multi-user related side effects. Set this to false if there are problems with single 
-     * user usecases.
-     * */
+     * @hide Enable multi-user related side effects. Set this to false if
+     * there are problems with single user use-cases.
+     */
     public static final boolean MU_ENABLED = true;
 
     final int mHandle;
@@ -76,8 +74,8 @@ public final class UserHandle implements Parcelable {
     }
 
     /**
-     * Checks to see if both uids are referring to the same app id, ignoring the user 
-     * id part of the uids.
+     * Checks to see if both uids are referring to the same app id, ignoring the user id part of the
+     * uids.
      * @param uid1 uid to compare
      * @param uid2 other uid to compare
      * @return whether the appId is the same for both uids
@@ -137,7 +135,7 @@ public final class UserHandle implements Parcelable {
     }
 
     /**
-     * Return the app id (or base uid) for a given uid, stripping out the user id from it.
+     * Returns the app id (or base uid) for a given uid, stripping out the user id from it.
      * @hide
      */
     public static final int getAppId(int uid) {
@@ -172,6 +170,28 @@ public final class UserHandle implements Parcelable {
         return mHandle;
     }
 
+    @Override
+    public String toString() {
+        return "UserHandle{" + mHandle + "}";
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        try {
+            if (obj != null) {
+                UserHandle other = (UserHandle)obj;
+                return mHandle == other.mHandle;
+            }
+        } catch (ClassCastException e) {
+        }
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return mHandle;
+    }
+    
     public int describeContents() {
         return 0;
     }
@@ -180,6 +200,23 @@ public final class UserHandle implements Parcelable {
         out.writeInt(mHandle);
     }
 
+    /**
+     * Write a UserHandle to a Parcel, handling null pointers.  Must be
+     * read with {@link #readFromParcel(Parcel)}.
+     * 
+     * @param h The UserHandle to be written.
+     * @param out The Parcel in which the UserHandle will be placed.
+     * 
+     * @see #readFromParcel(Parcel)
+     */
+    public static void writeToParcel(UserHandle h, Parcel out) {
+        if (h != null) {
+            h.writeToParcel(out, 0);
+        } else {
+            out.writeInt(USER_NULL);
+        }
+    }
+    
     /**
      * Read a UserHandle from a Parcel that was previously written
      * with {@link #writeToParcel(UserHandle, Parcel)}, returning either
@@ -195,7 +232,7 @@ public final class UserHandle implements Parcelable {
         int h = in.readInt();
         return h != USER_NULL ? new UserHandle(h) : null;
     }
-
+    
     public static final Parcelable.Creator<UserHandle> CREATOR
             = new Parcelable.Creator<UserHandle>() {
         public UserHandle createFromParcel(Parcel in) {

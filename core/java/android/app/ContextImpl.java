@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,17 +19,16 @@ package android.app;
 import com.android.internal.policy.PolicyManager;
 import com.android.internal.util.Preconditions;
 
-import android.accounts.AccountManager;
-import android.accounts.IAccountManager;
+import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.IContentProvider;
-import android.content.IIntentReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IIntentReceiver;
 import android.content.IntentSender;
 import android.content.ReceiverCallNotAllowedException;
 import android.content.ServiceConnection;
@@ -42,16 +40,18 @@ import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.AssetManager;
 import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
-import android.content.res.CustomTheme;
 import android.content.res.Resources;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteDatabase.CursorFactory;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
+import android.hardware.ISerialManager;
 import android.hardware.SensorManager;
+import android.hardware.SerialManager;
 import android.hardware.SystemSensorManager;
 import android.hardware.display.DisplayManager;
+import android.hardware.input.IInputManager;
 import android.hardware.input.InputManager;
 import android.hardware.usb.IUsbManager;
 import android.hardware.usb.UsbManager;
@@ -60,6 +60,7 @@ import android.location.ICountryDetector;
 import android.location.ILocationManager;
 import android.location.LocationManager;
 import android.media.AudioManager;
+import android.media.MediaRouter;
 import android.net.ConnectivityManager;
 import android.net.IConnectivityManager;
 import android.net.INetworkPolicyManager;
@@ -67,6 +68,8 @@ import android.net.NetworkPolicyManager;
 import android.net.ThrottleManager;
 import android.net.IThrottleManager;
 import android.net.Uri;
+import android.net.nsd.INsdManager;
+import android.net.nsd.NsdManager;
 import android.net.wifi.IWifiManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.IWifiP2pManager;
@@ -88,8 +91,8 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.UserHandle;
+import android.os.SystemVibrator;
 import android.os.UserManager;
-import android.os.Vibrator;
 import android.os.storage.StorageManager;
 import android.telephony.TelephonyManager;
 import android.content.ClipboardManager;
@@ -156,10 +159,7 @@ class ReceiverRestrictedContext extends ContextWrapper {
     @Override
     public boolean bindService(Intent service, ServiceConnection conn, int flags) {
         throw new ReceiverCallNotAllowedException(
-                "IntentReceiver components are not allowed to bind to services");
-        //ex.fillInStackTrace();
-        //Log.e("IntentReceiver", ex.getMessage(), ex);
-        //return mContext.bindService(service, interfaceName, conn, flags);
+                "BroadcastReceiver components are not allowed to bind to services");
     }
 }
 
@@ -314,6 +314,16 @@ class ContextImpl extends Context {
                     return new AudioManager(ctx);
                 }});
 
+        registerService(MEDIA_ROUTER_SERVICE, new ServiceFetcher() {
+                public Object createService(ContextImpl ctx) {
+                    return new MediaRouter(ctx);
+                }});
+
+        registerService(BLUETOOTH_SERVICE, new ServiceFetcher() {
+                public Object createService(ContextImpl ctx) {
+                    return BluetoothAdapter.getDefaultAdapter();
+                }});
+
         registerService(CLIPBOARD_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
                     return new ClipboardManager(ctx.getOuterContext(),
@@ -414,6 +424,14 @@ class ContextImpl extends Context {
                         ctx.mMainThread.getHandler());
                 }});
 
+        registerService(NSD_SERVICE, new ServiceFetcher() {
+                @Override
+                public Object createService(ContextImpl ctx) {
+                    IBinder b = ServiceManager.getService(NSD_SERVICE);
+                    INsdManager service = INsdManager.Stub.asInterface(b);
+                    return new NsdManager(ctx.getOuterContext(), service);
+                }});
+
         // Note: this was previously cached in a static variable, but
         // constructed using mMainThread.getHandler(), so converting
         // it to be a regular Context-cached service...
@@ -473,9 +491,15 @@ class ContextImpl extends Context {
                     return new UsbManager(ctx, IUsbManager.Stub.asInterface(b));
                 }});
 
+        registerService(SERIAL_SERVICE, new ServiceFetcher() {
+                public Object createService(ContextImpl ctx) {
+                    IBinder b = ServiceManager.getService(SERIAL_SERVICE);
+                    return new SerialManager(ctx, ISerialManager.Stub.asInterface(b));
+                }});
+
         registerService(VIBRATOR_SERVICE, new ServiceFetcher() {
                 public Object createService(ContextImpl ctx) {
-                    return new Vibrator();
+                    return new SystemVibrator();
                 }});
 
         registerService(WALLPAPER_SERVICE, WALLPAPER_FETCHER);
@@ -535,20 +559,6 @@ class ContextImpl extends Context {
     @Override
     public Resources getResources() {
         return mResources;
-    }
-
-    /**
-     * Refresh resources object which may have been changed by a theme
-     * configuration change.
-     */
-    /* package */ void refreshResourcesIfNecessary() {
-        if (mResources == Resources.getSystem()) {
-            return;
-        }
-
-        if (mPackageInfo.mCompatibilityInfo.get().isThemeable) {
-            mTheme = null;
-        }
     }
 
     @Override
@@ -783,7 +793,7 @@ class ContextImpl extends Context {
             }
             if (!mCacheDir.exists()) {
                 if(!mCacheDir.mkdirs()) {
-                    Log.w(TAG, "Unable to create cache directory");
+                    Log.w(TAG, "Unable to create cache directory " + mCacheDir.getAbsolutePath());
                     return null;
                 }
                 FileUtils.setPermissions(
@@ -1019,6 +1029,7 @@ class ContextImpl extends Context {
 
     @Override
     public void sendBroadcast(Intent intent) {
+        warnIfCallingFromSystemProcess();
         String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
         try {
             intent.setAllowFds(false);
@@ -1032,6 +1043,7 @@ class ContextImpl extends Context {
 
     @Override
     public void sendBroadcast(Intent intent, String receiverPermission) {
+        warnIfCallingFromSystemProcess();
         String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
         try {
             intent.setAllowFds(false);
@@ -1046,6 +1058,7 @@ class ContextImpl extends Context {
     @Override
     public void sendOrderedBroadcast(Intent intent,
             String receiverPermission) {
+        warnIfCallingFromSystemProcess();
         String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
         try {
             intent.setAllowFds(false);
@@ -1062,6 +1075,7 @@ class ContextImpl extends Context {
             String receiverPermission, BroadcastReceiver resultReceiver,
             Handler scheduler, int initialCode, String initialData,
             Bundle initialExtras) {
+        warnIfCallingFromSystemProcess();
         IIntentReceiver rd = null;
         if (resultReceiver != null) {
             if (mPackageInfo != null) {
@@ -1150,12 +1164,14 @@ class ContextImpl extends Context {
 
     @Override
     public void sendStickyBroadcast(Intent intent) {
+        warnIfCallingFromSystemProcess();
         String resolvedType = intent.resolveTypeIfNeeded(getContentResolver());
         try {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
-                Activity.RESULT_OK, null, null, null, false, true, getUserId());
+                Activity.RESULT_OK, null, null, null, false, true,
+                getUserId());
         } catch (RemoteException e) {
         }
     }
@@ -1165,6 +1181,7 @@ class ContextImpl extends Context {
             BroadcastReceiver resultReceiver,
             Handler scheduler, int initialCode, String initialData,
             Bundle initialExtras) {
+        warnIfCallingFromSystemProcess();
         IIntentReceiver rd = null;
         if (resultReceiver != null) {
             if (mPackageInfo != null) {
@@ -1263,7 +1280,7 @@ class ContextImpl extends Context {
         try {
             intent.setAllowFds(false);
             ActivityManagerNative.getDefault().unbroadcastIntent(
-                mMainThread.getApplicationThread(), intent, user.getIdentifier());
+                    mMainThread.getApplicationThread(), intent, user.getIdentifier());
         } catch (RemoteException e) {
         }
     }
@@ -1276,7 +1293,7 @@ class ContextImpl extends Context {
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, Handler scheduler) {
-        return registerReceiverInternal(receiver, getUserId(), 
+        return registerReceiverInternal(receiver, getUserId(),
                 filter, broadcastPermission, scheduler, getOuterContext());
     }
 
@@ -1502,8 +1519,7 @@ class ContextImpl extends Context {
 
         int pid = Binder.getCallingPid();
         if (pid != Process.myPid()) {
-            return checkPermission(permission, pid,
-                    Binder.getCallingUid());
+            return checkPermission(permission, pid, Binder.getCallingUid());
         }
         return PackageManager.PERMISSION_DENIED;
     }
@@ -1526,7 +1542,7 @@ class ContextImpl extends Context {
                     (message != null ? (message + ": ") : "") +
                     (selfToo
                      ? "Neither user " + uid + " nor current process has "
-                     : "User " + uid + " does not have ") +
+                     : "uid " + uid + " does not have ") +
                     permission +
                     ".");
         }
@@ -1671,7 +1687,8 @@ class ContextImpl extends Context {
             Uri uri, int modeFlags, String message) {
         enforceForUri(
                 modeFlags, checkCallingUriPermission(uri, modeFlags),
-                false, Binder.getCallingUid(), uri, message);
+                false,
+                Binder.getCallingUid(), uri, message);
     }
 
     public void enforceCallingOrSelfUriPermission(
@@ -1710,19 +1727,18 @@ class ContextImpl extends Context {
     }
 
     @Override
-    public Context createPackageContextAsUser(String packageName, int flags,
-            UserHandle user) throws PackageManager.NameNotFoundException {
+    public Context createPackageContextAsUser(String packageName, int flags, UserHandle user)
+            throws NameNotFoundException {
         if (packageName.equals("system") || packageName.equals("android")) {
             final ContextImpl context = new ContextImpl(mMainThread.getSystemContext());
             context.mRestricted = (flags & CONTEXT_RESTRICTED) == CONTEXT_RESTRICTED;
-            context.init(mPackageInfo, null, mMainThread, mResources, mBasePackageName,
-                    user);
+            context.init(mPackageInfo, null, mMainThread, mResources, mBasePackageName, user);
             return context;
         }
 
         LoadedApk pi =
-            mMainThread.getPackageInfo(packageName, mResources.getCompatibilityInfo(),
-                    flags, user.getIdentifier());
+            mMainThread.getPackageInfo(packageName, mResources.getCompatibilityInfo(), flags,
+                    user.getIdentifier());
         if (pi != null) {
             ContextImpl c = new ContextImpl();
             c.mRestricted = (flags & CONTEXT_RESTRICTED) == CONTEXT_RESTRICTED;
@@ -1784,7 +1800,6 @@ class ContextImpl extends Context {
 
     @Override
     public CompatibilityInfoHolder getCompatibilityInfo(int displayId) {
-        Log.w(TAG, "getCompatibilityInfo");
         return displayId == Display.DEFAULT_DISPLAY ? mPackageInfo.mCompatibilityInfo : null;
     }
 
@@ -1839,14 +1854,12 @@ class ContextImpl extends Context {
         mOuterContext = this;
     }
 
-    final void init(LoadedApk packageInfo,
-            IBinder activityToken, ActivityThread mainThread) {
+    final void init(LoadedApk packageInfo, IBinder activityToken, ActivityThread mainThread) {
         init(packageInfo, activityToken, mainThread, null, null, Process.myUserHandle());
     }
 
-    final void init(LoadedApk packageInfo,
-                IBinder activityToken, ActivityThread mainThread,
-                Resources container, String basePackageName, UserHandle user) {
+    final void init(LoadedApk packageInfo, IBinder activityToken, ActivityThread mainThread,
+            Resources container, String basePackageName, UserHandle user) {
         mPackageInfo = packageInfo;
         mBasePackageName = basePackageName != null ? basePackageName : packageInfo.mPackageName;
         mResources = mPackageInfo.getResources(mainThread);
@@ -1971,8 +1984,7 @@ class ContextImpl extends Context {
 
         @Override
         protected IContentProvider acquireProvider(Context context, String auth) {
-            return mMainThread.acquireProvider(context, auth, mUser.getIdentifier(),
-                    true);
+            return mMainThread.acquireProvider(context, auth, mUser.getIdentifier(), true);
         }
 
         @Override

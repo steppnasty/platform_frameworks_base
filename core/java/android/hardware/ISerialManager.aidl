@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (C) 2011 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-package com.android.internal.backup;
+package android.hardware;
 
-/**
- * Constants used internally between the backup manager and its transports
- */
-public class BackupConstants {
-    public static final int TRANSPORT_OK = 0;
-    public static final int TRANSPORT_ERROR = 1;
-    public static final int TRANSPORT_NOT_INITIALIZED = 2;
-    public static final int AGENT_ERROR = 3;
-    public static final int AGENT_UNKNOWN = 4;
+import android.os.ParcelFileDescriptor;
+
+/** @hide */
+interface ISerialManager
+{
+    /* Returns a list of all available serial ports */
+    String[] getSerialPorts();
+
+    /* Returns a file descriptor for the serial port. */
+    ParcelFileDescriptor openSerialPort(String name);
 }

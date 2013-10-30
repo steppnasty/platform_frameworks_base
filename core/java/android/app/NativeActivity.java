@@ -1,6 +1,5 @@
 package android.app;
 
-import com.android.internal.view.IInputMethodCallback;
 import com.android.internal.view.IInputMethodSession;
 
 import android.content.Context;

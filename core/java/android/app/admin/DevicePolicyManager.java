@@ -157,6 +157,8 @@ public class DevicePolicyManager {
     }
 
     /**
+     * Used by package administration code to determine if a package can be stopped
+     * or uninstalled.
      * @hide
      */
     public boolean packageHasActiveAdmins(String packageName) {
@@ -832,6 +834,11 @@ public class DevicePolicyManager {
      * all admins.
      * @return The length of the password history
      */
+    public int getPasswordHistoryLength(ComponentName admin) {
+        return getPasswordHistoryLength(admin, UserHandle.myUserId());
+    }
+
+    /** @hide per-user version */
     public int getPasswordHistoryLength(ComponentName admin, int userHandle) {
         if (mService != null) {
             try {
@@ -1506,5 +1513,4 @@ public class DevicePolicyManager {
             }
         }
     }
-
 }

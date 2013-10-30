@@ -34,6 +34,7 @@ import android.os.ServiceManager;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.Slog;
 import android.view.KeyEvent;
 
 import java.util.List;

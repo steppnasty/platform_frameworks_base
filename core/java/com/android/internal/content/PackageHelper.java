@@ -16,12 +16,11 @@
 
 package com.android.internal.content;
 
-import android.os.storage.IMountService;
-
 import android.os.FileUtils;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.storage.IMountService;
 import android.os.storage.StorageResultCode;
 import android.util.Log;
 
@@ -52,34 +51,34 @@ public class PackageHelper {
     public static final int RECOMMEND_FAILED_INVALID_URI = -6;
     public static final int RECOMMEND_FAILED_VERSION_DOWNGRADE = -7;
 
-    private static final boolean localLOGV = true;
+    private static final boolean localLOGV = false;
     private static final String TAG = "PackageHelper";
     // App installation location settings values
     public static final int APP_INSTALL_AUTO = 0;
     public static final int APP_INSTALL_INTERNAL = 1;
     public static final int APP_INSTALL_EXTERNAL = 2;
 
-    public static IMountService getMountService() {
+    public static IMountService getMountService() throws RemoteException {
         IBinder service = ServiceManager.getService("mount");
         if (service != null) {
             return IMountService.Stub.asInterface(service);
         } else {
             Log.e(TAG, "Can't get mount service");
+            throw new RemoteException("Could not contact mount service");
         }
-        return null;
     }
 
-    public static String createSdDir(int sizeMb, String cid,
-            String sdEncKey, int uid, boolean isExternal) {
+    public static String createSdDir(int sizeMb, String cid, String sdEncKey, int uid,
+            boolean isExternal) {
         // Create mount point via MountService
-        IMountService mountService = getMountService();
-
-        if (localLOGV)
-            Log.i(TAG, "Size of container " + sizeMb + " MB");
-
         try {
-            int rc = mountService.createSecureContainer(
-                    cid, sizeMb, "fat", sdEncKey, uid, isExternal);
+            IMountService mountService = getMountService();
+
+            if (localLOGV)
+                Log.i(TAG, "Size of container " + sizeMb + " MB");
+
+            int rc = mountService.createSecureContainer(cid, sizeMb, "ext4", sdEncKey, uid,
+                    isExternal);
             if (rc != StorageResultCode.OperationSucceeded) {
                 Log.e(TAG, "Failed to create secure container " + cid);
                 return null;

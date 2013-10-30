@@ -16,7 +16,9 @@
 
 package android.os.storage;
 
+import android.app.NotificationManager;
 import android.content.Context;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -60,7 +62,7 @@ public class StorageManager
     /*
      * Our internal MountService binder reference
      */
-    private IMountService mMountService;
+    final private IMountService mMountService;
 
     /*
      * The looper target for callbacks
@@ -298,7 +300,7 @@ public class StorageManager
      * Constructs a StorageManager object through which an application can
      * can communicate with the systems mount service.
      * 
-     * @param tgtLooper The {@android.os.Looper} which events will be received on.
+     * @param tgtLooper The {@link android.os.Looper} which events will be received on.
      *
      * <p>Applications can get instance of this class by calling
      * {@link android.content.Context#getSystemService(java.lang.String)} with an argument
@@ -313,8 +315,6 @@ public class StorageManager
             return;
         }
         mTgtLooper = tgtLooper;
-        mBinderListener = new MountServiceBinderListener();
-        mMountService.registerListener(mBinderListener);
     }
 
 
@@ -331,6 +331,15 @@ public class StorageManager
         }
 
         synchronized (mListeners) {
+            if (mBinderListener == null ) {
+                try {
+                    mBinderListener = new MountServiceBinderListener();
+                    mMountService.registerListener(mBinderListener);
+                } catch (RemoteException rex) {
+                    Log.e(TAG, "Register mBinderListener failed");
+                    return;
+                }
+            }
             mListeners.add(new ListenerDelegate(listener));
         }
     }
@@ -356,7 +365,15 @@ public class StorageManager
                     break;
                 }
             }
-        }
+            if (mListeners.size() == 0 && mBinderListener != null) {
+                try {
+                    mMountService.unregisterListener(mBinderListener);
+                } catch (RemoteException rex) {
+                    Log.e(TAG, "Unregister mBinderListener failed");
+                    return;
+                }
+            }
+       }
     }
 
     /**
@@ -468,24 +485,19 @@ public class StorageManager
      * application's OBB that shares its UID.
      * <p>
      * 
-     * @param filename path to the OBB file
+     * @param rawPath path to the OBB file
      * @param force whether to kill any programs using this in order to unmount
      *            it
      * @param listener will receive the success or failure of the operation
      * @return whether the unmount call was successfully queued or not
      */
-    public boolean unmountObb(String filename, boolean force, OnObbStateChangeListener listener) {
-        if (filename == null) {
-            throw new IllegalArgumentException("filename cannot be null");
-        }
-
-        if (listener == null) {
-            throw new IllegalArgumentException("listener cannot be null");
-        }
+    public boolean unmountObb(String rawPath, boolean force, OnObbStateChangeListener listener) {
+        Preconditions.checkNotNull(rawPath, "rawPath cannot be null");
+        Preconditions.checkNotNull(listener, "listener cannot be null");
 
         try {
             final int nonce = mObbActionListener.addListener(listener);
-            mMountService.unmountObb(filename, force, mObbActionListener, nonce);
+            mMountService.unmountObb(rawPath, force, mObbActionListener, nonce);
             return true;
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to mount OBB", e);
@@ -497,16 +509,14 @@ public class StorageManager
     /**
      * Check whether an Opaque Binary Blob (OBB) is mounted or not.
      * 
-     * @param filename path to OBB image
+     * @param rawPath path to OBB image
      * @return true if OBB is mounted; false if not mounted or on error
      */
-    public boolean isObbMounted(String filename) {
-        if (filename == null) {
-            throw new IllegalArgumentException("filename cannot be null");
-        }
+    public boolean isObbMounted(String rawPath) {
+        Preconditions.checkNotNull(rawPath, "rawPath cannot be null");
 
         try {
-            return mMountService.isObbMounted(filename);
+            return mMountService.isObbMounted(rawPath);
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to check if OBB is mounted", e);
         }
@@ -519,17 +529,15 @@ public class StorageManager
      * give you the path to where you can obtain access to the internals of the
      * OBB.
      * 
-     * @param filename path to OBB image
+     * @param rawPath path to OBB image
      * @return absolute path to mounted OBB image data or <code>null</code> if
      *         not mounted or exception encountered trying to read status
      */
-    public String getMountedObbPath(String filename) {
-        if (filename == null) {
-            throw new IllegalArgumentException("filename cannot be null");
-        }
+    public String getMountedObbPath(String rawPath) {
+        Preconditions.checkNotNull(rawPath, "rawPath cannot be null");
 
         try {
-            return mMountService.getMountedObbPath(filename);
+            return mMountService.getMountedObbPath(rawPath);
         } catch (RemoteException e) {
             Log.e(TAG, "Failed to find mounted path for OBB", e);
         }
@@ -542,6 +550,7 @@ public class StorageManager
      * @hide
      */
     public String getVolumeState(String mountPoint) {
+         if (mMountService == null) return Environment.MEDIA_REMOVED;
         try {
             return mMountService.getVolumeState(mountPoint);
         } catch (RemoteException e) {
@@ -555,6 +564,7 @@ public class StorageManager
      * @hide
      */
     public StorageVolume[] getVolumeList() {
+        if (mMountService == null) return new StorageVolume[0];
         try {
             Parcelable[] list = mMountService.getVolumeList();
             if (list == null) return new StorageVolume[0];

@@ -50,6 +50,7 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
         sPackageFilt.addAction(Intent.ACTION_UID_REMOVED);
         sPackageFilt.addDataScheme("package");
         sNonDataFilt.addAction(Intent.ACTION_UID_REMOVED);
+        sNonDataFilt.addAction(Intent.ACTION_USER_STOPPED);
         sExternalFilt.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE);
         sExternalFilt.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE);
     }
@@ -64,9 +65,9 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
     int mChangeType;
     int mChangeUserId = UserHandle.USER_NULL;
     boolean mSomePackagesChanged;
-    
+
     String[] mTempArray = new String[1];
-    
+
     public void register(Context context, Looper thread, boolean externalStorage) {
         register(context, thread, null, externalStorage);
     }
@@ -106,6 +107,10 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
         }
     }
 
+    public Handler getRegisteredHandler() {
+        return mRegisteredHandler;
+    }
+
     public void unregister() {
         if (mRegisteredContext == null) {
             throw new IllegalStateException("Not registered");
@@ -123,10 +128,16 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
     
     public void onBeginPackageChanges() {
     }
-    
+
+    /**
+     * Called when a package is really added (and not replaced).
+     */
     public void onPackageAdded(String packageName, int uid) {
     }
-    
+
+    /**
+     * Called when a package is really removed (and not replaced).
+     */
     public void onPackageRemoved(String packageName, int uid) {
     }
 
@@ -139,7 +150,7 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
 
     public void onPackageUpdateStarted(String packageName, int uid) {
     }
-    
+
     public void onPackageUpdateFinished(String packageName, int uid) {
     }
     
@@ -152,7 +163,7 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
 
     public void onHandleUserStop(Intent intent, int userHandle) {
     }
-
+    
     public void onUidRemoved(int uid) {
     }
     
@@ -166,10 +177,16 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
     public static final int PACKAGE_UPDATING = 1;
     public static final int PACKAGE_TEMPORARY_CHANGE = 2;
     public static final int PACKAGE_PERMANENT_CHANGE = 3;
-    
+
+    /**
+     * Called when a package disappears for any reason.
+     */
     public void onPackageDisappeared(String packageName, int reason) {
     }
-    
+
+    /**
+     * Called when a package appears for any reason.
+     */
     public void onPackageAppeared(String packageName, int reason) {
     }
     
@@ -236,7 +253,7 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
         String pkg = uri != null ? uri.getSchemeSpecificPart() : null;
         return pkg;
     }
-
+    
     @Override
     public void onReceive(Context context, Intent intent) {
         mChangeUserId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE,
@@ -246,10 +263,10 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
                     "Intent broadcast does not contain user handle: " + intent);
         }
         onBeginPackageChanges();
-
+        
         mDisappearingPackages = mAppearingPackages = null;
         mSomePackagesChanged = false;
-
+        
         String action = intent.getAction();
         if (Intent.ACTION_PACKAGE_ADDED.equals(action)) {
             String pkg = getPackageName(intent);
@@ -357,12 +374,12 @@ public abstract class PackageMonitor extends android.content.BroadcastReceiver {
                 }
             }
         }
-
+        
         if (mSomePackagesChanged) {
             onSomePackagesChanged();
         }
-
+        
         onFinishPackageChanges();
         mChangeUserId = UserHandle.USER_NULL;
     }
-}   
+}

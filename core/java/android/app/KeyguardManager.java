@@ -16,11 +16,9 @@
 
 package android.app;
 
-import android.content.Context;
 import android.os.Binder;
 import android.os.RemoteException;
 import android.os.IBinder;
-import android.os.ServiceManager;
 import android.view.IWindowManager;
 import android.view.IOnKeyguardExitResult;
 import android.view.WindowManagerGlobal;
@@ -29,7 +27,7 @@ import android.view.WindowManagerGlobal;
  * Class that can be used to lock and unlock the keyboard. Get an instance of this 
  * class by calling {@link android.content.Context#getSystemService(java.lang.String)}
  * with argument {@link android.content.Context#KEYGUARD_SERVICE}. The
- * Actual class to control the keyboard locking is
+ * actual class to control the keyboard locking is
  * {@link android.app.KeyguardManager.KeyguardLock}.
  */
 public class KeyguardManager {
@@ -63,6 +61,9 @@ public class KeyguardManager {
          * Note: This call has no effect while any {@link android.app.admin.DevicePolicyManager} 
          * is enabled that requires a password.
          *
+         * <p>This method requires the caller to hold the permission
+         * {@link android.Manifest.permission#DISABLE_KEYGUARD}.
+         *
          * @see #reenableKeyguard()
          */
         public void disableKeyguard() {
@@ -74,12 +75,15 @@ public class KeyguardManager {
 
         /**
          * Reenable the keyguard.  The keyguard will reappear if the previous
-         * call to {@link #disableKeyguard()} caused it it to be hidden.
+         * call to {@link #disableKeyguard()} caused it to be hidden.
          *
          * A good place to call this is from {@link android.app.Activity#onPause()}
          *
          * Note: This call has no effect while any {@link android.app.admin.DevicePolicyManager}
          * is enabled that requires a password.
+         *
+         * <p>This method requires the caller to hold the permission
+         * {@link android.Manifest.permission#DISABLE_KEYGUARD}.
          *
          * @see #disableKeyguard()
          */
@@ -131,13 +135,9 @@ public class KeyguardManager {
     }
 
     /**
-     * isKeyguardLocked
-     *
      * Return whether the keyguard is currently locked.
      *
-     * @return true if in keyguard is locked.
-     *
-     * @hide
+     * @return true if keyguard is locked.
      */
     public boolean isKeyguardLocked() {
         try {
@@ -148,13 +148,9 @@ public class KeyguardManager {
     }
 
     /**
-     * isKeyguardSecure
-     *
      * Return whether the keyguard requires a password to unlock.
      *
-     * @return true if in keyguard is secure.
-     *
-     * @hide
+     * @return true if keyguard is secure.
      */
     public boolean isKeyguardSecure() {
         try {
@@ -196,6 +192,9 @@ public class KeyguardManager {
      *
      * This will, if the keyguard is secure, bring up the unlock screen of
      * the keyguard.
+     *
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#DISABLE_KEYGUARD}.
      *
      * @param callback Let's you know whether the operation was succesful and
      *   it is safe to launch anything that would normally be considered safe
