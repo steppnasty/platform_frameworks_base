@@ -707,11 +707,6 @@
   <public type="string" name="VideoView_error_text_unknown" id="0x01040011" />
   <public type="string" name="VideoView_error_title" id="0x01040012" />
   <public type="string" name="yes" id="0x01040013" />
-  <public type="string" name="default_audio_route_name"  id="0x01040018" />
-  <public type="string" name="default_audio_route_name_headphones" id="0x01040019" />
-  <public type="string" name="default_audio_route_name_dock_speakers" id="0x0104001a" />
-  <public type="string" name="default_audio_route_name_hdmi" id="0x0104001b" />
-  <public type="string" name="default_audio_route_category_name" id="0x0104001c" />
 
   <public type="dimen" name="app_icon_size" id="0x01050000" />
   <public type="dimen" name="thumbnail_height" id="0x01050001" />

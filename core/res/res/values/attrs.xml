@@ -779,6 +779,9 @@
         <!-- Icon drawable to use for alerts -->
         <attr name="alertDialogIcon" format="reference" />
 
+        <!-- Theme to use for presentations spawned from this theme. -->
+        <attr name="presentationTheme" format="reference" />
+
         <!-- Drawable to use for generic vertical dividers. -->
         <attr name="dividerVertical" format="reference" />
 
@@ -5792,6 +5795,12 @@
     <declare-styleable name="SlidingChallengeLayout_Layout">
         <attr name="layout_childType" />
         <attr name="layout_maxHeight" />
+    </declare-styleable>
+
+    <!-- Attributes that can be used with <code>&lt;FragmentBreadCrumbs&gt;</code>
+    tags. -->
+    <declare-styleable name="FragmentBreadCrumbs">
+        <attr name="gravity" />
     </declare-styleable>
 
     <declare-styleable name="MultiPaneChallengeLayout">

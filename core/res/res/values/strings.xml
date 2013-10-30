@@ -455,6 +455,56 @@
         various network features.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_bluetoothNetwork">Bluetooth</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_bluetoothNetwork">Access devices and networks through Bluetooth.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_audioSettings">Audio Settings</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_audioSettings">Change audio settings.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_affectsBattery">Affects Battery</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_affectsBattery">Use features that can quickly drain battery.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_calendar">Calendar</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_calendar">Direct access to calendar and events.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_dictionary">Read User Dictionary</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_dictionary">Read words in user dictionary.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_writeDictionary">Write User Dictionary</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_writeDictionary">Add words to the user dictionary.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_bookmarks">Bookmarks and History</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_bookmarks">Direct access to bookmarks and browser history.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_deviceAlarms">Alarm</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_deviceAlarms">Set the alarm clock.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_voicemail">Voicemail</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_voicemail">Direct access to voicemail.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_microphone">Microphone</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_microphone">Direct access to the microphone to record audio.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_camera">Camera</string>
     <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgroupdesc_camera">Direct access to camera for image or video capture.</string>
@@ -465,9 +515,24 @@
     <string name="permgroupdesc_appInfo">Ability to affect behavior of other applications on your device.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_wallpaper">Wallpaper</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_wallpaper">Change the device wallpaper settings.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_systemClock">Clock</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_systemClock">Change the device time or timezone.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_statusBar">Status Bar</string>
     <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgroupdesc_statusBar">Change the device status bar settings.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_syncSettings">Sync Settings</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_syncSettings">Access to the sync settings.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_accounts">Your accounts</string>
@@ -497,6 +562,11 @@
     <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgroupdesc_developmentTools">Features only needed for
         application developers.</string>
+
+    <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgrouplab_display">Other Application UI</string>
+    <!-- Description of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permgroupdesc_display">Effect the UI of other applications.</string>
 
     <!-- Title of a category of application permissions, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permgrouplab_storage">Storage</string>
@@ -551,6 +621,15 @@
     <string name="permdesc_receiveEmergencyBroadcast">Allows application to receive
       and process emergency broadcast messages. This permission is only available
       to system applications.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_readCellBroadcasts">read cell broadcast messages</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_readCellBroadcasts">Allows the app to read
+      cell broadcast messages received by your device. Cell broadcast alerts
+      are delivered in some locations to warn you of emergency situations.
+      Malicious apps may interfere with the performance or operation of your
+      device when an emergency cell broadcast is received.</string>
 
      <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_sendSms">send SMS messages</string>
@@ -799,6 +878,12 @@
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permdesc_batteryStats">Allows the modification of
         collected battery statistics. Not for use by normal applications.</string>
+
+    <!-- [CHAR LIMIT=NONE] Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_updateBatteryStats">modify battery statistics</string>
+    <!-- [CHAR LIMIT=NONE] Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_updateBatteryStats">Allows the app to modify
+        collected battery statistics. Not for use by normal apps.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_backup">control system backup and restore</string>
@@ -2543,6 +2628,11 @@
     <string name="permdesc_bindPackageVerifier">Allows the holder to make requests of
         package verifiers. Should never be needed for normal applications.</string>
 
+    <!-- Title of an application permission which allows the application to access serial ports via the SerialManager. [CHAR LIMIT=40] -->
+    <string name="permlab_serialPort">access serial ports</string>
+    <!-- Description of an application permission which allows the application access serial ports via the SerialManager. [CHAR LIMIT=NONE] -->
+    <string name="permdesc_serialPort">Allows the holder to access serial ports using the SerialManager API.</string>
+
     <!-- Title of an application permission which allows the holder to access content
          providers from outside an ApplicationThread. [CHAR LIMIT=40] -->
     <string name="permlab_accessContentProvidersExternally">access content providers externally</string>
@@ -2550,6 +2640,10 @@
          content providers from outside an ApplicationThread. [CHAR LIMIT=NONE] -->
     <string name="permdesc_accessContentProvidersExternally">Allows the holder to access content
      providers from the shell. Should never be needed for normal apps.</string>
+    <!-- Title of an application permission which allows the application to suggest that now is a bad time to reboot the device in order to apply an OTA.  [CHAR LIMIT=40] -->
+    <string name="permlab_updateLock">discourage automatic device updates</string>
+    <!-- Description of an application permission which allows the application to suggest that now is a bad time to reboot the device in order to apply an OTA.  [CHAR LIMIT=NONE] -->
+    <string name="permdesc_updateLock">Allows the holder to offer information to the system about when would be a good time for a noninteractive reboot to upgrade the device.</string>
 
     <!-- If the user enters a password in a form on a website, a dialog will come up asking if they want to save the password. Text in the save password dialog, asking if the browser should remember a password. -->
     <string name="save_password_message">Do you want the browser to remember this password?</string>
@@ -3131,14 +3225,22 @@
     <string name="date_picker_dialog_title">Set date</string>
     <!-- Name of the button in the date/time picker to accept the date/time change -->
     <string name="date_time_set">Set</string>
+    <!-- Name of the button in the date/time picker to accept the date/time change -->
+    <string name="date_time_done">Done</string>
 
     <!-- Security Permissions strings-->
+    <!-- Text that is placed at the front of a permission name that is being added to an app [CHAR LIMIT=NONE] -->
+    <string name="perms_new_perm_prefix"><font size="12" fgcolor="#ff33b5e5">NEW: </font></string>
+    <!-- Text that is placed at the front of a permission name that is being added to an app [CHAR LIMIT=NONE] -->
+    <string name="perms_description_app">Provided by <xliff:g id="app_name">%1$s</xliff:g>.</string>
     <!-- The default permission group for any permissions that have not explicitly set a group. -->
     <string name="default_permission_group">Default</string>
     <!-- Do not translate. -->
     <string name="permissions_format"><xliff:g id="perm_line1">%1$s</xliff:g>, <xliff:g id="perm_line2">%2$s</xliff:g></string>
     <!-- Shown for an application when it doesn't require any permission grants. -->
     <string name="no_permissions">No permissions required</string>
+    <!-- [CHAR LIMIT=NONE] Additional text in permission description for perms that can cost money. -->
+    <string name="perm_costs_money">this may cost you money</string>
     <!-- When installing an application, the less-dangerous permissions are hidden.  If the user showed those, this is the text to hide them again.  -->
     <string name="perms_hide"><b>Hide</b></string>
     <!-- When installing an application, the less-dangerous permissions are hidden.  This is the text to show those. -->
@@ -3766,14 +3868,29 @@
     <!-- Name of the default audio route when an audio dock is connected. [CHAR LIMIT=50] -->
     <string name="default_audio_route_name_dock_speakers">Dock speakers</string>
 
-    <!-- Name of the default audio route when HDMI is connected. [CHAR LIMIT=50] -->
-    <string name="default_audio_route_name_hdmi">HDMI audio</string>
+    <!-- Name of the default media route when HDMI is connected. [CHAR LIMIT=50] -->
+    <string name="default_media_route_name_hdmi">HDMI</string>
 
     <!-- Name of the default audio route category. [CHAR LIMIT=50] -->
     <string name="default_audio_route_category_name">System</string>
 
     <!-- "Done" button for MediaRouter chooser dialog when grouping routes. [CHAR LIMIT=NONE] -->
     <string name="media_route_chooser_grouping_done">Done</string>
+
+    <!-- Content description of a MediaRouteButton for accessibility support -->
+    <string name="media_route_button_content_description">Media output</string>
+
+    <!-- Status message for remote routes attempting to scan/determine availability -->
+    <string name="media_route_status_scanning">Scanning...</string>
+
+    <!-- Status message for a remote route attempting to connect -->
+    <string name="media_route_status_connecting">Connecting...</string>
+
+    <!-- Status message for a remote route that is confirmed to be available for connection -->
+    <string name="media_route_status_available">Available</string>
+
+    <!-- Status message for remote routes that are not available for connection right now -->
+    <string name="media_route_status_not_available">Not available</string>
 
     <!-- Display manager service -->
 
