@@ -1,6 +1,5 @@
 //
 // Copyright 2006 The Android Open Source Project
-// This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
 //
 // State bundle.  Used to pass around stuff like command-line args.
 //
@@ -15,6 +14,18 @@
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
+enum {
+    SDK_CUPCAKE = 3,
+    SDK_DONUT = 4,
+    SDK_ECLAIR = 5,
+    SDK_ECLAIR_0_1 = 6,
+    SDK_MR1 = 7,
+    SDK_FROYO = 8,
+    SDK_HONEYCOMB_MR2 = 13,
+    SDK_ICE_CREAM_SANDWICH = 14,
+    SDK_ICE_CREAM_SANDWICH_MR1 = 15,
+};
+
 /*
  * Things we can do.
  */
@@ -27,6 +38,7 @@ typedef enum Command {
     kCommandRemove,
     kCommandPackage,
     kCommandCrunch,
+    kCommandSingleCrunch,
 } Command;
 
 /*
@@ -37,10 +49,10 @@ public:
     Bundle(void)
         : mCmd(kCommandUnknown), mVerbose(false), mAndroidList(false),
           mForce(false), mGrayscaleTolerance(0), mMakePackageDirs(false),
-          mUpdate(false), mExtending(false), mExtendedPackageId(0),
+          mUpdate(false), mExtending(false),
           mRequireLocalization(false), mPseudolocalize(false),
           mWantUTF16(false), mValues(false),
-          mCompressionMethod(0), mOutputAPKFile(NULL),
+          mCompressionMethod(0), mJunkPath(false), mOutputAPKFile(NULL),
           mManifestPackageNameOverride(NULL), mInstrumentationPackageNameOverride(NULL),
           mAutoAddOverlay(false), mGenDependencies(false),
           mAssetSourceDir(NULL), 
@@ -50,7 +62,9 @@ public:
           mMinSdkVersion(NULL), mTargetSdkVersion(NULL), mMaxSdkVersion(NULL),
           mVersionCode(NULL), mVersionName(NULL), mCustomPackage(NULL), mExtraPackages(NULL),
           mMaxResVersion(NULL), mDebugMode(false), mNonConstantId(false), mProduct(NULL),
-          mUseCrunchCache(false), mArgc(0), mArgv(NULL)
+          mUseCrunchCache(false), mErrorOnFailedInsert(false), mOutputTextSymbols(NULL),
+          mSingleCrunchInputFile(NULL), mSingleCrunchOutputFile(NULL),
+          mArgc(0), mArgv(NULL)
         {}
     ~Bundle(void) {}
 
@@ -71,20 +85,17 @@ public:
     bool getForce(void) const { return mForce; }
     void setForce(bool val) { mForce = val; }
     void setGrayscaleTolerance(int val) { mGrayscaleTolerance = val; }
-    int  getGrayscaleTolerance() { return mGrayscaleTolerance; }
+    int  getGrayscaleTolerance() const { return mGrayscaleTolerance; }
     bool getMakePackageDirs(void) const { return mMakePackageDirs; }
     void setMakePackageDirs(bool val) { mMakePackageDirs = val; }
     bool getUpdate(void) const { return mUpdate; }
     void setUpdate(bool val) { mUpdate = val; }
     bool getExtending(void) const { return mExtending; }
     void setExtending(bool val) { mExtending = val; }
-    int getExtendedPackageId(void) const { return mExtendedPackageId; }
-    void setExtendedPackageId(int val) { mExtendedPackageId = val; }
     bool getRequireLocalization(void) const { return mRequireLocalization; }
     void setRequireLocalization(bool val) { mRequireLocalization = val; }
     bool getPseudolocalize(void) const { return mPseudolocalize; }
     void setPseudolocalize(bool val) { mPseudolocalize = val; }
-    bool getWantUTF16(void) const { return mWantUTF16; }
     void setWantUTF16(bool val) { mWantUTF16 = val; }
     bool getValues(void) const { return mValues; }
     void setValues(bool val) { mValues = val; }
@@ -102,6 +113,12 @@ public:
     void setAutoAddOverlay(bool val) { mAutoAddOverlay = val; }
     bool getGenDependencies() { return mGenDependencies; }
     void setGenDependencies(bool val) { mGenDependencies = val; }
+    bool getErrorOnFailedInsert() { return mErrorOnFailedInsert; }
+    void setErrorOnFailedInsert(bool val) { mErrorOnFailedInsert = val; }
+
+    bool getUTF16StringsOption() {
+        return mWantUTF16 || !isMinSdkAtLeast(SDK_FROYO);
+    }
 
     /*
      * Input options.
@@ -151,14 +168,20 @@ public:
     void setExtraPackages(const char* val) { mExtraPackages = val; }
     const char* getMaxResVersion() const { return mMaxResVersion; }
     void setMaxResVersion(const char * val) { mMaxResVersion = val; }
-    bool getDebugMode() { return mDebugMode; }
+    bool getDebugMode() const { return mDebugMode; }
     void setDebugMode(bool val) { mDebugMode = val; }
-    bool getNonConstantId() { return mNonConstantId; }
+    bool getNonConstantId() const { return mNonConstantId; }
     void setNonConstantId(bool val) { mNonConstantId = val; }
     const char* getProduct() const { return mProduct; }
     void setProduct(const char * val) { mProduct = val; }
     void setUseCrunchCache(bool val) { mUseCrunchCache = val; }
-    bool getUseCrunchCache() { return mUseCrunchCache; }
+    bool getUseCrunchCache() const { return mUseCrunchCache; }
+    const char* getOutputTextSymbols() const { return mOutputTextSymbols; }
+    void setOutputTextSymbols(const char* val) { mOutputTextSymbols = val; }
+    const char* getSingleCrunchInputFile() const { return mSingleCrunchInputFile; }
+    void setSingleCrunchInputFile(const char* val) { mSingleCrunchInputFile = val; }
+    const char* getSingleCrunchOutputFile() const { return mSingleCrunchOutputFile; }
+    void setSingleCrunchOutputFile(const char* val) { mSingleCrunchOutputFile = val; }
 
     /*
      * Set and get the file specification.
@@ -226,7 +249,6 @@ private:
     bool        mMakePackageDirs;
     bool        mUpdate;
     bool        mExtending;
-    int         mExtendedPackageId;
     bool        mRequireLocalization;
     bool        mPseudolocalize;
     bool        mWantUTF16;
@@ -265,6 +287,10 @@ private:
     bool        mNonConstantId;
     const char* mProduct;
     bool        mUseCrunchCache;
+    bool        mErrorOnFailedInsert;
+    const char* mOutputTextSymbols;
+    const char* mSingleCrunchInputFile;
+    const char* mSingleCrunchOutputFile;
 
     /* file specification */
     int         mArgc;

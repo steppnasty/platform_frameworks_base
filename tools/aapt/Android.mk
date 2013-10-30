@@ -35,15 +35,14 @@ LOCAL_CFLAGS += -D_DARWIN_UNLIMITED_STREAMS
 endif
 
 
-LOCAL_C_INCLUDES += external/expat/lib
 LOCAL_C_INCLUDES += external/libpng
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_C_INCLUDES += build/libs/host/include
 
 #LOCAL_WHOLE_STATIC_LIBRARIES := 
 LOCAL_STATIC_LIBRARIES := \
-	libandroidfw \
 	libhost \
+	libandroidfw \
 	libutils \
 	libcutils \
 	libexpat \

@@ -183,6 +183,13 @@ AaptGroupEntry::parseNamePart(const String8& part, int* axis, uint32_t* value)
         return 0;
     }
 
+    // layout direction
+    if (getLayoutDirectionName(part.string(), &config)) {
+        *axis = AXIS_LAYOUTDIR;
+        *value = (config.screenLayout&ResTable_config::MASK_LAYOUTDIR);
+        return 0;
+    }
+
     // smallest screen dp width
     if (getSmallestScreenWidthDpName(part.string(), &config)) {
         *axis = AXIS_SMALLESTSCREENWIDTHDP;
@@ -309,6 +316,8 @@ AaptGroupEntry::getConfigValueForAxis(const ResTable_config& config, int axis)
         case AXIS_LANGUAGE:
             return (((uint32_t)config.country[1]) << 24) | (((uint32_t)config.country[0]) << 16)
                 | (((uint32_t)config.language[1]) << 8) | (config.language[0]);
+        case AXIS_LAYOUTDIR:
+            return config.screenLayout&ResTable_config::MASK_LAYOUTDIR;
         case AXIS_SCREENLAYOUTSIZE:
             return config.screenLayout&ResTable_config::MASK_SCREENSIZE;
         case AXIS_ORIENTATION:
@@ -364,7 +373,7 @@ AaptGroupEntry::initFromDirName(const char* dir, String8* resType)
     Vector<String8> parts;
 
     String8 mcc, mnc, loc, layoutsize, layoutlong, orient, den;
-    String8 touch, key, keysHidden, nav, navHidden, size, vers;
+    String8 touch, key, keysHidden, nav, navHidden, size, layoutDir, vers;
     String8 uiModeType, uiModeNight, smallestwidthdp, widthdp, heightdp;
 
     const char *p = dir;
@@ -450,6 +459,18 @@ AaptGroupEntry::initFromDirName(const char* dir, String8* resType)
         part = parts[index];
     } else {
         //printf("not region: %s\n", part.string());
+    }
+
+    if (getLayoutDirectionName(part.string())) {
+        layoutDir = part;
+
+        index++;
+        if (index == N) {
+            goto success;
+        }
+        part = parts[index];
+    } else {
+        //printf("not layout direction: %s\n", part.string());
     }
 
     if (getSmallestScreenWidthDpName(part.string())) {
@@ -674,6 +695,7 @@ success:
     this->navHidden = navHidden;
     this->navigation = nav;
     this->screenSize = size;
+    this->layoutDirection = layoutDir;
     this->version = vers;
 
     // what is this anyway?
@@ -690,6 +712,8 @@ AaptGroupEntry::toString() const
     s += this->mnc;
     s += ",";
     s += this->locale;
+    s += ",";
+    s += layoutDirection;
     s += ",";
     s += smallestScreenWidthDp;
     s += ",";
@@ -746,6 +770,12 @@ AaptGroupEntry::toDirName(const String8& resType) const
             s += "-";
         }
         s += locale;
+    }
+    if (this->layoutDirection != "") {
+        if (s.length() > 0) {
+            s += "-";
+        }
+        s += layoutDirection;
     }
     if (this->smallestScreenWidthDp != "") {
         if (s.length() > 0) {
@@ -958,6 +988,28 @@ bool AaptGroupEntry::getLocaleName(const char* fileName,
     return false;
 }
 
+bool AaptGroupEntry::getLayoutDirectionName(const char* name, ResTable_config* out)
+{
+    if (strcmp(name, kWildcardName) == 0) {
+        if (out) out->screenLayout =
+                (out->screenLayout&~ResTable_config::MASK_LAYOUTDIR)
+                | ResTable_config::LAYOUTDIR_ANY;
+        return true;
+    } else if (strcmp(name, "ldltr") == 0) {
+        if (out) out->screenLayout =
+                (out->screenLayout&~ResTable_config::MASK_LAYOUTDIR)
+                | ResTable_config::LAYOUTDIR_LTR;
+        return true;
+    } else if (strcmp(name, "ldrtl") == 0) {
+        if (out) out->screenLayout =
+                (out->screenLayout&~ResTable_config::MASK_LAYOUTDIR)
+                | ResTable_config::LAYOUTDIR_RTL;
+        return true;
+    }
+
+    return false;
+}
+
 bool AaptGroupEntry::getScreenLayoutSizeName(const char* name,
                                      ResTable_config* out)
 {
@@ -1057,6 +1109,11 @@ bool AaptGroupEntry::getUiModeTypeName(const char* name,
               (out->uiMode&~ResTable_config::MASK_UI_MODE_TYPE)
               | ResTable_config::UI_MODE_TYPE_TELEVISION;
         return true;
+    } else if (strcmp(name, "appliance") == 0) {
+      if (out) out->uiMode =
+              (out->uiMode&~ResTable_config::MASK_UI_MODE_TYPE)
+              | ResTable_config::UI_MODE_TYPE_APPLIANCE;
+        return true;
     }
 
     return false;
@@ -1117,12 +1174,17 @@ bool AaptGroupEntry::getDensityName(const char* name,
         if (out) out->density = ResTable_config::DENSITY_HIGH;
         return true;
     }
-    
+
     if (strcmp(name, "xhdpi") == 0) {
-        if (out) out->density = ResTable_config::DENSITY_MEDIUM*2;
+        if (out) out->density = ResTable_config::DENSITY_XHIGH;
         return true;
     }
-    
+
+    if (strcmp(name, "xxhdpi") == 0) {
+        if (out) out->density = ResTable_config::DENSITY_XXHIGH;
+        return true;
+    }
+
     char* c = (char*)name;
     while (*c >= '0' && *c <= '9') {
         c++;
@@ -1405,6 +1467,7 @@ int AaptGroupEntry::compare(const AaptGroupEntry& o) const
     int v = mcc.compare(o.mcc);
     if (v == 0) v = mnc.compare(o.mnc);
     if (v == 0) v = locale.compare(o.locale);
+    if (v == 0) v = layoutDirection.compare(o.layoutDirection);
     if (v == 0) v = vendor.compare(o.vendor);
     if (v == 0) v = smallestScreenWidthDp.compare(o.smallestScreenWidthDp);
     if (v == 0) v = screenWidthDp.compare(o.screenWidthDp);
@@ -1437,6 +1500,7 @@ const ResTable_config& AaptGroupEntry::toParams() const
     getMccName(mcc.string(), &params);
     getMncName(mnc.string(), &params);
     getLocaleName(locale.string(), &params);
+    getLayoutDirectionName(layoutDirection.string(), &params);
     getSmallestScreenWidthDpName(smallestScreenWidthDp.string(), &params);
     getScreenWidthDpName(screenWidthDp.string(), &params);
     getScreenHeightDpName(screenHeightDp.string(), &params);
@@ -1859,6 +1923,49 @@ String8 AaptDir::getPrintableSource() const
     // Should never hit this case, but to be safe...
     return mPath;
 
+}
+
+// =========================================================================
+// =========================================================================
+// =========================================================================
+
+status_t AaptSymbols::applyJavaSymbols(const sp<AaptSymbols>& javaSymbols)
+{
+    status_t err = NO_ERROR;
+    size_t N = javaSymbols->mSymbols.size();
+    for (size_t i=0; i<N; i++) {
+        const String8& name = javaSymbols->mSymbols.keyAt(i);
+        const AaptSymbolEntry& entry = javaSymbols->mSymbols.valueAt(i);
+        ssize_t pos = mSymbols.indexOfKey(name);
+        if (pos < 0) {
+            entry.sourcePos.error("Symbol '%s' declared with <java-symbol> not defined\n", name.string());
+            err = UNKNOWN_ERROR;
+            continue;
+        }
+        //printf("**** setting symbol #%d/%d %s to isJavaSymbol=%d\n",
+        //        i, N, name.string(), entry.isJavaSymbol ? 1 : 0);
+        mSymbols.editValueAt(pos).isJavaSymbol = entry.isJavaSymbol;
+    }
+
+    N = javaSymbols->mNestedSymbols.size();
+    for (size_t i=0; i<N; i++) {
+        const String8& name = javaSymbols->mNestedSymbols.keyAt(i);
+        const sp<AaptSymbols>& symbols = javaSymbols->mNestedSymbols.valueAt(i);
+        ssize_t pos = mNestedSymbols.indexOfKey(name);
+        if (pos < 0) {
+            SourcePos pos;
+            pos.error("Java symbol dir %s not defined\n", name.string());
+            err = UNKNOWN_ERROR;
+            continue;
+        }
+        //printf("**** applying java symbols in dir %s\n", name.string());
+        status_t myerr = mNestedSymbols.valueAt(pos)->applyJavaSymbols(symbols);
+        if (myerr != NO_ERROR) {
+            err = myerr;
+        }
+    }
+
+    return err;
 }
 
 // =========================================================================
@@ -2430,6 +2537,48 @@ sp<AaptSymbols> AaptAssets::getSymbolsFor(const String8& name)
         mSymbols.add(name, sym);
     }
     return sym;
+}
+
+sp<AaptSymbols> AaptAssets::getJavaSymbolsFor(const String8& name)
+{
+    sp<AaptSymbols> sym = mJavaSymbols.valueFor(name);
+    if (sym == NULL) {
+        sym = new AaptSymbols();
+        mJavaSymbols.add(name, sym);
+    }
+    return sym;
+}
+
+status_t AaptAssets::applyJavaSymbols()
+{
+    size_t N = mJavaSymbols.size();
+    for (size_t i=0; i<N; i++) {
+        const String8& name = mJavaSymbols.keyAt(i);
+        const sp<AaptSymbols>& symbols = mJavaSymbols.valueAt(i);
+        ssize_t pos = mSymbols.indexOfKey(name);
+        if (pos < 0) {
+            SourcePos pos;
+            pos.error("Java symbol dir %s not defined\n", name.string());
+            return UNKNOWN_ERROR;
+        }
+        //printf("**** applying java symbols in dir %s\n", name.string());
+        status_t err = mSymbols.valueAt(pos)->applyJavaSymbols(symbols);
+        if (err != NO_ERROR) {
+            return err;
+        }
+    }
+
+    return NO_ERROR;
+}
+
+bool AaptAssets::isJavaSymbol(const AaptSymbolEntry& sym, bool includePrivate) const {
+    //printf("isJavaSymbol %s: public=%d, includePrivate=%d, isJavaSymbol=%d\n",
+    //        sym.name.string(), sym.isPublic ? 1 : 0, includePrivate ? 1 : 0,
+    //        sym.isJavaSymbol ? 1 : 0);
+    if (!mHavePrivateSymbols) return true;
+    if (sym.isPublic) return true;
+    if (includePrivate && sym.isJavaSymbol) return true;
+    return false;
 }
 
 status_t AaptAssets::buildIncludedResources(Bundle* bundle)

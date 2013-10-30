@@ -1,4 +1,4 @@
-#include <androidfw/ResourceTypes.h>
+#include <utils/ResourceTypes.h>
 #include <utils/String8.h>
 #include <utils/String16.h>
 #include <zipfile/zipfile.h>
