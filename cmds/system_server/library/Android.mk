@@ -5,11 +5,12 @@ LOCAL_SRC_FILES:= \
 	system_init.cpp
 
 base = $(LOCAL_PATH)/../../..
+native = $(LOCAL_PATH)/../../../../native
 
 LOCAL_C_INCLUDES := \
 	$(base)/services/camera/libcameraservice \
 	$(base)/services/audioflinger \
-	$(base)/services/surfaceflinger \
+	$(native)/services/surfaceflinger \
 	$(base)/services/sensorservice \
 	$(base)/media/libmediaplayerservice \
 	$(JNI_H_INCLUDE)
