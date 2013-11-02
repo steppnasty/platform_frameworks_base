@@ -276,6 +276,8 @@ public class Surface implements Parcelable {
     private native void nativeReadFromParcel(Parcel source);
     private native void nativeWriteToParcel(Parcel dest);
 
+    private static native void setOrientation(int display, int orientation);
+
     /*
      * We use a class initializeer to allow the native code to cache some field offsets.
      */
@@ -721,6 +723,15 @@ public class Surface implements Parcelable {
         if (HEADLESS) {
             throw new UnsupportedOperationException("Device is headless");
         }
+    }
+
+    /**
+     * set the orientation of the given display.
+     * @param orientation
+     * @hide
+     */
+    public static void setOrientation(int orientation) {
+        setOrientation(0, orientation);
     }
 
     /**

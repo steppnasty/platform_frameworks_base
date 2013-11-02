@@ -6151,7 +6151,7 @@ public class WindowManagerService extends IWindowManager.Stub
                     updateLayoutToAnimationLocked();
                 }
             }
-
+            Surface.setOrientation(rotation);
             mDisplayManagerService.performTraversalInTransactionFromWindowManager();
         } finally {
             if (!inTransaction) {
