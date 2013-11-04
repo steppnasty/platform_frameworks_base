@@ -593,6 +593,7 @@
   <java-symbol type="string" name="action_bar_up_description" />
   <java-symbol type="string" name="activitychooserview_choose_application" />
   <java-symbol type="string" name="activity_chooser_view_see_all" />
+  <java-symbol type="string" name="add_account_button_label" />
   <java-symbol type="string" name="addToDictionary" />
   <java-symbol type="string" name="alternate_eri_file" />
   <java-symbol type="string" name="alwaysUse" />

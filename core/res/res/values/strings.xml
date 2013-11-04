@@ -3618,9 +3618,8 @@
     <string name="choose_account_label">Select an account</string>
 
     <string name="add_account_label">"Add an account"</string>
-    <string name="choose_account_text">"Which account would you like to use?"</string>
 
-    <!-- Button label to add an account [CHAR LIMIT=20] -->
+    <!-- List item to add an account [CHAR LIMIT=20] -->
     <string name="add_account_button_label">Add account</string>
 
     <!-- NumberPicker - accessibility support -->

@@ -233,6 +233,7 @@ public abstract class AbstractThreadedSyncAdapter {
             mThreadsKey = toSyncKey(account);
         }
 
+        @Override
         public void run() {
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
