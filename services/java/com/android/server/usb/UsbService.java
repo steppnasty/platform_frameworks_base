@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.hardware.usb.IUsbManager;
 import android.hardware.usb.UsbAccessory;
 import android.hardware.usb.UsbDevice;
@@ -29,6 +30,7 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.UserHandle;
 import android.util.SparseArray;
+import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.IndentingPrintWriter;
@@ -78,6 +80,8 @@ public class UsbService extends IUsbManager.Stub {
         if (new File("/sys/class/android_usb").exists()) {
             mDeviceManager = new UsbDeviceManager(context);
         }
+	else if(new File(Resources.getSystem().getString(com.android.internal.R.string.config_legacyUmsLunFile)).exists())
+                mDeviceManager = new LegacyUsbDeviceManager(context);
 
         setCurrentUser(UserHandle.USER_OWNER);
 
@@ -121,7 +125,7 @@ public class UsbService extends IUsbManager.Stub {
         }
     }
 
-    /* Returns a list of all currently attached USB devices (host mdoe) */
+    /* Returns a list of all currently attached USB devices (host mode) */
     @Override
     public void getDeviceList(Bundle devices) {
         if (mHostManager != null) {
