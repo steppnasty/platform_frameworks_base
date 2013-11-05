@@ -264,6 +264,7 @@
   <java-symbol type="id" name="back_button" />
   <java-symbol type="id" name="big_picture" />
   <java-symbol type="id" name="big_text" />
+  <java-symbol type="id" name="breadcrumb_section" />
   <java-symbol type="id" name="btn_next" />
   <java-symbol type="id" name="btn_play" />
   <java-symbol type="id" name="btn_prev" />
