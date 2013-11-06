@@ -37,7 +37,22 @@ import java.util.HashMap;
  * @hide
 */
 public abstract class UEventObserver {
-    private static final String TAG = UEventObserver.class.getSimpleName();
+    private static final String TAG = "UEventObserver";
+
+    private static UEventThread sThread;
+
+    public UEventObserver() {
+    }
+
+    private static UEventThread getThread() {
+        synchronized (UEventObserver.class) {
+            if (sThread == null) {
+                sThread = new UEventThread();
+                sThread.start();
+            }
+            return sThread;
+        }
+    }
 
     /**
      * Representation of a UEvent.
@@ -79,7 +94,6 @@ public abstract class UEventObserver {
         }
     }
 
-    private static UEventThread sThread;
     private static boolean sThreadStarted = false;
 
     private static class UEventThread extends Thread {
@@ -141,14 +155,6 @@ public abstract class UEventObserver {
     private static native void native_setup();
     private static native int next_event(byte[] buffer);
 
-    private static final synchronized void ensureThreadStarted() {
-        if (sThreadStarted == false) {
-            sThread = new UEventThread();
-            sThread.start();
-            sThreadStarted = true;
-        }
-    }
-
     /**
      * Begin observation of UEvent's.<p>
      * This method will cause the UEvent thread to start if this is the first
@@ -158,12 +164,20 @@ public abstract class UEventObserver {
      * This method can be called multiple times to register multiple matches.
      * Only one call to stopObserving is required even with multiple registered
      * matches.
-     * @param match A substring of the UEvent to match. Use "" to match all
-     *              UEvent's
+     *
+     * @param match A substring of the UEvent to match.  Try to be as specific
+     * as possible to avoid incurring unintended additional cost from processing
+     * irrelevant messages.  Netlink messages can be moderately high bandwidth and
+     * are expensive to parse.  For example, some devices may send one netlink message
+     * for each vsync period.
      */
-    public final synchronized void startObserving(String match) {
-        ensureThreadStarted();
-        sThread.addObserver(match, this);
+    public final void startObserving(String match) {
+        if (match == null || match.isEmpty()) {
+            throw new IllegalArgumentException("match substring must be non-empty");
+        }
+
+        final UEventThread t = getThread();
+        t.addObserver(match, this);
     }
 
     /**

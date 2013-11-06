@@ -132,7 +132,8 @@ public class SyncOperation implements Comparable {
     private String toKey() {
         StringBuilder sb = new StringBuilder();
         sb.append("authority: ").append(authority);
-        sb.append(" account {name=" + account.name + ", user=" + userId + ", type=" + account.type + "}");
+        sb.append(" account {name=" + account.name + ", user=" + userId + ", type=" + account.type
+                + "}");
         sb.append(" extras: ");
         extrasToStringBuilder(extras, sb);
         return sb.toString();

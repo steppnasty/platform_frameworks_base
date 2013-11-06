@@ -16,14 +16,15 @@
 
 package android.content;
 
-import com.google.android.collect.Maps;
-
+import android.accounts.Account;
 import android.content.pm.RegisteredServicesCache.ServiceInfo;
 import android.os.SystemClock;
+import android.os.UserHandle;
 import android.text.format.DateUtils;
-import android.util.Pair;
 import android.util.Log;
-import android.accounts.Account;
+import android.util.Pair;
+
+import com.google.android.collect.Maps;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,17 +33,20 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
+ * Queue of pending sync operations. Not inherently thread safe, external
+ * callers are responsible for locking.
  *
  * @hide
  */
 public class SyncQueue {
     private static final String TAG = "SyncManager";
-    private SyncStorageEngine mSyncStorageEngine;
-    private SyncAdaptersCache mSyncAdapters;
+
+    private final SyncStorageEngine mSyncStorageEngine;
+    private final SyncAdaptersCache mSyncAdapters;
 
     // A Map of SyncOperations operationKey -> SyncOperation that is designed for
     // quick lookup of an enqueued SyncOperation.
-    public final HashMap<String, SyncOperation> mOperationsMap = Maps.newHashMap();
+    private final HashMap<String, SyncOperation> mOperationsMap = Maps.newHashMap();
 
     public SyncQueue(SyncStorageEngine syncStorageEngine, final SyncAdaptersCache syncAdapters) {
         mSyncStorageEngine = syncStorageEngine;
@@ -108,8 +112,8 @@ public class SyncQueue {
         operation.pendingOperation = pop;
         if (operation.pendingOperation == null) {
             pop = new SyncStorageEngine.PendingOperation(
-                            operation.account, operation.userId, operation.syncSource,
-                            operation.authority, operation.extras, operation.expedited);
+                    operation.account, operation.userId, operation.syncSource,
+                    operation.authority, operation.extras, operation.expedited);
             pop = mSyncStorageEngine.insertIntoPending(pop);
             if (pop == null) {
                 throw new IllegalStateException("error adding pending sync operation "

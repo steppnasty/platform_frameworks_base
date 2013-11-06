@@ -44,7 +44,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.google.android.collect.Lists;
 import com.google.android.collect.Maps;
 
 /**
@@ -1939,7 +1938,8 @@ public class AccountManager {
      *
      * <p>It is safe to call this method from the main thread.
      *
-     * <p>No permission is required to call this method.
+     * <p>This method requires the caller to hold the permission
+     * {@link android.Manifest.permission#GET_ACCOUNTS}.
      *
      * @param listener The listener to send notifications to
      * @param handler {@link Handler} identifying the thread to use

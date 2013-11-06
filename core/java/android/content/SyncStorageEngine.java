@@ -16,6 +16,7 @@
 
 package android.content;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.FastXmlSerializer;
 
@@ -25,6 +26,7 @@ import org.xmlpull.v1.XmlSerializer;
 
 import android.accounts.Account;
 import android.accounts.AccountAndUser;
+import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
@@ -60,6 +62,7 @@ import java.util.List;
  * @hide
  */
 public class SyncStorageEngine extends Handler {
+
     private static final String TAG = "SyncManager";
     private static final boolean DEBUG = false;
     private static final boolean DEBUG_FILE = false;
@@ -73,7 +76,7 @@ public class SyncStorageEngine extends Handler {
 
     private static final long DEFAULT_POLL_FREQUENCY_SECONDS = 60 * 60 * 24; // One day
 
-    // @VisibleForTesting
+    @VisibleForTesting
     static final long MILLIS_IN_4WEEKS = 1000L * 60 * 60 * 24 * 7 * 4;
 
     /** Enum value for a sync start event. */
@@ -196,6 +199,29 @@ public class SyncStorageEngine extends Handler {
         long delayUntil;
         final ArrayList<Pair<Bundle, Long>> periodicSyncs;
 
+        /**
+         * Copy constructor for making deep-ish copies. Only the bundles stored
+         * in periodic syncs can make unexpected changes.
+         *
+         * @param toCopy AuthorityInfo to be copied.
+         */
+        AuthorityInfo(AuthorityInfo toCopy) {
+            account = toCopy.account;
+            userId = toCopy.userId;
+            authority = toCopy.authority;
+            ident = toCopy.ident;
+            enabled = toCopy.enabled;
+            syncable = toCopy.syncable;
+            backoffTime = toCopy.backoffTime;
+            backoffDelay = toCopy.backoffDelay;
+            delayUntil = toCopy.delayUntil;
+            periodicSyncs = new ArrayList<Pair<Bundle, Long>>();
+            for (Pair<Bundle, Long> sync : toCopy.periodicSyncs) {
+                // Still not a perfect copy, because we are just copying the mappings.
+                periodicSyncs.add(Pair.create(new Bundle(sync.first), sync.second));
+            }
+        }
+
         AuthorityInfo(Account account, int userId, String authority, int ident) {
             this.account = account;
             this.userId = userId;
@@ -220,6 +246,7 @@ public class SyncStorageEngine extends Handler {
         long upstreamActivity;
         long downstreamActivity;
         String mesg;
+        boolean initialization;
     }
 
     public static class DayStats {
@@ -249,8 +276,8 @@ public class SyncStorageEngine extends Handler {
     private final SparseArray<AuthorityInfo> mAuthorities =
             new SparseArray<AuthorityInfo>();
 
-    private final HashMap<AccountAndUser, AccountInfo> mAccounts =
-        new HashMap<AccountAndUser, AccountInfo>();
+    private final HashMap<AccountAndUser, AccountInfo> mAccounts
+            = new HashMap<AccountAndUser, AccountInfo>();
 
     private final ArrayList<PendingOperation> mPendingOperations =
             new ArrayList<PendingOperation>();
@@ -323,7 +350,7 @@ public class SyncStorageEngine extends Handler {
         mCal = Calendar.getInstance(TimeZone.getTimeZone("GMT+0"));
 
         mDefaultMasterSyncAutomatically = mContext.getResources().getBoolean(
-                com.android.internal.R.bool.config_syncstorageengine_masterSyncAutomatically);
+               com.android.internal.R.bool.config_syncstorageengine_masterSyncAutomatically);
 
         File systemDir = new File(dataDir, "system");
         File syncDir = new File(systemDir, "sync");
@@ -417,7 +444,7 @@ public class SyncStorageEngine extends Handler {
             mChangeListeners.finishBroadcast();
         }
 
-        if (Log.isLoggable(TAG, Log.VERBOSE)) {
+        if (DEBUG) {
             Log.v(TAG, "reportChange " + which + " to: " + reports);
         }
 
@@ -447,6 +474,7 @@ public class SyncStorageEngine extends Handler {
                 i--;
                 AuthorityInfo authority = mAuthorities.valueAt(i);
                 if (authority.authority.equals(providerName)
+                        && authority.userId == userId
                         && authority.enabled) {
                     return true;
                 }
@@ -455,14 +483,19 @@ public class SyncStorageEngine extends Handler {
         }
     }
 
-    public void setSyncAutomatically(Account account, int userId, String providerName, boolean sync) {
-        Log.d(TAG, "setSyncAutomatically: " + /*account +*/ ", provider " + providerName
-                + " -> " + sync);
+    public void setSyncAutomatically(Account account, int userId, String providerName,
+            boolean sync) {
+        if (DEBUG) {
+            Log.d(TAG, "setSyncAutomatically: " + /* account + */" provider " + providerName
+                    + ", user " + userId + " -> " + sync);
+        }
         synchronized (mAuthorities) {
             AuthorityInfo authority = getOrCreateAuthorityLocked(account, userId, providerName, -1,
-                false);
+                    false);
             if (authority.enabled == sync) {
-                Log.d(TAG, "setSyncAutomatically: already set to " + sync + ", doing nothing");
+                if (DEBUG) {
+                    Log.d(TAG, "setSyncAutomatically: already set to " + sync + ", doing nothing");
+                }
                 return;
             }
             authority.enabled = sync;
@@ -504,13 +537,17 @@ public class SyncStorageEngine extends Handler {
         } else if (syncable < -1) {
             syncable = -1;
         }
-        Log.d(TAG, "setIsSyncable: " + account + ", provider " + providerName
-                + ", user " + userId + " -> " + syncable);
+        if (DEBUG) {
+            Log.d(TAG, "setIsSyncable: " + account + ", provider " + providerName
+                    + ", user " + userId + " -> " + syncable);
+        }
         synchronized (mAuthorities) {
             AuthorityInfo authority = getOrCreateAuthorityLocked(account, userId, providerName, -1,
-                false);
+                    false);
             if (authority.syncable == syncable) {
-                Log.d(TAG, "setIsSyncable: already set to " + syncable + ", doing nothing");
+                if (DEBUG) {
+                    Log.d(TAG, "setIsSyncable: already set to " + syncable + ", doing nothing");
+                }
                 return;
             }
             authority.syncable = syncable;
@@ -536,8 +573,9 @@ public class SyncStorageEngine extends Handler {
 
     public void setBackoff(Account account, int userId, String providerName,
             long nextSyncTime, long nextDelay) {
-        if (Log.isLoggable(TAG, Log.VERBOSE)) {
+        if (DEBUG) {
             Log.v(TAG, "setBackoff: " + account + ", provider " + providerName
+                    + ", user " + userId
                     + " -> nextSyncTime " + nextSyncTime + ", nextDelay " + nextDelay);
         }
         boolean changed = false;
@@ -581,24 +619,25 @@ public class SyncStorageEngine extends Handler {
     public void clearAllBackoffs(SyncQueue syncQueue) {
         boolean changed = false;
         synchronized (mAuthorities) {
-            for (AccountInfo accountInfo : mAccounts.values()) {
-                for (AuthorityInfo authorityInfo : accountInfo.authorities.values()) {
-                    if (authorityInfo.backoffTime != NOT_IN_BACKOFF_MODE
-                            || authorityInfo.backoffDelay != NOT_IN_BACKOFF_MODE) {
-                        if (Log.isLoggable(TAG, Log.VERBOSE)) {
-                            Log.v(TAG, "clearAllBackoffs:"
-                                    + " authority:" + authorityInfo.authority
-                                    + " account:" + accountInfo.accountAndUser.account.name
-                                    + " user:" + accountInfo.accountAndUser.userId
-                                    + " backoffTime was: " + authorityInfo.backoffTime
-                                    + " backoffDelay was: " + authorityInfo.backoffDelay);
+            synchronized (syncQueue) {
+                for (AccountInfo accountInfo : mAccounts.values()) {
+                    for (AuthorityInfo authorityInfo : accountInfo.authorities.values()) {
+                        if (authorityInfo.backoffTime != NOT_IN_BACKOFF_MODE
+                                || authorityInfo.backoffDelay != NOT_IN_BACKOFF_MODE) {
+                            if (DEBUG) {
+                                Log.v(TAG, "clearAllBackoffs:"
+                                        + " authority:" + authorityInfo.authority
+                                        + " account:" + accountInfo.accountAndUser.account.name
+                                        + " user:" + accountInfo.accountAndUser.userId
+                                        + " backoffTime was: " + authorityInfo.backoffTime
+                                        + " backoffDelay was: " + authorityInfo.backoffDelay);
+                            }
+                            authorityInfo.backoffTime = NOT_IN_BACKOFF_MODE;
+                            authorityInfo.backoffDelay = NOT_IN_BACKOFF_MODE;
+                            syncQueue.onBackoffChanged(accountInfo.accountAndUser.account,
+                                    accountInfo.accountAndUser.userId, authorityInfo.authority, 0);
+                            changed = true;
                         }
-                        authorityInfo.backoffTime = NOT_IN_BACKOFF_MODE;
-                        authorityInfo.backoffDelay = NOT_IN_BACKOFF_MODE;
-                        syncQueue.onBackoffChanged(accountInfo.accountAndUser.account,
-                                accountInfo.accountAndUser.userId,
-                                authorityInfo.authority, 0);
-                        changed = true;
                     }
                 }
             }
@@ -611,9 +650,9 @@ public class SyncStorageEngine extends Handler {
 
     public void setDelayUntilTime(Account account, int userId, String providerName,
             long delayUntil) {
-        if (Log.isLoggable(TAG, Log.VERBOSE)) {
+        if (DEBUG) {
             Log.v(TAG, "setDelayUntil: " + account + ", provider " + providerName
-                    + " -> delayUntil " + delayUntil);
+                    + ", user " + userId + " -> delayUntil " + delayUntil);
         }
         synchronized (mAuthorities) {
             AuthorityInfo authority = getOrCreateAuthorityLocked(
@@ -639,15 +678,17 @@ public class SyncStorageEngine extends Handler {
     }
 
     private void updateOrRemovePeriodicSync(Account account, int userId, String providerName,
-            Bundle extras, long period, boolean add) {
+            Bundle extras,
+            long period, boolean add) {
         if (period <= 0) {
             period = 0;
         }
         if (extras == null) {
             extras = new Bundle();
         }
-        if (Log.isLoggable(TAG, Log.VERBOSE)) {
-            Log.v(TAG, "addOrRemovePeriodicSync: " + account + ", provider " + providerName
+        if (DEBUG) {
+            Log.v(TAG, "addOrRemovePeriodicSync: " + account + ", user " + userId
+                    + ", provider " + providerName
                     + " -> period " + period + ", extras " + extras);
         }
         synchronized (mAuthorities) {
@@ -729,7 +770,8 @@ public class SyncStorageEngine extends Handler {
                     "getPeriodicSyncs");
             if (authority != null) {
                 for (Pair<Bundle, Long> item : authority.periodicSyncs) {
-                    syncs.add(new PeriodicSync(account, providerName, item.first, item.second));
+                    syncs.add(new PeriodicSync(account, providerName, item.first,
+                            item.second));
                 }
             }
         }
@@ -800,11 +842,12 @@ public class SyncStorageEngine extends Handler {
 
     public PendingOperation insertIntoPending(PendingOperation op) {
         synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            if (DEBUG) {
                 Log.v(TAG, "insertIntoPending: account=" + op.account
-                    + " auth=" + op.authority
-                    + " src=" + op.syncSource
-                    + " extras=" + op.extras);
+                        + " user=" + op.userId
+                        + " auth=" + op.authority
+                        + " src=" + op.syncSource
+                        + " extras=" + op.extras);
             }
 
             AuthorityInfo authority = getOrCreateAuthorityLocked(op.account, op.userId,
@@ -831,8 +874,9 @@ public class SyncStorageEngine extends Handler {
     public boolean deleteFromPending(PendingOperation op) {
         boolean res = false;
         synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            if (DEBUG) {
                 Log.v(TAG, "deleteFromPending: account=" + op.account
+                    + " user=" + op.userId
                     + " auth=" + op.authority
                     + " src=" + op.syncSource
                     + " extras=" + op.extras);
@@ -849,20 +893,21 @@ public class SyncStorageEngine extends Handler {
                 AuthorityInfo authority = getAuthorityLocked(op.account, op.userId, op.authority,
                         "deleteFromPending");
                 if (authority != null) {
-                    if (Log.isLoggable(TAG, Log.VERBOSE)) Log.v(TAG, "removing - " + authority);
+                    if (DEBUG) Log.v(TAG, "removing - " + authority);
                     final int N = mPendingOperations.size();
                     boolean morePending = false;
                     for (int i=0; i<N; i++) {
                         PendingOperation cur = mPendingOperations.get(i);
                         if (cur.account.equals(op.account)
-                                && cur.authority.equals(op.authority)) {
+                                && cur.authority.equals(op.authority)
+                                && cur.userId == op.userId) {
                             morePending = true;
                             break;
                         }
                     }
 
                     if (!morePending) {
-                        if (Log.isLoggable(TAG, Log.VERBOSE)) Log.v(TAG, "no more pending!");
+                        if (DEBUG) Log.v(TAG, "no more pending!");
                         SyncStatusInfo status = getOrCreateSyncStatusLocked(authority.ident);
                         status.pending = false;
                     }
@@ -874,24 +919,6 @@ public class SyncStorageEngine extends Handler {
 
         reportChange(ContentResolver.SYNC_OBSERVER_TYPE_PENDING);
         return res;
-    }
-
-    public int clearPending() {
-        int num;
-        synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
-                Log.v(TAG, "clearPending");
-            }
-            num = mPendingOperations.size();
-            mPendingOperations.clear();
-            final int N = mSyncStatus.size();
-            for (int i=0; i<N; i++) {
-                mSyncStatus.valueAt(i).pending = false;
-            }
-            writePendingOperationsLocked();
-        }
-        reportChange(ContentResolver.SYNC_OBSERVER_TYPE_PENDING);
-        return num;
     }
 
     /**
@@ -975,7 +1002,7 @@ public class SyncStorageEngine extends Handler {
     public SyncInfo addActiveSync(SyncManager.ActiveSyncContext activeSyncContext) {
         final SyncInfo syncInfo;
         synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            if (DEBUG) {
                 Log.v(TAG, "setActiveSync: account="
                     + activeSyncContext.mSyncOperation.account
                     + " auth=" + activeSyncContext.mSyncOperation.authority
@@ -1025,11 +1052,11 @@ public class SyncStorageEngine extends Handler {
      * Note that sync has started for the given account and authority.
      */
     public long insertStartSyncEvent(Account accountName, int userId, String authorityName,
-            long now, int source, boolean initialization) {
+                                     long now, int source, boolean initialization) {
         long id;
         synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
-                Log.v(TAG, "insertStartSyncEvent: account=" + accountName
+            if (DEBUG) {
+                Log.v(TAG, "insertStartSyncEvent: account=" + accountName + "user=" + userId
                     + " auth=" + authorityName + " source=" + source);
             }
             AuthorityInfo authority = getAuthorityLocked(accountName, userId, authorityName,
@@ -1038,6 +1065,7 @@ public class SyncStorageEngine extends Handler {
                 return -1;
             }
             SyncHistoryItem item = new SyncHistoryItem();
+            item.initialization = initialization;
             item.authorityId = authority.ident;
             item.historyId = mNextHistoryId++;
             if (mNextHistoryId < 0) mNextHistoryId = 0;
@@ -1049,7 +1077,7 @@ public class SyncStorageEngine extends Handler {
                 mSyncHistory.remove(mSyncHistory.size()-1);
             }
             id = item.historyId;
-            if (Log.isLoggable(TAG, Log.VERBOSE)) Log.v(TAG, "returning historyId " + id);
+            if (DEBUG) Log.v(TAG, "returning historyId " + id);
         }
 
         reportChange(ContentResolver.SYNC_OBSERVER_TYPE_STATUS);
@@ -1077,7 +1105,7 @@ public class SyncStorageEngine extends Handler {
     public void stopSyncEvent(long historyId, long elapsedTime, String resultMessage,
             long downstreamActivity, long upstreamActivity) {
         synchronized (mAuthorities) {
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            if (DEBUG) {
                 Log.v(TAG, "stopSyncEvent: historyId=" + historyId);
             }
             SyncHistoryItem item = null;
@@ -1223,7 +1251,8 @@ public class SyncStorageEngine extends Handler {
             final int N = mAuthorities.size();
             ArrayList<AuthorityInfo> infos = new ArrayList<AuthorityInfo>(N);
             for (int i=0; i<N; i++) {
-                infos.add(mAuthorities.valueAt(i));
+                // Make deep copy because AuthorityInfo syncs are liable to change.
+                infos.add(new AuthorityInfo(mAuthorities.valueAt(i)));
             }
             return infos;
         }
@@ -1248,8 +1277,8 @@ public class SyncStorageEngine extends Handler {
                 AuthorityInfo ainfo = mAuthorities.get(cur.authorityId);
 
                 if (ainfo != null && ainfo.authority.equals(authority)
-                    && ainfo.userId == userId
-                    && account.equals(ainfo.account)) {
+                        && ainfo.userId == userId
+                        && account.equals(ainfo.account)) {
                   return cur;
                 }
             }
@@ -1335,19 +1364,19 @@ public class SyncStorageEngine extends Handler {
     private AuthorityInfo getAuthorityLocked(Account accountName, int userId, String authorityName,
             String tag) {
         AccountAndUser au = new AccountAndUser(accountName, userId);
-        AccountInfo account = mAccounts.get(accountName);
-        if (account == null) {
+        AccountInfo accountInfo = mAccounts.get(au);
+        if (accountInfo == null) {
             if (tag != null) {
-                if (Log.isLoggable(TAG, Log.VERBOSE)) {
-                    Log.v(TAG, tag + ": unknown account " + accountName);
+                if (DEBUG) {
+                    Log.v(TAG, tag + ": unknown account " + au);
                 }
             }
             return null;
         }
-        AuthorityInfo authority = account.authorities.get(authorityName);
+        AuthorityInfo authority = accountInfo.authorities.get(authorityName);
         if (authority == null) {
             if (tag != null) {
-                if (Log.isLoggable(TAG, Log.VERBOSE)) {
+                if (DEBUG) {
                     Log.v(TAG, tag + ": unknown authority " + authorityName);
                 }
             }
@@ -1372,10 +1401,10 @@ public class SyncStorageEngine extends Handler {
                 mNextAuthorityId++;
                 doWrite = true;
             }
-            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            if (DEBUG) {
                 Log.v(TAG, "created a new AuthorityInfo for " + accountName
-                    + ", user " + userId
-                    + ", provider " + authorityName);
+                        + ", user " + userId
+                        + ", provider " + authorityName);
             }
             authority = new AuthorityInfo(accountName, userId, authorityName, ident);
             account.authorities.put(authorityName, authority);
@@ -1472,8 +1501,7 @@ public class SyncStorageEngine extends Handler {
             }
             String tagName = parser.getName();
             if ("accounts".equals(tagName)) {
-                String listen = parser.getAttributeValue(
-                        null, "listen-for-tickles");
+                String listen = parser.getAttributeValue(null, XML_ATTR_LISTEN_FOR_TICKLES);
                 String versionString = parser.getAttributeValue(null, "version");
                 int version;
                 try {
@@ -1481,7 +1509,7 @@ public class SyncStorageEngine extends Handler {
                 } catch (NumberFormatException e) {
                     version = 0;
                 }
-                String nextIdString = parser.getAttributeValue(null, "nextAuthorityId");
+                String nextIdString = parser.getAttributeValue(null, XML_ATTR_NEXT_AUTHORITY_ID);
                 try {
                     int id = (nextIdString == null) ? 0 : Integer.parseInt(nextIdString);
                     mNextAuthorityId = Math.max(mNextAuthorityId, id);
@@ -1512,6 +1540,8 @@ public class SyncStorageEngine extends Handler {
                                 if (authority.ident > highestAuthorityId) {
                                     highestAuthorityId = authority.ident;
                                 }
+                            } else if (XML_TAG_LISTEN_FOR_TICKLES.equals(tagName)) {
+                                parseListenForTickles(parser);
                             }
                         } else if (parser.getDepth() == 3) {
                             if ("periodicSync".equals(tagName) && authority != null) {
@@ -1574,8 +1604,8 @@ public class SyncStorageEngine extends Handler {
             }
 
             // if we already have a record of this new authority then don't copy over the settings
-            if (getAuthorityLocked(authority.account, authority.userId,
-                    newAuthorityName, "cleanup") != null) {
+            if (getAuthorityLocked(authority.account, authority.userId, newAuthorityName, "cleanup")
+                    != null) {
                 continue;
             }
 
@@ -1594,6 +1624,21 @@ public class SyncStorageEngine extends Handler {
         return writeNeeded;
     }
 
+    private void parseListenForTickles(XmlPullParser parser) {
+        String user = parser.getAttributeValue(null, XML_ATTR_USER);
+        int userId = 0;
+        try {
+            userId = Integer.parseInt(user);
+        } catch (NumberFormatException e) {
+            Log.e(TAG, "error parsing the user for listen-for-tickles", e);
+        } catch (NullPointerException e) {
+            Log.e(TAG, "the user in listen-for-tickles is null", e);
+        }
+        String enabled = parser.getAttributeValue(null, XML_ATTR_ENABLED);
+        boolean listen = enabled == null || Boolean.parseBoolean(enabled);
+        mMasterSyncAutomatically.put(userId, listen);
+    }
+
     private AuthorityInfo parseAuthority(XmlPullParser parser, int version) {
         AuthorityInfo authority = null;
         int id = -1;
@@ -1607,7 +1652,7 @@ public class SyncStorageEngine extends Handler {
         }
         if (id >= 0) {
             String authorityName = parser.getAttributeValue(null, "authority");
-            String enabled = parser.getAttributeValue(null, "enabled");
+            String enabled = parser.getAttributeValue(null, XML_ATTR_ENABLED);
             String syncable = parser.getAttributeValue(null, "syncable");
             String accountName = parser.getAttributeValue(null, "account");
             String accountType = parser.getAttributeValue(null, "type");
@@ -1620,6 +1665,7 @@ public class SyncStorageEngine extends Handler {
             authority = mAuthorities.get(id);
             if (DEBUG_FILE) Log.v(TAG, "Adding authority: account="
                     + accountName + " auth=" + authorityName
+                    + " user=" + userId
                     + " enabled=" + enabled
                     + " syncable=" + syncable);
             if (authority == null) {
@@ -1722,15 +1768,27 @@ public class SyncStorageEngine extends Handler {
             out.attribute(null, XML_ATTR_NEXT_AUTHORITY_ID, Integer.toString(mNextAuthorityId));
             out.attribute(null, XML_ATTR_SYNC_RANDOM_OFFSET, Integer.toString(mSyncRandomOffset));
 
+            // Write the Sync Automatically flags for each user
+            final int M = mMasterSyncAutomatically.size();
+            for (int m = 0; m < M; m++) {
+                int userId = mMasterSyncAutomatically.keyAt(m);
+                Boolean listen = mMasterSyncAutomatically.valueAt(m);
+                out.startTag(null, XML_TAG_LISTEN_FOR_TICKLES);
+                out.attribute(null, XML_ATTR_USER, Integer.toString(userId));
+                out.attribute(null, XML_ATTR_ENABLED, Boolean.toString(listen));
+                out.endTag(null, XML_TAG_LISTEN_FOR_TICKLES);
+            }
+
             final int N = mAuthorities.size();
             for (int i=0; i<N; i++) {
                 AuthorityInfo authority = mAuthorities.valueAt(i);
                 out.startTag(null, "authority");
                 out.attribute(null, "id", Integer.toString(authority.ident));
                 out.attribute(null, "account", authority.account.name);
+                out.attribute(null, XML_ATTR_USER, Integer.toString(authority.userId));
                 out.attribute(null, "type", authority.account.type);
                 out.attribute(null, "authority", authority.authority);
-                out.attribute(null, "enabled", Boolean.toString(authority.enabled));
+                out.attribute(null, XML_ATTR_ENABLED, Boolean.toString(authority.enabled));
                 if (authority.syncable < 0) {
                     out.attribute(null, "syncable", "unknown");
                 } else {
