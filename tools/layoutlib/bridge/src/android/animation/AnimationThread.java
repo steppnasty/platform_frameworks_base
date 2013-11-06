@@ -84,6 +84,10 @@ public abstract class AnimationThread extends Thread {
     public void run() {
         Bridge.prepareThread();
         try {
+            /* FIXME: The ANIMATION_FRAME message no longer exists.  Instead, the
+             * animation timing loop is completely based on a Choreographer object
+             * that schedules animation and drawing frames.  The animation handler is
+             * no longer even a handler; it is just a Runnable enqueued on the Choreographer.
             Handler_Delegate.setCallback(new IHandlerCallback() {
                 public void sendMessageAtTime(Handler handler, Message msg, long uptimeMillis) {
                     if (msg.what == ValueAnimator.ANIMATION_START ||
@@ -94,6 +98,7 @@ public abstract class AnimationThread extends Thread {
                     }
                 }
             });
+            */
 
             // call out to the pre-animation work, which should start an animation or more.
             Result result = preAnimation();
