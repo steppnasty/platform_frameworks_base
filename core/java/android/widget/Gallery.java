@@ -20,6 +20,7 @@ import android.annotation.Widget;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Rect;
+import android.os.Bundle;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.ContextMenu.ContextMenuInfo;
@@ -32,6 +33,8 @@ import android.view.SoundEffectConstants;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.Transformation;
 
 import com.android.internal.R;
@@ -46,14 +49,16 @@ import com.android.internal.R;
  * <p>
  * Views given to the Gallery should use {@link Gallery.LayoutParams} as their
  * layout parameters type.
- *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-gallery.html">Gallery
- * tutorial</a>.</p>
  * 
  * @attr ref android.R.styleable#Gallery_animationDuration
  * @attr ref android.R.styleable#Gallery_spacing
  * @attr ref android.R.styleable#Gallery_gravity
+ * 
+ * @deprecated This widget is no longer supported. Other horizontally scrolling
+ * widgets include {@link HorizontalScrollView} and {@link android.support.v4.view.ViewPager}
+ * from the support library.
  */
+@Deprecated
 @Widget
 public class Gallery extends AbsSpinner implements GestureDetector.OnGestureListener {
 
@@ -177,6 +182,12 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
      */
     private boolean mIsRtl = true;
     
+    /**
+     * Offset between the center of the selected child view and the center of the Gallery.
+     * Used to reset position correctly during layout.
+     */
+    private int mSelectedCenterOffset;
+
     public Gallery(Context context) {
         this(context, null);
     }
@@ -390,6 +401,14 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
         
         setSelectionToCenterChild();
 
+        final View selChild = mSelectedChild;
+        if (selChild != null) {
+            final int childLeft = selChild.getLeft();
+            final int childCenter = selChild.getWidth() / 2;
+            final int galleryCenter = getWidth() / 2;
+            mSelectedCenterOffset = childLeft + childCenter - galleryCenter;
+        }
+
         onScrollChanged(0, 0, 0, 0); // dummy values, View's implementation does not use these.
 
         invalidate();
@@ -532,6 +551,7 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
             // We haven't been callbacking during the fling, so do it now
             super.selectionChanged();
         }
+        mSelectedCenterOffset = 0;
         invalidate();
     }
     
@@ -645,7 +665,8 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
         View sel = makeAndAddView(mSelectedPosition, 0, 0, true);
         
         // Put the selected child in the center
-        int selectedOffset = childrenLeft + (childrenWidth / 2) - (sel.getWidth() / 2);
+        int selectedOffset = childrenLeft + (childrenWidth / 2) - (sel.getWidth() / 2) +
+                mSelectedCenterOffset;
         sel.offsetLeftAndRight(selectedOffset);
 
         fillToGalleryRight();
@@ -1353,6 +1374,49 @@ public class Gallery extends AbsSpinner implements GestureDetector.OnGestureList
             mSelectedChild.setSelected(true);
         }
 
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(Gallery.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(Gallery.class.getName());
+        info.setScrollable(mItemCount > 1);
+        if (isEnabled()) {
+            if (mItemCount > 0 && mSelectedPosition < mItemCount - 1) {
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+            }
+            if (isEnabled() && mItemCount > 0 && mSelectedPosition > 0) {
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+            }
+        }
+    }
+
+    @Override
+    public boolean performAccessibilityAction(int action, Bundle arguments) {
+        if (super.performAccessibilityAction(action, arguments)) {
+            return true;
+        }
+        switch (action) {
+            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD: {
+                if (isEnabled() && mItemCount > 0 && mSelectedPosition < mItemCount - 1) {
+                    final int currentChildIndex = mSelectedPosition - mFirstPosition;
+                    return scrollToChild(currentChildIndex + 1);
+                }
+            } return false;
+            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
+                if (isEnabled() && mItemCount > 0 && mSelectedPosition > 0) {
+                    final int currentChildIndex = mSelectedPosition - mFirstPosition;
+                    return scrollToChild(currentChildIndex - 1);
+                }
+            } return false;
+        }
+        return false;
     }
 
     /**

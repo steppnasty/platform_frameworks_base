@@ -35,6 +35,8 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.MediaController.MediaPlayerControl;
 
 import java.io.IOException;
@@ -52,7 +54,6 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     // settable by the client
     private Uri         mUri;
     private Map<String, String> mHeaders;
-    private int         mDuration;
 
     // all possible internal states
     private static final int STATE_ERROR              = -1;
@@ -78,19 +79,16 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     private int         mVideoHeight;
     private int         mSurfaceWidth;
     private int         mSurfaceHeight;
-    private int         mPreviousWidth;
-    private int         mPreviousHeight;
     private MediaController mMediaController;
     private OnCompletionListener mOnCompletionListener;
     private MediaPlayer.OnPreparedListener mOnPreparedListener;
     private int         mCurrentBufferPercentage;
     private OnErrorListener mOnErrorListener;
-    private OnInfoListener mOnInfoListener;
+    private OnInfoListener  mOnInfoListener;
     private int         mSeekWhenPrepared;  // recording the seek position while preparing
     private boolean     mCanPause;
     private boolean     mCanSeekBack;
     private boolean     mCanSeekForward;
-    private int         m3DAttributes;
 
     public VideoView(Context context) {
         super(context);
@@ -124,14 +122,21 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
                         //width+"/"+height+"="+
                         //mVideoWidth+"/"+mVideoHeight);
             }
-            mPreviousWidth = width;
-            mPreviousHeight = height;
-        } else if (mPreviousWidth > 0 && mPreviousHeight > 0) {
-            width = mPreviousWidth;
-            height = mPreviousHeight;
         }
         //Log.i("@@@@@@@@@@", "setting size: " + width + 'x' + height);
         setMeasuredDimension(width, height);
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(VideoView.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(VideoView.class.getName());
     }
 
     public int resolveAdjustedSize(int desiredSize, int measureSpec) {
@@ -223,10 +228,9 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
             mMediaPlayer = new MediaPlayer();
             mMediaPlayer.setOnPreparedListener(mPreparedListener);
             mMediaPlayer.setOnVideoSizeChangedListener(mSizeChangedListener);
-            mMediaPlayer.setOnInfoListener(mOnInfoListener);
-            mDuration = -1;
             mMediaPlayer.setOnCompletionListener(mCompletionListener);
             mMediaPlayer.setOnErrorListener(mErrorListener);
+            mMediaPlayer.setOnInfoListener(mOnInfoListener);
             mMediaPlayer.setOnBufferingUpdateListener(mBufferingUpdateListener);
             mCurrentBufferPercentage = 0;
             mMediaPlayer.setDataSource(mContext, mUri, mHeaders);
@@ -278,6 +282,7 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
                 mVideoHeight = mp.getVideoHeight();
                 if (mVideoWidth != 0 && mVideoHeight != 0) {
                     getHolder().setFixedSize(mVideoWidth, mVideoHeight);
+                    requestLayout();
                 }
             }
     };
@@ -391,7 +396,6 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
                 }
 
                 new AlertDialog.Builder(mContext)
-                        .setTitle(com.android.internal.R.string.VideoView_error_title)
                         .setMessage(messageId)
                         .setPositiveButton(com.android.internal.R.string.VideoView_error_button,
                                 new DialogInterface.OnClickListener() {
@@ -595,8 +599,6 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
     }
 
     public void suspend() {
-        mSeekWhenPrepared = getCurrentPosition( );
-        Log.v(TAG, "suspend( ) - will resume at " + mSeekWhenPrepared);
         release(false);
     }
 
@@ -604,17 +606,12 @@ public class VideoView extends SurfaceView implements MediaPlayerControl {
         openVideo();
     }
 
-    // cache duration as mDuration for faster access
     public int getDuration() {
         if (isInPlaybackState()) {
-            if (mDuration > 0) {
-                return mDuration;
-            }
-            mDuration = mMediaPlayer.getDuration();
-            return mDuration;
+            return mMediaPlayer.getDuration();
         }
-        mDuration = -1;
-        return mDuration;
+
+        return -1;
     }
 
     public int getCurrentPosition() {

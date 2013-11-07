@@ -16,16 +16,17 @@
 
 package com.android.internal.os;
 
+import static libcore.io.OsConstants.S_IRWXG;
+import static libcore.io.OsConstants.S_IRWXO;
+
 import android.content.pm.ActivityInfo;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.net.LocalServerSocket;
 import android.os.Debug;
-import android.os.FileUtils;
 import android.os.Process;
 import android.os.SystemClock;
-import android.os.SystemProperties;
 import android.util.EventLog;
 import android.util.Log;
 
@@ -33,6 +34,7 @@ import dalvik.system.VMRuntime;
 import dalvik.system.Zygote;
 
 import libcore.io.IoUtils;
+import libcore.io.Libcore;
 
 import java.io.BufferedReader;
 import java.io.FileDescriptor;
@@ -66,10 +68,7 @@ public class ZygoteInit {
     private static final int LOG_BOOT_PROGRESS_PRELOAD_END = 3030;
 
     /** when preloading, GC after allocating this many bytes */
-    private static final String heapgrowthlimit =
-                    SystemProperties.get("dalvik.vm.heapgrowthlimit", "16m");
-    private static final int PRELOAD_GC_THRESHOLD = Integer.parseInt(
-                    heapgrowthlimit.substring(0, heapgrowthlimit.length()-1))*1024*1024/2;
+    private static final int PRELOAD_GC_THRESHOLD = 50000;
 
     public static final String USAGE_STRING =
             " <\"start-system-server\"|\"\" for startSystemServer>";
@@ -100,7 +99,7 @@ public class ZygoteInit {
     private static final String PRELOADED_CLASSES = "preloaded-classes";
 
     /** Controls whether we should preload resources during zygote init. */
-    private static final boolean PRELOAD_RESOURCES = false;
+    private static final boolean PRELOAD_RESOURCES = true;
 
     /**
      * Invokes a static "main(argv[]) method on class "className".
@@ -246,7 +245,7 @@ public class ZygoteInit {
     private static void preloadClasses() {
         final VMRuntime runtime = VMRuntime.getRuntime();
 
-        InputStream is = ZygoteInit.class.getClassLoader().getResourceAsStream(
+        InputStream is = ClassLoader.getSystemClassLoader().getResourceAsStream(
                 PRELOADED_CLASSES);
         if (is == null) {
             Log.e(TAG, "Couldn't find " + PRELOADED_CLASSES + ".");
@@ -351,6 +350,7 @@ public class ZygoteInit {
                 TypedArray ar = mResources.obtainTypedArray(
                         com.android.internal.R.array.preloaded_drawables);
                 int N = preloadDrawables(runtime, ar);
+                ar.recycle();
                 Log.i(TAG, "...preloaded " + N + " resources in "
                         + (SystemClock.uptimeMillis()-startTime) + "ms.");
 
@@ -358,10 +358,9 @@ public class ZygoteInit {
                 ar = mResources.obtainTypedArray(
                         com.android.internal.R.array.preloaded_color_state_lists);
                 N = preloadColorStateLists(runtime, ar);
+                ar.recycle();
                 Log.i(TAG, "...preloaded " + N + " resources in "
                         + (SystemClock.uptimeMillis()-startTime) + "ms.");
-            } else {
-                Log.i(TAG, "Preload resources disabled, skipped.");
             }
             mResources.finishPreloading();
         } catch (RuntimeException e) {
@@ -387,7 +386,12 @@ public class ZygoteInit {
                 Log.v(TAG, "Preloading resource #" + Integer.toHexString(id));
             }
             if (id != 0) {
-                mResources.getColorStateList(id);
+                if (mResources.getColorStateList(id) == null) {
+                    throw new IllegalArgumentException(
+                            "Unable to find preloaded color resource #0x"
+                            + Integer.toHexString(id)
+                            + " (" + ar.getString(i) + ")");
+                }
             }
         }
         return N;
@@ -410,11 +414,11 @@ public class ZygoteInit {
                 Log.v(TAG, "Preloading resource #" + Integer.toHexString(id));
             }
             if (id != 0) {
-                Drawable dr = mResources.getDrawable(id);
-                if ((dr.getChangingConfigurations()&~ActivityInfo.CONFIG_FONT_SCALE) != 0) {
-                    Log.w(TAG, "Preloaded drawable resource #0x"
+                if (mResources.getDrawable(id) == null) {
+                    throw new IllegalArgumentException(
+                            "Unable to find preloaded drawable resource #0x"
                             + Integer.toHexString(id)
-                            + " (" + ar.getString(i) + ") that varies with configuration!!");
+                            + " (" + ar.getString(i) + ")");
                 }
             }
         }
@@ -450,7 +454,7 @@ public class ZygoteInit {
         closeServerSocket();
 
         // set umask to 0077 so new files and directories will default to owner-only permissions.
-        FileUtils.setUMask(FileUtils.S_IRWXG | FileUtils.S_IRWXO);
+        Libcore.os.umask(S_IRWXG | S_IRWXO);
 
         if (parsedArgs.niceName != null) {
             Process.setArgV0(parsedArgs.niceName);

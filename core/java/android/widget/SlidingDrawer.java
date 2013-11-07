@@ -32,6 +32,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 /**
  * SlidingDrawer hides content out of the screen and allows the user to drag a handle
@@ -77,7 +78,12 @@ import android.view.accessibility.AccessibilityEvent;
  * @attr ref android.R.styleable#SlidingDrawer_orientation
  * @attr ref android.R.styleable#SlidingDrawer_allowSingleTap
  * @attr ref android.R.styleable#SlidingDrawer_animateOnClick
+ * 
+ * @deprecated This class is not supported anymore. It is recommended you
+ * base your own implementation on the source code for the Android Open
+ * Source Project if you must use it in your application.
  */
+@Deprecated
 public class SlidingDrawer extends ViewGroup {
     public static final int ORIENTATION_HORIZONTAL = 0;
     public static final int ORIENTATION_VERTICAL = 1;
@@ -808,6 +814,18 @@ public class SlidingDrawer extends ViewGroup {
         if (scrollListener != null) {
             scrollListener.onScrollEnded();
         }
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(SlidingDrawer.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(SlidingDrawer.class.getName());
     }
 
     private void closeDrawer() {

@@ -21,10 +21,13 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.os.Bundle;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 public abstract class AbsSeekBar extends ProgressBar {
     private Drawable mThumb;
@@ -104,6 +107,9 @@ public abstract class AbsSeekBar extends ProgressBar {
         }
         if (thumb != null) {
             thumb.setCallback(this);
+            if (canResolveLayoutDirection()) {
+                thumb.setLayoutDirection(getLayoutDirection());
+            }
 
             // Assuming the thumb drawable is symmetric, set the thumb offset
             // such that the thumb will hang halfway off either edge of the
@@ -121,13 +127,23 @@ public abstract class AbsSeekBar extends ProgressBar {
         invalidate();
         if (needUpdate) {
             updateThumbPos(getWidth(), getHeight());
-            if (thumb.isStateful()) {
+            if (thumb != null && thumb.isStateful()) {
                 // Note that if the states are different this won't work.
                 // For now, let's consider that an app bug.
                 int[] state = getDrawableState();
                 thumb.setState(state);
             }
         }
+    }
+
+    /**
+     * Return the drawable used to represent the scroll thumb - the component that
+     * the user can drag back and forth indicating the current value by its position.
+     *
+     * @return The current thumb drawable
+     */
+    public Drawable getThumb() {
+        return mThumb;
     }
 
     /**
@@ -225,6 +241,7 @@ public abstract class AbsSeekBar extends ProgressBar {
     
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
         updateThumbPos(w, h);
     }
 
@@ -288,9 +305,22 @@ public abstract class AbsSeekBar extends ProgressBar {
         }
         
         // Canvas will be translated, so 0,0 is where we start drawing
-        thumb.setBounds(thumbPos, topBound, thumbPos + thumbWidth, bottomBound);
+        final int left = isLayoutRtl() ? available - thumbPos : thumbPos;
+        thumb.setBounds(left, topBound, left + thumbWidth, bottomBound);
     }
-    
+
+    /**
+     * @hide
+     */
+    @Override
+    public void onResolveDrawables(int layoutDirection) {
+        super.onResolveDrawables(layoutDirection);
+
+        if (mThumb != null) {
+            mThumb.setLayoutDirection(layoutDirection);
+        }
+    }
+
     @Override
     protected synchronized void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -396,15 +426,25 @@ public abstract class AbsSeekBar extends ProgressBar {
         int x = (int)event.getX();
         float scale;
         float progress = 0;
-        if (x < mPaddingLeft) {
-            scale = 0.0f;
-        } else if (x > width - mPaddingRight) {
-            scale = 1.0f;
+        if (isLayoutRtl()) {
+            if (x > width - mPaddingRight) {
+                scale = 0.0f;
+            } else if (x < mPaddingLeft) {
+                scale = 1.0f;
+            } else {
+                scale = (float)(available - x + mPaddingLeft) / (float)available;
+                progress = mTouchProgressOffset;
+            }
         } else {
-            scale = (float)(x - mPaddingLeft) / (float)available;
-            progress = mTouchProgressOffset;
+            if (x < mPaddingLeft) {
+                scale = 0.0f;
+            } else if (x > width - mPaddingRight) {
+                scale = 1.0f;
+            } else {
+                scale = (float)(x - mPaddingLeft) / (float)available;
+                progress = mTouchProgressOffset;
+            }
         }
-        
         final int max = getMax();
         progress += scale * max;
         
@@ -464,4 +504,75 @@ public abstract class AbsSeekBar extends ProgressBar {
         return super.onKeyDown(keyCode, event);
     }
 
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(AbsSeekBar.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(AbsSeekBar.class.getName());
+
+        if (isEnabled()) {
+            final int progress = getProgress();
+            if (progress > 0) {
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+            }
+            if (progress < getMax()) {
+                info.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+            }
+        }
+    }
+
+    @Override
+    public boolean performAccessibilityAction(int action, Bundle arguments) {
+        if (super.performAccessibilityAction(action, arguments)) {
+            return true;
+        }
+        if (!isEnabled()) {
+            return false;
+        }
+        final int progress = getProgress();
+        final int increment = Math.max(1, Math.round((float) getMax() / 5));
+        switch (action) {
+            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: {
+                if (progress <= 0) {
+                    return false;
+                }
+                setProgress(progress - increment, true);
+                onKeyChange();
+                return true;
+            }
+            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD: {
+                if (progress >= getMax()) {
+                    return false;
+                }
+                setProgress(progress + increment, true);
+                onKeyChange();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void onRtlPropertiesChanged(int layoutDirection) {
+        super.onRtlPropertiesChanged(layoutDirection);
+
+        int max = getMax();
+        float scale = max > 0 ? (float) getProgress() / (float) max : 0;
+
+        Drawable thumb = mThumb;
+        if (thumb != null) {
+            setThumbPos(getWidth(), thumb, scale, Integer.MIN_VALUE);
+            /*
+             * Since we draw translated, the drawable's bounds that it signals
+             * for invalidation won't be the actual bounds we want invalidated,
+             * so just invalidate this whole view.
+             */
+            invalidate();
+        }
+    }
 }

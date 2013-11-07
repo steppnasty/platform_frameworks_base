@@ -39,6 +39,8 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.AbsListView.OnScrollListener;
 
 import com.android.internal.R;
@@ -152,21 +154,25 @@ public class CalendarView extends FrameLayout {
 
     private final int mWeekSeperatorLineWidth;
 
-    private final int mDateTextSize;
+    private int mDateTextSize;
 
-    private final Drawable mSelectedDateVerticalBar;
+    private Drawable mSelectedDateVerticalBar;
 
     private final int mSelectedDateVerticalBarWidth;
 
-    private final int mSelectedWeekBackgroundColor;
+    private int mSelectedWeekBackgroundColor;
 
-    private final int mFocusedMonthDateColor;
+    private int mFocusedMonthDateColor;
 
-    private final int mUnfocusedMonthDateColor;
+    private int mUnfocusedMonthDateColor;
 
-    private final int mWeekSeparatorLineColor;
+    private int mWeekSeparatorLineColor;
 
-    private final int mWeekNumberColor;
+    private int mWeekNumberColor;
+
+    private int mWeekDayTextAppearanceResId;
+
+    private int mDateTextAppearanceResId;
 
     /**
      * The top offset of the weeks list.
@@ -364,15 +370,11 @@ public class CalendarView extends FrameLayout {
         mSelectedDateVerticalBar = attributesArray.getDrawable(
                 R.styleable.CalendarView_selectedDateVerticalBar);
 
-        int dateTextAppearanceResId= attributesArray.getResourceId(
+        mDateTextAppearanceResId = attributesArray.getResourceId(
                 R.styleable.CalendarView_dateTextAppearance, R.style.TextAppearance_Small);
-        TypedArray dateTextAppearance = context.obtainStyledAttributes(dateTextAppearanceResId,
-                com.android.internal.R.styleable.TextAppearance);
-        mDateTextSize = dateTextAppearance.getDimensionPixelSize(
-                R.styleable.TextAppearance_textSize, DEFAULT_DATE_TEXT_SIZE);
-        dateTextAppearance.recycle();
+        updateDateTextSize();
 
-        int weekDayTextAppearanceResId = attributesArray.getResourceId(
+        mWeekDayTextAppearanceResId = attributesArray.getResourceId(
                 R.styleable.CalendarView_weekDayTextAppearance,
                 DEFAULT_WEEK_DAY_TEXT_APPEARANCE_RES_ID);
         attributesArray.recycle();
@@ -398,7 +400,7 @@ public class CalendarView extends FrameLayout {
         mDayNamesHeader = (ViewGroup) content.findViewById(com.android.internal.R.id.day_names);
         mMonthName = (TextView) content.findViewById(com.android.internal.R.id.month_name);
 
-        setUpHeader(weekDayTextAppearanceResId);
+        setUpHeader();
         setUpListView();
         setUpAdapter();
 
@@ -413,6 +415,271 @@ public class CalendarView extends FrameLayout {
         }
 
         invalidate();
+    }
+
+    /**
+     * Sets the number of weeks to be shown.
+     *
+     * @param count The shown week count.
+     *
+     * @attr ref android.R.styleable#CalendarView_shownWeekCount
+     */
+    public void setShownWeekCount(int count) {
+        if (mShownWeekCount != count) {
+            mShownWeekCount = count;
+            invalidate();
+        }
+    }
+
+    /**
+     * Gets the number of weeks to be shown.
+     *
+     * @return The shown week count.
+     *
+     * @attr ref android.R.styleable#CalendarView_shownWeekCount
+     */
+    public int getShownWeekCount() {
+        return mShownWeekCount;
+    }
+
+    /**
+     * Sets the background color for the selected week.
+     *
+     * @param color The week background color.
+     *
+     * @attr ref android.R.styleable#CalendarView_selectedWeekBackgroundColor
+     */
+    public void setSelectedWeekBackgroundColor(int color) {
+        if (mSelectedWeekBackgroundColor != color) {
+            mSelectedWeekBackgroundColor = color;
+            final int childCount = mListView.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                WeekView weekView = (WeekView) mListView.getChildAt(i);
+                if (weekView.mHasSelectedDay) {
+                    weekView.invalidate();
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the background color for the selected week.
+     *
+     * @return The week background color.
+     *
+     * @attr ref android.R.styleable#CalendarView_selectedWeekBackgroundColor
+     */
+    public int getSelectedWeekBackgroundColor() {
+        return mSelectedWeekBackgroundColor;
+    }
+
+    /**
+     * Sets the color for the dates of the focused month.
+     *
+     * @param color The focused month date color.
+     *
+     * @attr ref android.R.styleable#CalendarView_focusedMonthDateColor
+     */
+    public void setFocusedMonthDateColor(int color) {
+        if (mFocusedMonthDateColor != color) {
+            mFocusedMonthDateColor = color;
+            final int childCount = mListView.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                WeekView weekView = (WeekView) mListView.getChildAt(i);
+                if (weekView.mHasFocusedDay) {
+                    weekView.invalidate();
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the color for the dates in the focused month.
+     *
+     * @return The focused month date color.
+     *
+     * @attr ref android.R.styleable#CalendarView_focusedMonthDateColor
+     */
+    public int getFocusedMonthDateColor() {
+        return mFocusedMonthDateColor;
+    }
+
+    /**
+     * Sets the color for the dates of a not focused month.
+     *
+     * @param color A not focused month date color.
+     *
+     * @attr ref android.R.styleable#CalendarView_unfocusedMonthDateColor
+     */
+    public void setUnfocusedMonthDateColor(int color) {
+        if (mUnfocusedMonthDateColor != color) {
+            mUnfocusedMonthDateColor = color;
+            final int childCount = mListView.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                WeekView weekView = (WeekView) mListView.getChildAt(i);
+                if (weekView.mHasUnfocusedDay) {
+                    weekView.invalidate();
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the color for the dates in a not focused month.
+     *
+     * @return A not focused month date color.
+     *
+     * @attr ref android.R.styleable#CalendarView_unfocusedMonthDateColor
+     */
+    public int getUnfocusedMonthDateColor() {
+        return mFocusedMonthDateColor;
+    }
+
+    /**
+     * Sets the color for the week numbers.
+     *
+     * @param color The week number color.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekNumberColor
+     */
+    public void setWeekNumberColor(int color) {
+        if (mWeekNumberColor != color) {
+            mWeekNumberColor = color;
+            if (mShowWeekNumber) {
+                invalidateAllWeekViews();
+            }
+        }
+    }
+
+    /**
+     * Gets the color for the week numbers.
+     *
+     * @return The week number color.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekNumberColor
+     */
+    public int getWeekNumberColor() {
+        return mWeekNumberColor;
+    }
+
+    /**
+     * Sets the color for the separator line between weeks.
+     *
+     * @param color The week separator color.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekSeparatorLineColor
+     */
+    public void setWeekSeparatorLineColor(int color) {
+        if (mWeekSeparatorLineColor != color) {
+            mWeekSeparatorLineColor = color;
+            invalidateAllWeekViews();
+        }
+    }
+
+    /**
+     * Gets the color for the separator line between weeks.
+     *
+     * @return The week separator color.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekSeparatorLineColor
+     */
+    public int getWeekSeparatorLineColor() {
+        return mWeekSeparatorLineColor;
+    }
+
+    /**
+     * Sets the drawable for the vertical bar shown at the beginning and at
+     * the end of the selected date.
+     *
+     * @param resourceId The vertical bar drawable resource id.
+     *
+     * @attr ref android.R.styleable#CalendarView_selectedDateVerticalBar
+     */
+    public void setSelectedDateVerticalBar(int resourceId) {
+        Drawable drawable = getResources().getDrawable(resourceId);
+        setSelectedDateVerticalBar(drawable);
+    }
+
+    /**
+     * Sets the drawable for the vertical bar shown at the beginning and at
+     * the end of the selected date.
+     *
+     * @param drawable The vertical bar drawable.
+     *
+     * @attr ref android.R.styleable#CalendarView_selectedDateVerticalBar
+     */
+    public void setSelectedDateVerticalBar(Drawable drawable) {
+        if (mSelectedDateVerticalBar != drawable) {
+            mSelectedDateVerticalBar = drawable;
+            final int childCount = mListView.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                WeekView weekView = (WeekView) mListView.getChildAt(i);
+                if (weekView.mHasSelectedDay) {
+                    weekView.invalidate();
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the drawable for the vertical bar shown at the beginning and at
+     * the end of the selected date.
+     *
+     * @return The vertical bar drawable.
+     */
+    public Drawable getSelectedDateVerticalBar() {
+        return mSelectedDateVerticalBar;
+    }
+
+    /**
+     * Sets the text appearance for the week day abbreviation of the calendar header.
+     *
+     * @param resourceId The text appearance resource id.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekDayTextAppearance
+     */
+    public void setWeekDayTextAppearance(int resourceId) {
+        if (mWeekDayTextAppearanceResId != resourceId) {
+            mWeekDayTextAppearanceResId = resourceId;
+            setUpHeader();
+        }
+    }
+
+    /**
+     * Gets the text appearance for the week day abbreviation of the calendar header.
+     *
+     * @return The text appearance resource id.
+     *
+     * @attr ref android.R.styleable#CalendarView_weekDayTextAppearance
+     */
+    public int getWeekDayTextAppearance() {
+        return mWeekDayTextAppearanceResId;
+    }
+
+    /**
+     * Sets the text appearance for the calendar dates.
+     *
+     * @param resourceId The text appearance resource id.
+     *
+     * @attr ref android.R.styleable#CalendarView_dateTextAppearance
+     */
+    public void setDateTextAppearance(int resourceId) {
+        if (mDateTextAppearanceResId != resourceId) {
+            mDateTextAppearanceResId = resourceId;
+            updateDateTextSize();
+            invalidateAllWeekViews();
+        }
+    }
+
+    /**
+     * Gets the text appearance for the calendar dates.
+     *
+     * @return The text appearance resource id.
+     *
+     * @attr ref android.R.styleable#CalendarView_dateTextAppearance
+     */
+    public int getDateTextAppearance() {
+        return mDateTextAppearanceResId;
     }
 
     @Override
@@ -431,6 +698,18 @@ public class CalendarView extends FrameLayout {
         setCurrentLocale(newConfig.locale);
     }
 
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(CalendarView.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(CalendarView.class.getName());
+    }
+
     /**
      * Gets the minimal date supported by this {@link CalendarView} in milliseconds
      * since January 1, 1970 00:00:00 in {@link TimeZone#getDefault()} time
@@ -440,6 +719,8 @@ public class CalendarView extends FrameLayout {
      * <p>
      *
      * @return The minimal supported date.
+     *
+     * @attr ref android.R.styleable#CalendarView_minDate
      */
     public long getMinDate() {
         return mMinDate.getTimeInMillis();
@@ -451,6 +732,8 @@ public class CalendarView extends FrameLayout {
      * zone.
      *
      * @param minDate The minimal supported date.
+     *
+     * @attr ref android.R.styleable#CalendarView_minDate
      */
     public void setMinDate(long minDate) {
         mTempDate.setTimeInMillis(minDate);
@@ -488,6 +771,8 @@ public class CalendarView extends FrameLayout {
      * <p>
      *
      * @return The maximal supported date.
+     *
+     * @attr ref android.R.styleable#CalendarView_maxDate
      */
     public long getMaxDate() {
         return mMaxDate.getTimeInMillis();
@@ -499,6 +784,8 @@ public class CalendarView extends FrameLayout {
      * zone.
      *
      * @param maxDate The maximal supported date.
+     *
+     * @attr ref android.R.styleable#CalendarView_maxDate
      */
     public void setMaxDate(long maxDate) {
         mTempDate.setTimeInMillis(maxDate);
@@ -524,6 +811,8 @@ public class CalendarView extends FrameLayout {
      * Sets whether to show the week number.
      *
      * @param showWeekNumber True to show the week number.
+     *
+     * @attr ref android.R.styleable#CalendarView_showWeekNumber
      */
     public void setShowWeekNumber(boolean showWeekNumber) {
         if (mShowWeekNumber == showWeekNumber) {
@@ -531,13 +820,15 @@ public class CalendarView extends FrameLayout {
         }
         mShowWeekNumber = showWeekNumber;
         mAdapter.notifyDataSetChanged();
-        setUpHeader(DEFAULT_WEEK_DAY_TEXT_APPEARANCE_RES_ID);
+        setUpHeader();
     }
 
     /**
      * Gets whether to show the week number.
      *
      * @return True if showing the week number.
+     *
+     * @attr ref android.R.styleable#CalendarView_showWeekNumber
      */
     public boolean getShowWeekNumber() {
         return mShowWeekNumber;
@@ -555,6 +846,8 @@ public class CalendarView extends FrameLayout {
      * @see Calendar#FRIDAY
      * @see Calendar#SATURDAY
      * @see Calendar#SUNDAY
+     *
+     * @attr ref android.R.styleable#CalendarView_firstDayOfWeek
      */
     public int getFirstDayOfWeek() {
         return mFirstDayOfWeek;
@@ -572,6 +865,8 @@ public class CalendarView extends FrameLayout {
      * @see Calendar#FRIDAY
      * @see Calendar#SATURDAY
      * @see Calendar#SUNDAY
+     *
+     * @attr ref android.R.styleable#CalendarView_firstDayOfWeek
      */
     public void setFirstDayOfWeek(int firstDayOfWeek) {
         if (mFirstDayOfWeek == firstDayOfWeek) {
@@ -580,7 +875,7 @@ public class CalendarView extends FrameLayout {
         mFirstDayOfWeek = firstDayOfWeek;
         mAdapter.init();
         mAdapter.notifyDataSetChanged();
-        setUpHeader(DEFAULT_WEEK_DAY_TEXT_APPEARANCE_RES_ID);
+        setUpHeader();
     }
 
     /**
@@ -639,6 +934,25 @@ public class CalendarView extends FrameLayout {
             return;
         }
         goTo(mTempDate, animate, true, center);
+    }
+
+    private void updateDateTextSize() {
+        TypedArray dateTextAppearance = getContext().obtainStyledAttributes(
+                mDateTextAppearanceResId, R.styleable.TextAppearance);
+        mDateTextSize = dateTextAppearance.getDimensionPixelSize(
+                R.styleable.TextAppearance_textSize, DEFAULT_DATE_TEXT_SIZE);
+        dateTextAppearance.recycle();
+    }
+
+    /**
+     * Invalidates all week views.
+     */
+    private void invalidateAllWeekViews() {
+        final int childCount = mListView.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            View view = mListView.getChildAt(i);
+            view.invalidate();
+        }
     }
 
     /**
@@ -713,7 +1027,7 @@ public class CalendarView extends FrameLayout {
     /**
      * Sets up the strings to be used by the header.
      */
-    private void setUpHeader(int weekDayTextAppearanceResId) {
+    private void setUpHeader() {
         mDayLabels = new String[mDaysPerWeek];
         for (int i = mFirstDayOfWeek, count = mFirstDayOfWeek + mDaysPerWeek; i < count; i++) {
             int calendarDay = (i > Calendar.SATURDAY) ? i - Calendar.SATURDAY : i;
@@ -729,8 +1043,8 @@ public class CalendarView extends FrameLayout {
         }
         for (int i = 1, count = mDayNamesHeader.getChildCount(); i < count; i++) {
             label = (TextView) mDayNamesHeader.getChildAt(i);
-            if (weekDayTextAppearanceResId > -1) {
-                label.setTextAppearance(mContext, weekDayTextAppearanceResId);
+            if (mWeekDayTextAppearanceResId > -1) {
+                label.setTextAppearance(mContext, mWeekDayTextAppearanceResId);
             }
             if (i < mDaysPerWeek + 1) {
                 label.setText(mDayLabels[i - 1]);
@@ -1184,6 +1498,12 @@ public class CalendarView extends FrameLayout {
         // Quick lookup for checking which days are in the focus month
         private boolean[] mFocusDay;
 
+        // Whether this view has a focused day.
+        private boolean mHasFocusedDay;
+
+        // Whether this view has only focused days.
+        private boolean mHasUnfocusedDay;
+
         // The first day displayed by this item
         private Calendar mFirstDay;
 
@@ -1221,11 +1541,8 @@ public class CalendarView extends FrameLayout {
         public WeekView(Context context) {
             super(context);
 
-            mHeight = (mListView.getHeight() - mListView.getPaddingTop() - mListView
-                    .getPaddingBottom()) / mShownWeekCount;
-
             // Sets up any standard paints that will be used
-            setPaintProperties();
+            initilaizePaints();
         }
 
         /**
@@ -1256,7 +1573,8 @@ public class CalendarView extends FrameLayout {
             // If we're showing the week number calculate it based on Monday
             int i = 0;
             if (mShowWeekNumber) {
-                mDayNumbers[0] = Integer.toString(mTempDate.get(Calendar.WEEK_OF_YEAR));
+                mDayNumbers[0] = String.format(Locale.getDefault(), "%d",
+                        mTempDate.get(Calendar.WEEK_OF_YEAR));
                 i++;
             }
 
@@ -1267,13 +1585,18 @@ public class CalendarView extends FrameLayout {
             mFirstDay = (Calendar) mTempDate.clone();
             mMonthOfFirstWeekDay = mTempDate.get(Calendar.MONTH);
 
+            mHasUnfocusedDay = true;
             for (; i < mNumCells; i++) {
-                mFocusDay[i] = (mTempDate.get(Calendar.MONTH) == focusedMonth);
+                final boolean isFocusedDay = (mTempDate.get(Calendar.MONTH) == focusedMonth);
+                mFocusDay[i] = isFocusedDay;
+                mHasFocusedDay |= isFocusedDay;
+                mHasUnfocusedDay &= !isFocusedDay;
                 // do not draw dates outside the valid range to avoid user confusion
                 if (mTempDate.before(mMinDate) || mTempDate.after(mMaxDate)) {
                     mDayNumbers[i] = "";
                 } else {
-                    mDayNumbers[i] = Integer.toString(mTempDate.get(Calendar.DAY_OF_MONTH));
+                    mDayNumbers[i] = String.format(Locale.getDefault(), "%d",
+                            mTempDate.get(Calendar.DAY_OF_MONTH));
                 }
                 mTempDate.add(Calendar.DAY_OF_MONTH, 1);
             }
@@ -1288,20 +1611,18 @@ public class CalendarView extends FrameLayout {
         }
 
         /**
-         * Sets up the text and style properties for painting.
+         * Initialize the paint instances.
          */
-        private void setPaintProperties() {
+        private void initilaizePaints() {
             mDrawPaint.setFakeBoldText(false);
             mDrawPaint.setAntiAlias(true);
-            mDrawPaint.setTextSize(mDateTextSize);
             mDrawPaint.setStyle(Style.FILL);
 
             mMonthNumDrawPaint.setFakeBoldText(true);
             mMonthNumDrawPaint.setAntiAlias(true);
-            mMonthNumDrawPaint.setTextSize(mDateTextSize);
-            mMonthNumDrawPaint.setColor(mFocusedMonthDateColor);
             mMonthNumDrawPaint.setStyle(Style.FILL);
             mMonthNumDrawPaint.setTextAlign(Align.CENTER);
+            mMonthNumDrawPaint.setTextSize(mDateTextSize);
         }
 
         /**
@@ -1339,23 +1660,41 @@ public class CalendarView extends FrameLayout {
          * @return True if a day was found for the given location.
          */
         public boolean getDayFromLocation(float x, Calendar outCalendar) {
-            int dayStart = mShowWeekNumber ? mWidth / mNumCells : 0;
-            if (x < dayStart || x > mWidth) {
+            final boolean isLayoutRtl = isLayoutRtl();
+
+            int start;
+            int end;
+
+            if (isLayoutRtl) {
+                start = 0;
+                end = mShowWeekNumber ? mWidth - mWidth / mNumCells : mWidth;
+            } else {
+                start = mShowWeekNumber ? mWidth / mNumCells : 0;
+                end = mWidth;
+            }
+
+            if (x < start || x > end) {
                 outCalendar.clear();
                 return false;
             }
-            // Selection is (x - start) / (pixels/day) == (x -s) * day / pixels
-            int dayPosition = (int) ((x - dayStart) * mDaysPerWeek
-                    / (mWidth - dayStart));
+
+            // Selection is (x - start) / (pixels/day) which is (x - start) * day / pixels
+            int dayPosition = (int) ((x - start) * mDaysPerWeek / (end - start));
+
+            if (isLayoutRtl) {
+                dayPosition = mDaysPerWeek - 1 - dayPosition;
+            }
+
             outCalendar.setTimeInMillis(mFirstDay.getTimeInMillis());
             outCalendar.add(Calendar.DAY_OF_MONTH, dayPosition);
+
             return true;
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             drawBackground(canvas);
-            drawWeekNumbers(canvas);
+            drawWeekNumbersAndDates(canvas);
             drawWeekSeparators(canvas);
             drawSelectedDateVerticalBars(canvas);
         }
@@ -1373,12 +1712,25 @@ public class CalendarView extends FrameLayout {
 
             mTempRect.top = mWeekSeperatorLineWidth;
             mTempRect.bottom = mHeight;
-            mTempRect.left = mShowWeekNumber ? mWidth / mNumCells : 0;
-            mTempRect.right = mSelectedLeft - 2;
+
+            final boolean isLayoutRtl = isLayoutRtl();
+
+            if (isLayoutRtl) {
+                mTempRect.left = 0;
+                mTempRect.right = mSelectedLeft - 2;
+            } else {
+                mTempRect.left = mShowWeekNumber ? mWidth / mNumCells : 0;
+                mTempRect.right = mSelectedLeft - 2;
+            }
             canvas.drawRect(mTempRect, mDrawPaint);
 
-            mTempRect.left = mSelectedRight + 3;
-            mTempRect.right = mWidth;
+            if (isLayoutRtl) {
+                mTempRect.left = mSelectedRight + 3;
+                mTempRect.right = mShowWeekNumber ? mWidth - mWidth / mNumCells : mWidth;
+            } else {
+                mTempRect.left = mSelectedRight + 3;
+                mTempRect.right = mWidth;
+            }
             canvas.drawRect(mTempRect, mDrawPaint);
         }
 
@@ -1387,25 +1739,42 @@ public class CalendarView extends FrameLayout {
          *
          * @param canvas The canvas to draw on
          */
-        private void drawWeekNumbers(Canvas canvas) {
-            float textHeight = mDrawPaint.getTextSize();
-            int y = (int) ((mHeight + textHeight) / 2) - mWeekSeperatorLineWidth;
-            int nDays = mNumCells;
+        private void drawWeekNumbersAndDates(Canvas canvas) {
+            final float textHeight = mDrawPaint.getTextSize();
+            final int y = (int) ((mHeight + textHeight) / 2) - mWeekSeperatorLineWidth;
+            final int nDays = mNumCells;
+            final int divisor = 2 * nDays;
 
             mDrawPaint.setTextAlign(Align.CENTER);
+            mDrawPaint.setTextSize(mDateTextSize);
+
             int i = 0;
-            int divisor = 2 * nDays;
-            if (mShowWeekNumber) {
-                mDrawPaint.setColor(mWeekNumberColor);
-                int x = mWidth / divisor;
-                canvas.drawText(mDayNumbers[0], x, y, mDrawPaint);
-                i++;
-            }
-            for (; i < nDays; i++) {
-                mMonthNumDrawPaint.setColor(mFocusDay[i] ? mFocusedMonthDateColor
-                        : mUnfocusedMonthDateColor);
-                int x = (2 * i + 1) * mWidth / divisor;
-                canvas.drawText(mDayNumbers[i], x, y, mMonthNumDrawPaint);
+
+            if (isLayoutRtl()) {
+                for (; i < nDays - 1; i++) {
+                    mMonthNumDrawPaint.setColor(mFocusDay[i] ? mFocusedMonthDateColor
+                            : mUnfocusedMonthDateColor);
+                    int x = (2 * i + 1) * mWidth / divisor;
+                    canvas.drawText(mDayNumbers[nDays - 1 - i], x, y, mMonthNumDrawPaint);
+                }
+                if (mShowWeekNumber) {
+                    mDrawPaint.setColor(mWeekNumberColor);
+                    int x = mWidth - mWidth / divisor;
+                    canvas.drawText(mDayNumbers[0], x, y, mDrawPaint);
+                }
+            } else {
+                if (mShowWeekNumber) {
+                    mDrawPaint.setColor(mWeekNumberColor);
+                    int x = mWidth / divisor;
+                    canvas.drawText(mDayNumbers[0], x, y, mDrawPaint);
+                    i++;
+                }
+                for (; i < nDays; i++) {
+                    mMonthNumDrawPaint.setColor(mFocusDay[i] ? mFocusedMonthDateColor
+                            : mUnfocusedMonthDateColor);
+                    int x = (2 * i + 1) * mWidth / divisor;
+                    canvas.drawText(mDayNumbers[i], x, y, mMonthNumDrawPaint);
+                }
             }
         }
 
@@ -1425,8 +1794,16 @@ public class CalendarView extends FrameLayout {
             }
             mDrawPaint.setColor(mWeekSeparatorLineColor);
             mDrawPaint.setStrokeWidth(mWeekSeperatorLineWidth);
-            float x = mShowWeekNumber ? mWidth / mNumCells : 0;
-            canvas.drawLine(x, 0, mWidth, 0, mDrawPaint);
+            float startX;
+            float stopX;
+            if (isLayoutRtl()) {
+                startX = 0;
+                stopX = mShowWeekNumber ? mWidth - mWidth / mNumCells : mWidth;
+            } else {
+                startX = mShowWeekNumber ? mWidth / mNumCells : 0;
+                stopX = mWidth;
+            }
+            canvas.drawLine(startX, 0, stopX, 0, mDrawPaint);
         }
 
         /**
@@ -1459,20 +1836,28 @@ public class CalendarView extends FrameLayout {
          */
         private void updateSelectionPositions() {
             if (mHasSelectedDay) {
+                final boolean isLayoutRtl = isLayoutRtl();
                 int selectedPosition = mSelectedDay - mFirstDayOfWeek;
                 if (selectedPosition < 0) {
                     selectedPosition += 7;
                 }
-                if (mShowWeekNumber) {
+                if (mShowWeekNumber && !isLayoutRtl) {
                     selectedPosition++;
                 }
-                mSelectedLeft = selectedPosition * mWidth / mNumCells;
-                mSelectedRight = (selectedPosition + 1) * mWidth / mNumCells;
+                if (isLayoutRtl) {
+                    mSelectedLeft = (mDaysPerWeek - 1 - selectedPosition) * mWidth / mNumCells;
+
+                } else {
+                    mSelectedLeft = selectedPosition * mWidth / mNumCells;
+                }
+                mSelectedRight = mSelectedLeft + mWidth / mNumCells;
             }
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            mHeight = (mListView.getHeight() - mListView.getPaddingTop() - mListView
+                    .getPaddingBottom()) / mShownWeekCount;
             setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), mHeight);
         }
     }

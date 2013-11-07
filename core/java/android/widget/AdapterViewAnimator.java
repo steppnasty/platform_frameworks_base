@@ -29,6 +29,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.RemoteViews.OnClickHandler;
 
 import java.util.ArrayList;
@@ -413,6 +415,10 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
             // get the fresh child from the adapter
             final View updatedChild = mAdapter.getView(modulo(i, adapterCount), null, this);
 
+            if (updatedChild.getImportantForAccessibility() == IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
+                updatedChild.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+            }
+
             if (mViewsMap.containsKey(index)) {
                 final FrameLayout fl = (FrameLayout) mViewsMap.get(index).view;
                 // add the new child to the frame, if it exists
@@ -556,6 +562,11 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
             mCurrentWindowStart = newWindowStart;
             mCurrentWindowEnd = newWindowEnd;
             mCurrentWindowStartUnbounded = newWindowStartUnbounded;
+            if (mRemoteViewsAdapter != null) {
+                int adapterStart = modulo(mCurrentWindowStart, adapterCount);
+                int adapterEnd = modulo(mCurrentWindowEnd, adapterCount);
+                mRemoteViewsAdapter.setVisibleRangeHint(adapterStart, adapterEnd);
+            }
         }
         requestLayout();
         invalidate();
@@ -803,6 +814,9 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
     @Override
     public Parcelable onSaveInstanceState() {
         Parcelable superState = super.onSaveInstanceState();
+        if (mRemoteViewsAdapter != null) {
+            mRemoteViewsAdapter.saveRemoteViewsCache();
+        }
         return new SavedState(superState, mWhichChild);
     }
 
@@ -974,6 +988,9 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
         mDeferNotifyDataSetChanged = false;
         // Otherwise, create a new RemoteViewsAdapter for binding
         mRemoteViewsAdapter = new RemoteViewsAdapter(getContext(), intent, this);
+        if (mRemoteViewsAdapter.isDataReady()) {
+            setAdapter(mRemoteViewsAdapter);
+        }
     }
 
     /**
@@ -1060,5 +1077,17 @@ public abstract class AdapterViewAnimator extends AdapterView<Adapter>
      * perform any required setup, for example, to stop automatically advancing their children.
      */
     public void fyiWillBeAdvancedByHostKThx() {
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(AdapterViewAnimator.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(AdapterViewAnimator.class.getName());
     }
 }

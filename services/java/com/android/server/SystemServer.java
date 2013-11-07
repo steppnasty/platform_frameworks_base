@@ -973,6 +973,11 @@ class ServerThread extends Thread {
                 } catch (Throwable e) {
                     reportWtf("making InputManagerService ready", e);
                 }
+                try {
+                    if (telephonyRegistryF != null) telephonyRegistryF.systemReady();
+                } catch (Throwable e) {
+                    reportWtf("making TelephonyRegistry ready", e);
+                }
             }
         });
 

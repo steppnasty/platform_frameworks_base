@@ -21,6 +21,8 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.RemoteViews.RemoteView;
 
 import java.util.Map;
@@ -62,8 +64,8 @@ import java.util.Map;
  * it will only be applied after {@code android:state_pressed} and {@code
  * android:state_focused} have both evaluated false.</p>
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-formstuff.html">Form Stuff
- * tutorial</a>.</p>
+ * <p>See the <a href="{@docRoot}guide/topics/ui/controls/button.html">Buttons</a>
+ * guide.</p>
  *
  * <p><strong>XML attributes</strong></p>
  * <p>
@@ -89,5 +91,17 @@ public class ImageButton extends ImageView {
     @Override
     protected boolean onSetAlpha(int alpha) {
         return false;
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(ImageButton.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(ImageButton.class.getName());
     }
 }

@@ -29,12 +29,15 @@ import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.method.AllCapsTransformationMethod;
+import android.text.method.TransformationMethod2;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import com.android.internal.R;
 
@@ -50,6 +53,17 @@ import com.android.internal.R;
  * {@link #setSwitchTextAppearance(android.content.Context, int) switchTextAppearance} and
  * the related seSwitchTypeface() methods control that of the thumb.
  *
+ * <p>See the <a href="{@docRoot}guide/topics/ui/controls/togglebutton.html">Toggle Buttons</a>
+ * guide.</p>
+ *
+ * @attr ref android.R.styleable#Switch_textOn
+ * @attr ref android.R.styleable#Switch_textOff
+ * @attr ref android.R.styleable#Switch_switchMinWidth
+ * @attr ref android.R.styleable#Switch_switchPadding
+ * @attr ref android.R.styleable#Switch_switchTextAppearance
+ * @attr ref android.R.styleable#Switch_thumb
+ * @attr ref android.R.styleable#Switch_thumbTextPadding
+ * @attr ref android.R.styleable#Switch_track
  */
 public class Switch extends CompoundButton {
     private static final int TOUCH_MODE_IDLE = 0;
@@ -90,6 +104,7 @@ public class Switch extends CompoundButton {
     private ColorStateList mTextColors;
     private Layout mOnLayout;
     private Layout mOffLayout;
+    private TransformationMethod2 mSwitchTransformationMethod;
 
     @SuppressWarnings("hiding")
     private final Rect mTempRect = new Rect();
@@ -168,6 +183,8 @@ public class Switch extends CompoundButton {
     /**
      * Sets the switch text color, size, style, hint color, and highlight color
      * from the specified TextAppearance resource.
+     *
+     * @attr ref android.R.styleable#Switch_switchTextAppearance
      */
     public void setSwitchTextAppearance(Context context, int resid) {
         TypedArray appearance =
@@ -203,6 +220,15 @@ public class Switch extends CompoundButton {
                 TextAppearance_textStyle, -1);
 
         setSwitchTypefaceByIndex(typefaceIndex, styleIndex);
+
+        boolean allCaps = appearance.getBoolean(com.android.internal.R.styleable.
+                TextAppearance_textAllCaps, false);
+        if (allCaps) {
+            mSwitchTransformationMethod = new AllCapsTransformationMethod(getContext());
+            mSwitchTransformationMethod.setLengthChangesAllowed(true);
+        } else {
+            mSwitchTransformationMethod = null;
+        }
 
         appearance.recycle();
     }
@@ -273,7 +299,151 @@ public class Switch extends CompoundButton {
     }
 
     /**
+     * Set the amount of horizontal padding between the switch and the associated text.
+     *
+     * @param pixels Amount of padding in pixels
+     *
+     * @attr ref android.R.styleable#Switch_switchPadding
+     */
+    public void setSwitchPadding(int pixels) {
+        mSwitchPadding = pixels;
+        requestLayout();
+    }
+
+    /**
+     * Get the amount of horizontal padding between the switch and the associated text.
+     *
+     * @return Amount of padding in pixels
+     *
+     * @attr ref android.R.styleable#Switch_switchPadding
+     */
+    public int getSwitchPadding() {
+        return mSwitchPadding;
+    }
+
+    /**
+     * Set the minimum width of the switch in pixels. The switch's width will be the maximum
+     * of this value and its measured width as determined by the switch drawables and text used.
+     *
+     * @param pixels Minimum width of the switch in pixels
+     *
+     * @attr ref android.R.styleable#Switch_switchMinWidth
+     */
+    public void setSwitchMinWidth(int pixels) {
+        mSwitchMinWidth = pixels;
+        requestLayout();
+    }
+
+    /**
+     * Get the minimum width of the switch in pixels. The switch's width will be the maximum
+     * of this value and its measured width as determined by the switch drawables and text used.
+     *
+     * @return Minimum width of the switch in pixels
+     *
+     * @attr ref android.R.styleable#Switch_switchMinWidth
+     */
+    public int getSwitchMinWidth() {
+        return mSwitchMinWidth;
+    }
+
+    /**
+     * Set the horizontal padding around the text drawn on the switch itself.
+     *
+     * @param pixels Horizontal padding for switch thumb text in pixels
+     *
+     * @attr ref android.R.styleable#Switch_thumbTextPadding
+     */
+    public void setThumbTextPadding(int pixels) {
+        mThumbTextPadding = pixels;
+        requestLayout();
+    }
+
+    /**
+     * Get the horizontal padding around the text drawn on the switch itself.
+     *
+     * @return Horizontal padding for switch thumb text in pixels
+     *
+     * @attr ref android.R.styleable#Switch_thumbTextPadding
+     */
+    public int getThumbTextPadding() {
+        return mThumbTextPadding;
+    }
+
+    /**
+     * Set the drawable used for the track that the switch slides within.
+     *
+     * @param track Track drawable
+     *
+     * @attr ref android.R.styleable#Switch_track
+     */
+    public void setTrackDrawable(Drawable track) {
+        mTrackDrawable = track;
+        requestLayout();
+    }
+
+    /**
+     * Set the drawable used for the track that the switch slides within.
+     *
+     * @param resId Resource ID of a track drawable
+     *
+     * @attr ref android.R.styleable#Switch_track
+     */
+    public void setTrackResource(int resId) {
+        setTrackDrawable(getContext().getResources().getDrawable(resId));
+    }
+
+    /**
+     * Get the drawable used for the track that the switch slides within.
+     *
+     * @return Track drawable
+     *
+     * @attr ref android.R.styleable#Switch_track
+     */
+    public Drawable getTrackDrawable() {
+        return mTrackDrawable;
+    }
+
+    /**
+     * Set the drawable used for the switch "thumb" - the piece that the user
+     * can physically touch and drag along the track.
+     *
+     * @param thumb Thumb drawable
+     *
+     * @attr ref android.R.styleable#Switch_thumb
+     */
+    public void setThumbDrawable(Drawable thumb) {
+        mThumbDrawable = thumb;
+        requestLayout();
+    }
+
+    /**
+     * Set the drawable used for the switch "thumb" - the piece that the user
+     * can physically touch and drag along the track.
+     *
+     * @param resId Resource ID of a thumb drawable
+     *
+     * @attr ref android.R.styleable#Switch_thumb
+     */
+    public void setThumbResource(int resId) {
+        setThumbDrawable(getContext().getResources().getDrawable(resId));
+    }
+
+    /**
+     * Get the drawable used for the switch "thumb" - the piece that the user
+     * can physically touch and drag along the track.
+     *
+     * @return Thumb drawable
+     *
+     * @attr ref android.R.styleable#Switch_thumb
+     */
+    public Drawable getThumbDrawable() {
+        return mThumbDrawable;
+    }
+
+    /**
      * Returns the text displayed when the button is in the checked state.
+     *
+     * @attr ref android.R.styleable#Switch_textOn
      */
     public CharSequence getTextOn() {
         return mTextOn;
@@ -281,6 +451,8 @@ public class Switch extends CompoundButton {
 
     /**
      * Sets the text displayed when the button is in the checked state.
+     *
+     * @attr ref android.R.styleable#Switch_textOn
      */
     public void setTextOn(CharSequence textOn) {
         mTextOn = textOn;
@@ -289,6 +461,8 @@ public class Switch extends CompoundButton {
 
     /**
      * Returns the text displayed when the button is not in the checked state.
+     *
+     * @attr ref android.R.styleable#Switch_textOff
      */
     public CharSequence getTextOff() {
         return mTextOff;
@@ -296,6 +470,8 @@ public class Switch extends CompoundButton {
 
     /**
      * Sets the text displayed when the button is not in the checked state.
+     *
+     * @attr ref android.R.styleable#Switch_textOff
      */
     public void setTextOff(CharSequence textOff) {
         mTextOff = textOff;
@@ -304,12 +480,6 @@ public class Switch extends CompoundButton {
 
     @Override
     public void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        final int widthMode = MeasureSpec.getMode(widthMeasureSpec);
-        final int heightMode = MeasureSpec.getMode(heightMeasureSpec);
-        int widthSize = MeasureSpec.getSize(widthMeasureSpec);
-        int heightSize = MeasureSpec.getSize(heightMeasureSpec);
-
-
         if (mOnLayout == null) {
             mOnLayout = makeLayout(mTextOn);
         }
@@ -325,34 +495,6 @@ public class Switch extends CompoundButton {
 
         mThumbWidth = maxTextWidth + mThumbTextPadding * 2;
 
-        switch (widthMode) {
-            case MeasureSpec.AT_MOST:
-                widthSize = Math.min(widthSize, switchWidth);
-                break;
-
-            case MeasureSpec.UNSPECIFIED:
-                widthSize = switchWidth;
-                break;
-
-            case MeasureSpec.EXACTLY:
-                // Just use what we were given
-                break;
-        }
-
-        switch (heightMode) {
-            case MeasureSpec.AT_MOST:
-                heightSize = Math.min(heightSize, switchHeight);
-                break;
-
-            case MeasureSpec.UNSPECIFIED:
-                heightSize = switchHeight;
-                break;
-
-            case MeasureSpec.EXACTLY:
-                // Just use what we were given
-                break;
-        }
-
         mSwitchWidth = switchWidth;
         mSwitchHeight = switchHeight;
 
@@ -366,24 +508,19 @@ public class Switch extends CompoundButton {
     @Override
     public void onPopulateAccessibilityEvent(AccessibilityEvent event) {
         super.onPopulateAccessibilityEvent(event);
-        if (isChecked()) {
-            CharSequence text = mOnLayout.getText();
-            if (TextUtils.isEmpty(text)) {
-                text = mContext.getString(R.string.switch_on);
-            }
-            event.getText().add(text);
-        } else {
-            CharSequence text = mOffLayout.getText();
-            if (TextUtils.isEmpty(text)) {
-                text = mContext.getString(R.string.switch_off);
-            }
-            event.getText().add(text);
+        Layout layout =  isChecked() ? mOnLayout : mOffLayout;
+        if (layout != null && !TextUtils.isEmpty(layout.getText())) {
+            event.getText().add(layout.getText());
         }
     }
 
     private Layout makeLayout(CharSequence text) {
-        return new StaticLayout(text, mTextPaint,
-                (int) Math.ceil(Layout.getDesiredWidth(text, mTextPaint)),
+        final CharSequence transformed = (mSwitchTransformationMethod != null)
+                    ? mSwitchTransformationMethod.getTransformation(text, this)
+                    : text;
+
+        return new StaticLayout(transformed, mTextPaint,
+                (int) Math.ceil(Layout.getDesiredWidth(transformed, mTextPaint)),
                 Layout.Alignment.ALIGN_NORMAL, 1.f, 0, true);
     }
 
@@ -491,7 +628,7 @@ public class Switch extends CompoundButton {
             mVelocityTracker.computeCurrentVelocity(1000);
             float xvel = mVelocityTracker.getXVelocity();
             if (Math.abs(xvel) > mMinFlingVelocity) {
-                newState = xvel > 0;
+                newState = isLayoutRtl() ? (xvel < 0) : (xvel > 0);
             } else {
                 newState = getTargetCheckedState();
             }
@@ -509,13 +646,25 @@ public class Switch extends CompoundButton {
     }
 
     private boolean getTargetCheckedState() {
-        return mThumbPosition >= getThumbScrollRange() / 2;
+        if (isLayoutRtl()) {
+            return mThumbPosition <= getThumbScrollRange() / 2;
+        } else {
+            return mThumbPosition >= getThumbScrollRange() / 2;
+        }
+    }
+
+    private void setThumbPosition(boolean checked) {
+        if (isLayoutRtl()) {
+            mThumbPosition = checked ? 0 : getThumbScrollRange();
+        } else {
+            mThumbPosition = checked ? getThumbScrollRange() : 0;
+        }
     }
 
     @Override
     public void setChecked(boolean checked) {
         super.setChecked(checked);
-        mThumbPosition = checked ? getThumbScrollRange() : 0;
+        setThumbPosition(isChecked());
         invalidate();
     }
 
@@ -523,10 +672,19 @@ public class Switch extends CompoundButton {
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
 
-        mThumbPosition = isChecked() ? getThumbScrollRange() : 0;
+        setThumbPosition(isChecked());
 
-        int switchRight = getWidth() - getPaddingRight();
-        int switchLeft = switchRight - mSwitchWidth;
+        int switchRight;
+        int switchLeft;
+
+        if (isLayoutRtl()) {
+            switchLeft = getPaddingLeft();
+            switchRight = switchLeft + mSwitchWidth;
+        } else {
+            switchRight = getWidth() - getPaddingRight();
+            switchLeft = switchRight - mSwitchWidth;
+        }
+
         int switchTop = 0;
         int switchBottom = 0;
         switch (getGravity() & Gravity.VERTICAL_GRAVITY_MASK) {
@@ -592,16 +750,32 @@ public class Switch extends CompoundButton {
         mTextPaint.drawableState = getDrawableState();
 
         Layout switchText = getTargetCheckedState() ? mOnLayout : mOffLayout;
-
-        canvas.translate((thumbLeft + thumbRight) / 2 - switchText.getWidth() / 2,
-                (switchInnerTop + switchInnerBottom) / 2 - switchText.getHeight() / 2);
-        switchText.draw(canvas);
+        if (switchText != null) {
+            canvas.translate((thumbLeft + thumbRight) / 2 - switchText.getWidth() / 2,
+                    (switchInnerTop + switchInnerBottom) / 2 - switchText.getHeight() / 2);
+            switchText.draw(canvas);
+        }
 
         canvas.restore();
     }
 
     @Override
+    public int getCompoundPaddingLeft() {
+        if (!isLayoutRtl()) {
+            return super.getCompoundPaddingLeft();
+        }
+        int padding = super.getCompoundPaddingLeft() + mSwitchWidth;
+        if (!TextUtils.isEmpty(getText())) {
+            padding += mSwitchPadding;
+        }
+        return padding;
+    }
+
+    @Override
     public int getCompoundPaddingRight() {
+        if (isLayoutRtl()) {
+            return super.getCompoundPaddingRight();
+        }
         int padding = super.getCompoundPaddingRight() + mSwitchWidth;
         if (!TextUtils.isEmpty(getText())) {
             padding += mSwitchPadding;
@@ -650,5 +824,28 @@ public class Switch extends CompoundButton {
         super.jumpDrawablesToCurrentState();
         mThumbDrawable.jumpToCurrentState();
         mTrackDrawable.jumpToCurrentState();
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(Switch.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(Switch.class.getName());
+        CharSequence switchText = isChecked() ? mTextOn : mTextOff;
+        if (!TextUtils.isEmpty(switchText)) {
+            CharSequence oldText = info.getText();
+            if (TextUtils.isEmpty(oldText)) {
+                info.setText(switchText);
+            } else {
+                StringBuilder newText = new StringBuilder();
+                newText.append(oldText).append(' ').append(switchText);
+                info.setText(newText);
+            }
+        }
     }
 }

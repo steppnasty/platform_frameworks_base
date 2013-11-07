@@ -24,6 +24,8 @@ import android.util.AttributeSet;
 import android.util.SparseBooleanArray;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.regex.Pattern;
 
@@ -68,8 +70,6 @@ import java.util.regex.Pattern;
  * actually use any View subclass as a direct child of TableLayout. The View
  * will be displayed as a single row that spans all the table columns.</p>
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-tablelayout.html">Table
- * Layout tutorial</a>.</p>
  */
 public class TableLayout extends LinearLayout {
     private int[] mMaxWidths;
@@ -184,6 +184,10 @@ public class TableLayout extends LinearLayout {
             mShrinkableColumns = new SparseBooleanArray();
         }
 
+        // TableLayouts are always in vertical orientation; keep this tracked
+        // for shared LinearLayout code.
+        setOrientation(VERTICAL);
+
         mPassThroughListener = new PassThroughHierarchyChangeListener();
         // make sure to call the parent class method to avoid potential
         // infinite loops
@@ -230,6 +234,8 @@ public class TableLayout extends LinearLayout {
      * <p>Indicates whether all columns are shrinkable or not.</p>
      *
      * @return true if all columns are shrinkable, false otherwise
+     *
+     * @attr ref android.R.styleable#TableLayout_shrinkColumns
      */
     public boolean isShrinkAllColumns() {
         return mShrinkAllColumns;
@@ -250,6 +256,8 @@ public class TableLayout extends LinearLayout {
      * <p>Indicates whether all columns are stretchable or not.</p>
      *
      * @return true if all columns are stretchable, false otherwise
+     *
+     * @attr ref android.R.styleable#TableLayout_stretchColumns
      */
     public boolean isStretchAllColumns() {
         return mStretchAllColumns;
@@ -656,6 +664,18 @@ public class TableLayout extends LinearLayout {
     @Override
     protected LinearLayout.LayoutParams generateLayoutParams(ViewGroup.LayoutParams p) {
         return new LayoutParams(p);
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(TableLayout.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(TableLayout.class.getName());
     }
 
     /**

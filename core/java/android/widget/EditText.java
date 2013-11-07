@@ -24,6 +24,8 @@ import android.text.TextUtils;
 import android.text.method.ArrowKeyMovementMethod;
 import android.text.method.MovementMethod;
 import android.util.AttributeSet;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 
 /*
@@ -36,8 +38,8 @@ import android.util.AttributeSet;
  * EditText is a thin veneer over TextView that configures itself
  * to be editable.
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-formstuff.html">Form Stuff
- * tutorial</a>.</p>
+ * <p>See the <a href="{@docRoot}guide/topics/ui/controls/text.html">Text Fields</a>
+ * guide.</p>
  * <p>
  * <b>XML attributes</b>
  * <p>
@@ -113,5 +115,17 @@ public class EditText extends TextView {
                     + "TextUtils.TruncateAt.MARQUEE");
         }
         super.setEllipsize(ellipsis);
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(EditText.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(EditText.class.getName());
     }
 }

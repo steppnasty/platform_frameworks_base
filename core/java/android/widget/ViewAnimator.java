@@ -22,6 +22,8 @@ import android.content.res.TypedArray;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 
@@ -185,6 +187,10 @@ public class ViewAnimator extends FrameLayout {
         } else {
             child.setVisibility(View.GONE);
         }
+        if (index >= 0 && mWhichChild >= index) {
+            // Added item above current one, increment the index of the displayed child
+            setDisplayedChild(mWhichChild + 1);
+        }
     }
 
     @Override
@@ -323,8 +329,21 @@ public class ViewAnimator extends FrameLayout {
     }
 
     /**
+     * Returns whether the current View should be animated the first time the ViewAnimator
+     * is displayed.
+     *
+     * @return true if the current View will be animated the first time it is displayed,
+     * false otherwise.
+     *
+     * @see #setAnimateFirstView(boolean)
+     */
+    public boolean getAnimateFirstView() {
+        return mAnimateFirstTime;
+    }
+
+    /**
      * Indicates whether the current View should be animated the first time
-     * the ViewAnimation is displayed.
+     * the ViewAnimator is displayed.
      *
      * @param animate True to animate the current View the first time it is displayed,
      *                false otherwise.
@@ -336,5 +355,17 @@ public class ViewAnimator extends FrameLayout {
     @Override
     public int getBaseline() {
         return (getCurrentView() != null) ? getCurrentView().getBaseline() : super.getBaseline();
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(ViewAnimator.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(ViewAnimator.class.getName());
     }
 }

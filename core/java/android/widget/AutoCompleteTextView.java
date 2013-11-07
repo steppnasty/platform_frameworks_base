@@ -75,8 +75,8 @@ import com.android.internal.R;
  * }
  * </pre>
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-autocomplete.html">Auto Complete
- * tutorial</a>.</p>
+ * <p>See the <a href="{@docRoot}guide/topics/ui/controls/text.html">Text Fields</a>
+ * guide.</p>
  *
  * @attr ref android.R.styleable#AutoCompleteTextView_completionHint
  * @attr ref android.R.styleable#AutoCompleteTextView_completionThreshold
@@ -218,6 +218,8 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
      *
      * @param hint the text to be displayed to the user
      *
+     * @see #getCompletionHint()
+     *
      * @attr ref android.R.styleable#AutoCompleteTextView_completionHint
      */
     public void setCompletionHint(CharSequence hint) {
@@ -237,7 +239,20 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
             mHintView = null;
         }
     }
-    
+
+    /**
+     * Gets the optional hint text displayed at the bottom of the the matching list.
+     *
+     * @return The hint text, if any
+     *
+     * @see #setCompletionHint(CharSequence)
+     *
+     * @attr ref android.R.styleable#AutoCompleteTextView_completionHint
+     */
+    public CharSequence getCompletionHint() {
+        return mHintText;
+    }
+
     /**
      * <p>Returns the current width for the auto-complete drop down list. This can
      * be a fixed width, or {@link ViewGroup.LayoutParams#MATCH_PARENT} to fill the screen, or
@@ -468,6 +483,8 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
      * @return the minimum number of characters to type to show the drop down
      *
      * @see #setThreshold(int)
+     *
+     * @attr ref android.R.styleable#AutoCompleteTextView_completionThreshold
      */
     public int getThreshold() {
         return mThreshold;
@@ -559,6 +576,23 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
      */
     public AdapterView.OnItemSelectedListener getOnItemSelectedListener() {
         return mItemSelectedListener;
+    }
+
+    /**
+     * Set a listener that will be invoked whenever the AutoCompleteTextView's
+     * list of completions is dismissed.
+     * @param dismissListener Listener to invoke when completions are dismissed
+     */
+    public void setOnDismissListener(final OnDismissListener dismissListener) {
+        PopupWindow.OnDismissListener wrappedListener = null;
+        if (dismissListener != null) {
+            wrappedListener = new PopupWindow.OnDismissListener() {
+                @Override public void onDismiss() {
+                    dismissListener.onDismiss();
+                }
+            };
+        }
+        mPopup.setOnDismissListener(wrappedListener);
     }
 
     /**
@@ -887,8 +921,6 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
      *
      * @param filter If <code>false</code>, no filtering will be performed
      *        as a result of this call.
-     * 
-     * @hide Pending API council approval.
      */
     public void setText(CharSequence text, boolean filter) {
         if (filter) {
@@ -1031,7 +1063,9 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
     public void ensureImeVisible(boolean visible) {
         mPopup.setInputMethodMode(visible
                 ? ListPopupWindow.INPUT_METHOD_NEEDED : ListPopupWindow.INPUT_METHOD_NOT_NEEDED);
-        showDropDown();
+        if (mPopup.isDropDownAlwaysVisible() || (mFilter != null && enoughToFilter())) {
+            showDropDown();
+        }
     }
 
     /**
@@ -1085,10 +1119,11 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
 
                 for (int i = 0; i < count; i++) {
                     if (adapter.isEnabled(i)) {
-                        realCount++;
                         Object item = adapter.getItem(i);
                         long id = adapter.getItemId(i);
-                        completions[i] = new CompletionInfo(id, i, convertSelectionToString(item));
+                        completions[realCount] = new CompletionInfo(id, realCount,
+                                convertSelectionToString(item));
+                        realCount++;
                     }
                 }
                 
@@ -1187,6 +1222,19 @@ public class AutoCompleteTextView extends EditText implements Filter.FilterListe
         CharSequence fixText(CharSequence invalidText);
     }
     
+    /**
+     * Listener to respond to the AutoCompleteTextView's completion list being dismissed.
+     * @see AutoCompleteTextView#setOnDismissListener(OnDismissListener)
+     */
+    public interface OnDismissListener {
+        /**
+         * This method will be invoked whenever the AutoCompleteTextView's list
+         * of completion options has been dismissed and is no longer available
+         * for user interaction.
+         */
+        void onDismiss();
+    }
+
     /**
      * Allows us a private hook into the on click event without preventing users from setting
      * their own click listener.

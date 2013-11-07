@@ -17,28 +17,31 @@
 package android.widget;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.AttributeSet;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.Calendar;
 
 /**
  * Like AnalogClock, but digital.  Shows seconds.
  *
- * FIXME: implement separate views for hours/minutes/seconds, so
- * proportional fonts don't shake rendering
+ * @deprecated It is recommended you use {@link TextClock} instead.
  */
-
+@Deprecated
 public class DigitalClock extends TextView {
+    // FIXME: implement separate views for hours/minutes/seconds, so
+    // proportional fonts don't shake rendering
 
     Calendar mCalendar;
     private final static String m12 = "h:mm:ss aa";
     private final static String m24 = "k:mm:ss";
+    @SuppressWarnings("FieldCanBeLocal") // We must keep a reference to this observer
     private FormatChangeObserver mFormatChangeObserver;
 
     private Runnable mTicker;
@@ -50,17 +53,15 @@ public class DigitalClock extends TextView {
 
     public DigitalClock(Context context) {
         super(context);
-        initClock(context);
+        initClock();
     }
 
     public DigitalClock(Context context, AttributeSet attrs) {
         super(context, attrs);
-        initClock(context);
+        initClock();
     }
 
-    private void initClock(Context context) {
-        Resources r = mContext.getResources();
-
+    private void initClock() {
         if (mCalendar == null) {
             mCalendar = Calendar.getInstance();
         }
@@ -82,16 +83,16 @@ public class DigitalClock extends TextView {
          * requests a tick on the next hard-second boundary
          */
         mTicker = new Runnable() {
-                public void run() {
-                    if (mTickerStopped) return;
-                    mCalendar.setTimeInMillis(System.currentTimeMillis());
-                    setText(DateFormat.format(mFormat, mCalendar));
-                    invalidate();
-                    long now = SystemClock.uptimeMillis();
-                    long next = now + (1000 - now % 1000);
-                    mHandler.postAtTime(mTicker, next);
-                }
-            };
+            public void run() {
+                if (mTickerStopped) return;
+                mCalendar.setTimeInMillis(System.currentTimeMillis());
+                setText(DateFormat.format(mFormat, mCalendar));
+                invalidate();
+                long now = SystemClock.uptimeMillis();
+                long next = now + (1000 - now % 1000);
+                mHandler.postAtTime(mTicker, next);
+            }
+        };
         mTicker.run();
     }
 
@@ -125,5 +126,19 @@ public class DigitalClock extends TextView {
         public void onChange(boolean selfChange) {
             setFormat();
         }
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        //noinspection deprecation
+        event.setClassName(DigitalClock.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        //noinspection deprecation
+        info.setClassName(DigitalClock.class.getName());
     }
 }

@@ -26,10 +26,15 @@ import android.database.DataSetObserver;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.view.ViewTreeObserver.OnGlobalLayoutListener;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.PopupWindow.OnDismissListener;
 
 
 /**
@@ -37,10 +42,16 @@ import android.view.ViewGroup;
  * The items in the Spinner come from the {@link Adapter} associated with
  * this view.
  *
- * <p>See the <a href="{@docRoot}resources/tutorials/views/hello-spinner.html">Spinner
- * tutorial</a>.</p>
+ * <p>See the <a href="{@docRoot}guide/topics/ui/controls/spinner.html">Spinners</a> guide.</p>
  *
+ * @attr ref android.R.styleable#Spinner_dropDownHorizontalOffset
+ * @attr ref android.R.styleable#Spinner_dropDownSelector
+ * @attr ref android.R.styleable#Spinner_dropDownVerticalOffset
+ * @attr ref android.R.styleable#Spinner_dropDownWidth
+ * @attr ref android.R.styleable#Spinner_gravity
+ * @attr ref android.R.styleable#Spinner_popupBackground
  * @attr ref android.R.styleable#Spinner_prompt
+ * @attr ref android.R.styleable#Spinner_spinnerMode
  */
 @Widget
 public class Spinner extends AbsSpinner implements OnClickListener {
@@ -201,6 +212,130 @@ public class Spinner extends AbsSpinner implements OnClickListener {
         }
     }
 
+    /**
+     * Set the background drawable for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; this method is a no-op in other modes.
+     *
+     * @param background Background drawable
+     *
+     * @attr ref android.R.styleable#Spinner_popupBackground
+     */
+    public void setPopupBackgroundDrawable(Drawable background) {
+        if (!(mPopup instanceof DropdownPopup)) {
+            Log.e(TAG, "setPopupBackgroundDrawable: incompatible spinner mode; ignoring...");
+            return;
+        }
+        ((DropdownPopup) mPopup).setBackgroundDrawable(background);
+    }
+
+    /**
+     * Set the background drawable for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; this method is a no-op in other modes.
+     *
+     * @param resId Resource ID of a background drawable
+     *
+     * @attr ref android.R.styleable#Spinner_popupBackground
+     */
+    public void setPopupBackgroundResource(int resId) {
+        setPopupBackgroundDrawable(getContext().getResources().getDrawable(resId));
+    }
+
+    /**
+     * Get the background drawable for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; other modes will return null.
+     *
+     * @return background Background drawable
+     *
+     * @attr ref android.R.styleable#Spinner_popupBackground
+     */
+    public Drawable getPopupBackground() {
+        return mPopup.getBackground();
+    }
+
+    /**
+     * Set a vertical offset in pixels for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; this method is a no-op in other modes.
+     *
+     * @param pixels Vertical offset in pixels
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownVerticalOffset
+     */
+    public void setDropDownVerticalOffset(int pixels) {
+        mPopup.setVerticalOffset(pixels);
+    }
+
+    /**
+     * Get the configured vertical offset in pixels for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; other modes will return 0.
+     *
+     * @return Vertical offset in pixels
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownVerticalOffset
+     */
+    public int getDropDownVerticalOffset() {
+        return mPopup.getVerticalOffset();
+    }
+
+    /**
+     * Set a horizontal offset in pixels for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; this method is a no-op in other modes.
+     *
+     * @param pixels Horizontal offset in pixels
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownHorizontalOffset
+     */
+    public void setDropDownHorizontalOffset(int pixels) {
+        mPopup.setHorizontalOffset(pixels);
+    }
+
+    /**
+     * Get the configured horizontal offset in pixels for the spinner's popup window of choices.
+     * Only valid in {@link #MODE_DROPDOWN}; other modes will return 0.
+     *
+     * @return Horizontal offset in pixels
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownHorizontalOffset
+     */
+    public int getDropDownHorizontalOffset() {
+        return mPopup.getHorizontalOffset();
+    }
+
+    /**
+     * Set the width of the spinner's popup window of choices in pixels. This value
+     * may also be set to {@link android.view.ViewGroup.LayoutParams#MATCH_PARENT}
+     * to match the width of the Spinner itself, or
+     * {@link android.view.ViewGroup.LayoutParams#WRAP_CONTENT} to wrap to the measured size
+     * of contained dropdown list items.
+     *
+     * <p>Only valid in {@link #MODE_DROPDOWN}; this method is a no-op in other modes.</p>
+     *
+     * @param pixels Width in pixels, WRAP_CONTENT, or MATCH_PARENT
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownWidth
+     */
+    public void setDropDownWidth(int pixels) {
+        if (!(mPopup instanceof DropdownPopup)) {
+            Log.e(TAG, "Cannot set dropdown width for MODE_DIALOG, ignoring");
+            return;
+        }
+        mDropDownWidth = pixels;
+    }
+
+    /**
+     * Get the configured width of the spinner's popup window of choices in pixels.
+     * The returned value may also be {@link android.view.ViewGroup.LayoutParams#MATCH_PARENT}
+     * meaning the popup window will match the width of the Spinner itself, or
+     * {@link android.view.ViewGroup.LayoutParams#WRAP_CONTENT} to wrap to the measured size
+     * of contained dropdown list items.
+     *
+     * @return Width in pixels, WRAP_CONTENT, or MATCH_PARENT
+     *
+     * @attr ref android.R.styleable#Spinner_dropDownWidth
+     */
+    public int getDropDownWidth() {
+        return mDropDownWidth;
+    }
+
     @Override
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
@@ -223,11 +358,21 @@ public class Spinner extends AbsSpinner implements OnClickListener {
     public void setGravity(int gravity) {
         if (mGravity != gravity) {
             if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == 0) {
-                gravity |= Gravity.LEFT;
+                gravity |= Gravity.START;
             }
             mGravity = gravity;
             requestLayout();
         }
+    }
+
+    /**
+     * Describes how the selected item view is positioned. The default is determined by the
+     * current theme.
+     *
+     * @return A {@link android.view.Gravity Gravity} value
+     */
+    public int getGravity() {
+        return mGravity;
     }
 
     @Override
@@ -273,6 +418,7 @@ public class Spinner extends AbsSpinner implements OnClickListener {
     /**
      * <p>A spinner does not support item click events. Calling this method
      * will raise an exception.</p>
+     * <p>Instead use {@link AdapterView#setOnItemSelectedListener}.
      *
      * @param l this listener will be ignored
      */
@@ -317,7 +463,7 @@ public class Spinner extends AbsSpinner implements OnClickListener {
     /**
      * Creates and positions all views for this Spinner.
      *
-     * @param delta Change in the selected position. +1 moves selection is moving to the right,
+     * @param delta Change in the selected position. +1 means selection is moving to the right,
      * so views are scrolling to the left. -1 means selection is moving to the left.
      */
     @Override
@@ -349,7 +495,9 @@ public class Spinner extends AbsSpinner implements OnClickListener {
         View sel = makeAndAddView(mSelectedPosition);
         int width = sel.getMeasuredWidth();
         int selectedOffset = childrenLeft;
-        switch (mGravity & Gravity.HORIZONTAL_GRAVITY_MASK) {
+        final int layoutDirection = getLayoutDirection();
+        final int absoluteGravity = Gravity.getAbsoluteGravity(mGravity, layoutDirection);
+        switch (absoluteGravity & Gravity.HORIZONTAL_GRAVITY_MASK) {
             case Gravity.CENTER_HORIZONTAL:
                 selectedOffset = childrenLeft + (childrenWidth / 2) - (width / 2);
                 break;
@@ -464,10 +612,22 @@ public class Spinner extends AbsSpinner implements OnClickListener {
 
         return handled;
     }
-    
+
     public void onClick(DialogInterface dialog, int which) {
         setSelection(which);
         dialog.dismiss();
+    }
+
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        super.onInitializeAccessibilityEvent(event);
+        event.setClassName(Spinner.class.getName());
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        info.setClassName(Spinner.class.getName());
     }
 
     /**
@@ -662,6 +822,13 @@ public class Spinner extends AbsSpinner implements OnClickListener {
          */
         public void setPromptText(CharSequence hintText);
         public CharSequence getHintText();
+
+        public void setBackgroundDrawable(Drawable bg);
+        public void setVerticalOffset(int px);
+        public void setHorizontalOffset(int px);
+        public Drawable getBackground();
+        public int getVerticalOffset();
+        public int getHorizontalOffset();
     }
     
     private class DialogPopup implements SpinnerPopup, DialogInterface.OnClickListener {
@@ -701,7 +868,40 @@ public class Spinner extends AbsSpinner implements OnClickListener {
         
         public void onClick(DialogInterface dialog, int which) {
             setSelection(which);
+            if (mOnItemClickListener != null) {
+                performItemClick(null, which, mListAdapter.getItemId(which));
+            }
             dismiss();
+        }
+
+        @Override
+        public void setBackgroundDrawable(Drawable bg) {
+            Log.e(TAG, "Cannot set popup background for MODE_DIALOG, ignoring");
+        }
+
+        @Override
+        public void setVerticalOffset(int px) {
+            Log.e(TAG, "Cannot set vertical offset for MODE_DIALOG, ignoring");
+        }
+
+        @Override
+        public void setHorizontalOffset(int px) {
+            Log.e(TAG, "Cannot set horizontal offset for MODE_DIALOG, ignoring");
+        }
+
+        @Override
+        public Drawable getBackground() {
+            return null;
+        }
+
+        @Override
+        public int getVerticalOffset() {
+            return 0;
+        }
+
+        @Override
+        public int getHorizontalOffset() {
+            return 0;
         }
     }
     
@@ -718,6 +918,9 @@ public class Spinner extends AbsSpinner implements OnClickListener {
             setOnItemClickListener(new OnItemClickListener() {
                 public void onItemClick(AdapterView parent, View v, int position, long id) {
                     Spinner.this.setSelection(position);
+                    if (mOnItemClickListener != null) {
+                        Spinner.this.performItemClick(v, position, mAdapter.getItemId(position));
+                    }
                     dismiss();
                 }
             });
@@ -741,19 +944,18 @@ public class Spinner extends AbsSpinner implements OnClickListener {
         @Override
         public void show() {
             final Drawable background = getBackground();
-            int bgOffset = 0;
+            int hOffset = 0;
             if (background != null) {
                 background.getPadding(mTempRect);
-                bgOffset = -mTempRect.left;
+                hOffset = isLayoutRtl() ? mTempRect.right : -mTempRect.left;
             } else {
                 mTempRect.left = mTempRect.right = 0;
             }
 
             final int spinnerPaddingLeft = Spinner.this.getPaddingLeft();
+            final int spinnerPaddingRight = Spinner.this.getPaddingRight();
+            final int spinnerWidth = Spinner.this.getWidth();
             if (mDropDownWidth == WRAP_CONTENT) {
-                final int spinnerWidth = Spinner.this.getWidth();
-                final int spinnerPaddingRight = Spinner.this.getPaddingRight();
-
                 int contentWidth =  measureContentWidth(
                         (SpinnerAdapter) mAdapter, getBackground());
                 final int contentWidthLimit = mContext.getResources()
@@ -761,21 +963,48 @@ public class Spinner extends AbsSpinner implements OnClickListener {
                 if (contentWidth > contentWidthLimit) {
                     contentWidth = contentWidthLimit;
                 }
-
                 setContentWidth(Math.max(
                        contentWidth, spinnerWidth - spinnerPaddingLeft - spinnerPaddingRight));
             } else if (mDropDownWidth == MATCH_PARENT) {
-                final int spinnerWidth = Spinner.this.getWidth();
-                final int spinnerPaddingRight = Spinner.this.getPaddingRight();
                 setContentWidth(spinnerWidth - spinnerPaddingLeft - spinnerPaddingRight);
             } else {
                 setContentWidth(mDropDownWidth);
             }
-            setHorizontalOffset(bgOffset + spinnerPaddingLeft);
+
+            if (isLayoutRtl()) {
+                hOffset += spinnerWidth - spinnerPaddingRight - getWidth();
+            } else {
+                hOffset += spinnerPaddingLeft;
+            }
+            setHorizontalOffset(hOffset);
             setInputMethodMode(ListPopupWindow.INPUT_METHOD_NOT_NEEDED);
             super.show();
             getListView().setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             setSelection(Spinner.this.getSelectedItemPosition());
+
+            // Make sure we hide if our anchor goes away.
+            // TODO: This might be appropriate to push all the way down to PopupWindow,
+            // but it may have other side effects to investigate first. (Text editing handles, etc.)
+            final ViewTreeObserver vto = getViewTreeObserver();
+            if (vto != null) {
+                final OnGlobalLayoutListener layoutListener = new OnGlobalLayoutListener() {
+                    @Override
+                    public void onGlobalLayout() {
+                        if (!Spinner.this.isVisibleToUser()) {
+                            dismiss();
+                        }
+                    }
+                };
+                vto.addOnGlobalLayoutListener(layoutListener);
+                setOnDismissListener(new OnDismissListener() {
+                    @Override public void onDismiss() {
+                        final ViewTreeObserver vto = getViewTreeObserver();
+                        if (vto != null) {
+                            vto.removeOnGlobalLayoutListener(layoutListener);
+                        }
+                    }
+                });
+            }
         }
     }
 }
