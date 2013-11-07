@@ -31,7 +31,7 @@
     <!-- top: status -->
     <RelativeLayout
         android:layout_height="0dip"
-        android:layout_weight="1"
+        android:layout_weight="0.42"
         android:layout_width="match_parent"
         android:gravity="center">
 
@@ -39,6 +39,15 @@
             android:layout_width="512dip"
             android:layout_height="wrap_content"
             android:gravity="center">
+
+            <!-- Status -->
+            <include layout="@layout/keyguard_screen_status_port"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="50dip"
+                android:layout_marginTop="50dip"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentStart="true"/>
 
             <!-- Music transport control -->
             <include android:id="@+id/transport"
@@ -52,16 +61,6 @@
                 android:layout_height="512dip"
                 />
 
-            <include layout="@layout/keyguard_screen_status_port"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="50dip"
-                android:layout_marginTop="50dip"
-                android:layout_marginBottom="100dip"
-                android:layout_marginRight="64dip"
-                android:layout_alignParentTop="true"
-                android:layout_alignParentLeft="true"/>
-
         </RelativeLayout>
 
     </RelativeLayout>
@@ -69,14 +68,15 @@
     <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dip"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:layout_weight="0.58"
+            android:orientation="vertical"
+            android:gravity="bottom">
 
         <TextView
             android:id="@+id/screenLocked"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="24dip"
+            android:layout_marginStart="24dip"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:layout_marginTop="12dip"
             android:drawablePadding="4dip"

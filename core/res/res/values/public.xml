@@ -2031,5 +2031,11 @@
   <public type="attr" name="permissionGroupFlags" id="0x010103c3" />
   <public type="attr" name="labelFor" id="0x010103c4" />
   <public type="attr" name="permissionFlags" id="0x010103c5" />
-  <public type="attr" name="showOnLockScreen" id="0x010103c6" />
+  <public type="attr" name="checkedTextViewStyle" id="0x010103c6" />
+  <public type="attr" name="showOnLockScreen" id="0x010103c7" />
+
+  <public type="style" name="Widget.Holo.CheckedTextView" id="0x010301d9" />
+  <public type="style" name="Widget.Holo.Light.CheckedTextView" id="0x010301da" />
+  <public type="style" name="Widget.DeviceDefault.CheckedTextView" id="0x010301db" />
+  <public type="style" name="Widget.DeviceDefault.Light.CheckedTextView" id="0x010301dc" />
 </resources>

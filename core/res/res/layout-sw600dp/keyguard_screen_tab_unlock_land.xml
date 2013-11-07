@@ -30,7 +30,7 @@
     <!-- left side: status and music -->
     <RelativeLayout
         android:layout_height="match_parent"
-        android:layout_weight="1"
+        android:layout_weight="0.42"
         android:layout_width="0dip"
         android:gravity="center">
 
@@ -38,7 +38,17 @@
             android:layout_width="512dip"
             android:layout_height="wrap_content">
 
-            <!-- Music transport control underneath -->
+            <!-- Status -->
+            <include layout="@layout/keyguard_screen_status_land"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="50dip"
+                android:layout_marginTop="50dip"
+                android:layout_marginEnd="64dip"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentStart="true"/>
+
+            <!-- Music transport control -->
             <include android:id="@+id/transport"
                 layout="@layout/keyguard_transport_control"
                 android:layout_row="0"
@@ -50,16 +60,6 @@
                 android:layout_height="512dip"
                 />
 
-            <include layout="@layout/keyguard_screen_status_land"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="50dip"
-                android:layout_marginTop="50dip"
-                android:layout_marginBottom="82dip"
-                android:layout_marginRight="64dip"
-                android:layout_alignParentTop="true"
-                android:layout_alignParentLeft="true"/>
-
         </RelativeLayout>
 
     </RelativeLayout>
@@ -67,7 +67,7 @@
     <!-- right side -->
     <RelativeLayout
         android:layout_height="match_parent"
-        android:layout_weight="1"
+        android:layout_weight="0.58"
         android:layout_width="0dip"
         android:gravity="center_horizontal|center_vertical">
 
@@ -78,7 +78,7 @@
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:gravity="center"
             android:layout_marginTop="12dip"
-            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"
             android:layout_alignParentTop="true"
             android:drawablePadding="4dip"/>
 
@@ -110,9 +110,9 @@
             android:id="@+id/emergencyCallButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginRight="80dip"
+            android:layout_marginEnd="80dip"
             android:layout_marginBottom="80dip"
-            android:layout_alignParentRight="true"
+            android:layout_alignParentEnd="true"
             android:layout_alignParentBottom="true"
             android:drawableLeft="@drawable/ic_emergency"
             style="@style/Widget.Button.Transparent"

@@ -254,7 +254,6 @@
   <java-symbol type="id" name="action_mode_close_button" />
   <java-symbol type="id" name="actions" />
   <java-symbol type="id" name="activity_chooser_view_content" />
-  <java-symbol type="id" name="addAccount" />
   <java-symbol type="id" name="albumart" />
   <java-symbol type="id" name="alertTitle" />
   <java-symbol type="id" name="allow_button" />
