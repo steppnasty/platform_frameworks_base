@@ -729,8 +729,8 @@ public class StateMachine {
         /** The debug flag */
         private boolean mDbg = false;
 
-        /** The quit object */
-        private static final Object mQuitObj = new Object();
+        /** The SmHandler object, identifies that message is internal */
+        private static final Object mSmHandlerObj = new Object();
 
         /** The current message */
         private Message mMsg;
@@ -1235,15 +1235,21 @@ public class StateMachine {
             mDeferredMessages.add(newMsg);
         }
 
-        /** @see StateMachine#deferMessage(Message) */
+        /** @see StateMachine#quit() */
         private final void quit() {
             if (mDbg) Log.d(TAG, "quit:");
-            sendMessage(obtainMessage(SM_QUIT_CMD, mQuitObj));
+            sendMessage(obtainMessage(SM_QUIT_CMD, mSmHandlerObj));
         }
 
-        /** @see StateMachine#isQuit(Message) */
+        /** @see StateMachine#quitNow() */
+        private final void quitNow() {
+            if (mDbg) Log.d(TAG, "abort:");
+            sendMessageAtFrontOfQueue(obtainMessage(SM_QUIT_CMD, mSmHandlerObj));
+        }
+
+        /** Validate that the message was sent by quit or abort. */
         private final boolean isQuit(Message msg) {
-            return (msg.what == SM_QUIT_CMD) && (msg.obj == mQuitObj);
+            return (msg.what == SM_QUIT_CMD) && (msg.obj == mSmHandlerObj);
         }
 
         /** @see StateMachine#isDbg() */
@@ -1286,7 +1292,7 @@ public class StateMachine {
     }
 
     /**
-     * Constructor creates an StateMachine using the looper.
+     * Constructor creates a StateMachine using the looper.
      *
      * @param name of the state machine
      */
@@ -1647,25 +1653,24 @@ public class StateMachine {
     }
 
     /**
-     * Conditionally quit the looper and stop execution.
-     *
-     * This sends the SM_QUIT_MSG to the state machine and
-     * if not handled by any state's processMessage then the
-     * state machine will be stopped and no further messages
-     * will be processed.
+     * Quit the state machine after all currently queued up messages are processed.
      */
-    public final void quit() {
-        // mSmHandler can be null if the state machine has quit.
+    protected final void quit() {
+        // mSmHandler can be null if the state machine is already stopped.
         if (mSmHandler == null) return;
 
         mSmHandler.quit();
     }
 
     /**
-     * @return ture if msg is quit
+     * Quit the state machine immediately.
+     * All currently queued messages will be discarded.
      */
-    protected final boolean isQuit(Message msg) {
-        return mSmHandler.isQuit(msg);
+    protected final void quitNow() {
+        // mSmHandler can be null if the state machine is already stopped.
+        if (mSmHandler == null) return;
+
+        mSmHandler.quitNow();
     }
 
     /**
