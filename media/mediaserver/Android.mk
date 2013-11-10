@@ -11,12 +11,11 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	libbinder
 
-base := $(LOCAL_PATH)/../..
 
 LOCAL_C_INCLUDES := \
-    $(base)/services/audioflinger \
-    $(base)/services/camera/libcameraservice \
-    $(base)/media/libmediaplayerservice
+    frameworks/av/services/audioflinger \
+    frameworks/base/services/camera/libcameraservice \
+    frameworks/base/media/libmediaplayerservice
 
 LOCAL_MODULE:= mediaserver
 
