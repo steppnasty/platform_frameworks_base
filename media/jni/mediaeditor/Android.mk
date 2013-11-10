@@ -38,13 +38,13 @@ LOCAL_C_INCLUDES += \
     $(call include-path-for, corecg graphics) \
     $(TOP)/frameworks/base/include/media/stagefright/openmax \
     $(TOP)/frameworks/base/core/jni/mediaeditor \
-    $(TOP)/frameworks/media/libvideoeditor/vss/inc \
-    $(TOP)/frameworks/media/libvideoeditor/vss/common/inc \
-    $(TOP)/frameworks/media/libvideoeditor/vss/mcs/inc \
-    $(TOP)/frameworks/media/libvideoeditor/vss/stagefrightshells/inc \
-    $(TOP)/frameworks/media/libvideoeditor/include \
-    $(TOP)/frameworks/media/libvideoeditor/lvpp \
-    $(TOP)/frameworks/media/libvideoeditor/osal/inc
+    $(TOP)/frameworks/av/libvideoeditor/vss/inc \
+    $(TOP)/frameworks/av/libvideoeditor/vss/common/inc \
+    $(TOP)/frameworks/av/libvideoeditor/vss/mcs/inc \
+    $(TOP)/frameworks/av/libvideoeditor/vss/stagefrightshells/inc \
+    $(TOP)/frameworks/av/libvideoeditor/include \
+    $(TOP)/frameworks/av/libvideoeditor/lvpp \
+    $(TOP)/frameworks/av/libvideoeditor/osal/inc
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
