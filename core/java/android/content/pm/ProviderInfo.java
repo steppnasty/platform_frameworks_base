@@ -143,8 +143,7 @@ public final class ProviderInfo extends ComponentInfo
     };
 
     public String toString() {
-        return "ContentProviderInfo{name=" + authority + " className=" + name
-            + " isSyncable=" + (isSyncable ? "true" : "false") + "}";
+        return "ContentProviderInfo{name=" + authority + " className=" + name + "}";
     }
 
     private ProviderInfo(Parcel in) {

@@ -17,6 +17,7 @@
 package android.net;
 
 import static android.content.pm.PackageManager.GET_SIGNATURES;
+import static android.net.NetworkPolicy.CYCLE_NONE;
 import static android.text.format.Time.MONTH_DAY;
 
 import android.content.Context;
@@ -25,6 +26,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.Signature;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.text.format.Time;
 
 import com.google.android.collect.Sets;
@@ -70,27 +72,6 @@ public class NetworkPolicyManager {
         return (NetworkPolicyManager) context.getSystemService(Context.NETWORK_POLICY_SERVICE);
     }
 
-    public static NetworkPolicyManager getSystemService(Context context) {
-        return (NetworkPolicyManager) context.getSystemService(Context.NETWORK_POLICY_SERVICE);
-    }
-
-    /** {@hide} */
-    public void setNetworkPolicies(NetworkPolicy[] policies) {
-        try {
-            mService.setNetworkPolicies(policies);
-        } catch (RemoteException e) {
-        }
-    }
-
-    /** {@hide} */
-    public NetworkPolicy[] getNetworkPolicies() {
-        try {
-            return mService.getNetworkPolicies();
-        } catch (RemoteException e) {
-            return null;
-        }
-    }
-
     /**
      * Set policy flags for specific UID.
      *
@@ -134,6 +115,21 @@ public class NetworkPolicyManager {
         }
     }
 
+    public void setNetworkPolicies(NetworkPolicy[] policies) {
+        try {
+            mService.setNetworkPolicies(policies);
+        } catch (RemoteException e) {
+        }
+    }
+
+    public NetworkPolicy[] getNetworkPolicies() {
+        try {
+            return mService.getNetworkPolicies();
+        } catch (RemoteException e) {
+            return null;
+        }
+    }
+
     public void setRestrictBackground(boolean restrictBackground) {
         try {
             mService.setRestrictBackground(restrictBackground);
@@ -158,7 +154,11 @@ public class NetworkPolicyManager {
      * @hide
      */
     public static long computeLastCycleBoundary(long currentTime, NetworkPolicy policy) {
-        final Time now = new Time(Time.TIMEZONE_UTC);
+        if (policy.cycleDay == CYCLE_NONE) {
+            throw new IllegalArgumentException("Unable to compute boundary without cycleDay");
+        }
+
+        final Time now = new Time(policy.cycleTimezone);
         now.set(currentTime);
 
         // first, find cycle boundary for current month
@@ -184,7 +184,11 @@ public class NetworkPolicyManager {
 
     /** {@hide} */
     public static long computeNextCycleBoundary(long currentTime, NetworkPolicy policy) {
-        final Time now = new Time(Time.TIMEZONE_UTC);
+        if (policy.cycleDay == CYCLE_NONE) {
+            throw new IllegalArgumentException("Unable to compute boundary without cycleDay");
+        }
+
+        final Time now = new Time(policy.cycleTimezone);
         now.set(currentTime);
 
         // first, find cycle boundary for current month
@@ -210,7 +214,7 @@ public class NetworkPolicyManager {
 
     /**
      * Snap to the cycle day for the current month given; when cycle day doesn't
-     * exist, it snaps to 1st of following month.
+     * exist, it snaps to last second of current month.
      *
      * @hide
      */
@@ -230,10 +234,10 @@ public class NetworkPolicyManager {
      * Check if given UID can have a {@link #setUidPolicy(int, int)} defined,
      * usually to protect critical system services.
      */
+    @Deprecated
     public static boolean isUidValidForPolicy(Context context, int uid) {
         // first, quick-reject non-applications
-        if (uid < android.os.Process.FIRST_APPLICATION_UID
-                || uid > android.os.Process.LAST_APPLICATION_UID) {
+        if (!UserHandle.isApp(uid)) {
             return false;
         }
 

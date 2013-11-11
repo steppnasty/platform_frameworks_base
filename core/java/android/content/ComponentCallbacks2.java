@@ -84,12 +84,21 @@ public interface ComponentCallbacks2 extends ComponentCallbacks {
      * Called when the operating system has determined that it is a good
      * time for a process to trim unneeded memory from its process.  This will
      * happen for example when it goes in the background and there is not enough
-     * memory to keep as many background processes running as desired.
-     * 
+     * memory to keep as many background processes running as desired.  You
+     * should never compare to exact values of the level, since new intermediate
+     * values may be added -- you will typically want to compare if the value
+     * is greater or equal to a level you are interested in.
+     *
+     * <p>To retrieve the processes current trim level at any point, you can
+     * use {@link android.app.ActivityManager#getMyMemoryState
+     * ActivityManager.getMyMemoryState(RunningAppProcessInfo)}.
+     *
      * @param level The context of the trim, giving a hint of the amount of
      * trimming the application may like to perform.  May be
      * {@link #TRIM_MEMORY_COMPLETE}, {@link #TRIM_MEMORY_MODERATE},
-     * {@link #TRIM_MEMORY_BACKGROUND}, or {@link #TRIM_MEMORY_UI_HIDDEN}.
+     * {@link #TRIM_MEMORY_BACKGROUND}, {@link #TRIM_MEMORY_UI_HIDDEN},
+     * {@link #TRIM_MEMORY_RUNNING_CRITICAL}, {@link #TRIM_MEMORY_RUNNING_LOW},
+     * or {@link #TRIM_MEMORY_RUNNING_MODERATE}.
      */
     void onTrimMemory(int level);
 }

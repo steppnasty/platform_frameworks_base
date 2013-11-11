@@ -34,11 +34,19 @@ import java.util.ArrayList;
  * calling {@link ContentResolver#acquireContentProviderClient}. This object must be released
  * using {@link #release} in order to indicate to the system that the {@link ContentProvider} is
  * no longer needed and can be killed to free up resources.
+ *
+ * <p>Note that you should generally create a new ContentProviderClient instance
+ * for each thread that will be performing operations.  Unlike
+ * {@link ContentResolver}, the methods here such as {@link #query} and
+ * {@link #openFile} are not thread safe -- you must not call
+ * {@link #release()} on the ContentProviderClient those calls are made from
+ * until you are finished with the data they have returned.
  */
 public class ContentProviderClient {
     private final IContentProvider mContentProvider;
     private final ContentResolver mContentResolver;
     private final boolean mStable;
+    private boolean mReleased;
 
     /**
      * @hide
@@ -85,35 +93,77 @@ public class ContentProviderClient {
 
     /** See {@link ContentProvider#getType ContentProvider.getType} */
     public String getType(Uri url) throws RemoteException {
-        return mContentProvider.getType(url);
+        try {
+            return mContentProvider.getType(url);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#getStreamTypes ContentProvider.getStreamTypes} */
     public String[] getStreamTypes(Uri url, String mimeTypeFilter) throws RemoteException {
-        return mContentProvider.getStreamTypes(url, mimeTypeFilter);
+        try {
+            return mContentProvider.getStreamTypes(url, mimeTypeFilter);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#insert ContentProvider.insert} */
     public Uri insert(Uri url, ContentValues initialValues)
             throws RemoteException {
-        return mContentProvider.insert(url, initialValues);
+        try {
+            return mContentProvider.insert(url, initialValues);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#bulkInsert ContentProvider.bulkInsert} */
     public int bulkInsert(Uri url, ContentValues[] initialValues) throws RemoteException {
-        return mContentProvider.bulkInsert(url, initialValues);
+        try {
+            return mContentProvider.bulkInsert(url, initialValues);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#delete ContentProvider.delete} */
     public int delete(Uri url, String selection, String[] selectionArgs)
             throws RemoteException {
-        return mContentProvider.delete(url, selection, selectionArgs);
+        try {
+            return mContentProvider.delete(url, selection, selectionArgs);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#update ContentProvider.update} */
     public int update(Uri url, ContentValues values, String selection,
             String[] selectionArgs) throws RemoteException {
-        return mContentProvider.update(url, values, selection, selectionArgs);
+        try {
+            return mContentProvider.update(url, values, selection, selectionArgs);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -125,7 +175,14 @@ public class ContentProviderClient {
      */
     public ParcelFileDescriptor openFile(Uri url, String mode)
             throws RemoteException, FileNotFoundException {
-        return mContentProvider.openFile(url, mode);
+        try {
+            return mContentProvider.openFile(url, mode);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -137,20 +194,54 @@ public class ContentProviderClient {
      */
     public AssetFileDescriptor openAssetFile(Uri url, String mode)
             throws RemoteException, FileNotFoundException {
-        return mContentProvider.openAssetFile(url, mode);
+        try {
+            return mContentProvider.openAssetFile(url, mode);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#openTypedAssetFile ContentProvider.openTypedAssetFile} */
     public final AssetFileDescriptor openTypedAssetFileDescriptor(Uri uri,
             String mimeType, Bundle opts)
             throws RemoteException, FileNotFoundException {
-        return mContentProvider.openTypedAssetFile(uri, mimeType, opts);
+        try {
+            return mContentProvider.openTypedAssetFile(uri, mimeType, opts);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /** See {@link ContentProvider#applyBatch ContentProvider.applyBatch} */
     public ContentProviderResult[] applyBatch(ArrayList<ContentProviderOperation> operations)
             throws RemoteException, OperationApplicationException {
-        return mContentProvider.applyBatch(operations);
+        try {
+            return mContentProvider.applyBatch(operations);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
+    }
+
+    /** See {@link ContentProvider#call(String, String, Bundle)} */
+    public Bundle call(String method, String arg, Bundle extras)
+            throws RemoteException {
+        try {
+            return mContentProvider.call(method, arg, extras);
+        } catch (DeadObjectException e) {
+            if (!mStable) {
+                mContentResolver.unstableProviderDied(mContentProvider);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -159,7 +250,17 @@ public class ContentProviderClient {
      * @return true if this was release, false if it was already released
      */
     public boolean release() {
-        return mContentResolver.releaseProvider(mContentProvider);
+        synchronized (this) {
+            if (mReleased) {
+                throw new IllegalStateException("Already released");
+            }
+            mReleased = true;
+            if (mStable) {
+                return mContentResolver.releaseProvider(mContentProvider);
+            } else {
+                return mContentResolver.releaseUnstableProvider(mContentProvider);
+            }
+        }
     }
 
     /**

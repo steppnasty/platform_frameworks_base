@@ -244,7 +244,7 @@ public abstract class BroadcastReceiver {
         Bundle mResultExtras;
         boolean mAbortBroadcast;
         boolean mFinished;
-        
+
         /** @hide */
         public PendingResult(int resultCode, String resultData, Bundle resultExtras,
                 int type, boolean ordered, boolean sticky, IBinder token, int userId) {
@@ -453,13 +453,17 @@ public abstract class BroadcastReceiver {
     /**
      * This method is called when the BroadcastReceiver is receiving an Intent
      * broadcast.  During this time you can use the other methods on
-     * BroadcastReceiver to view/modify the current result values.  The function
-     * is normally called within the main thread of its process, so you should
+     * BroadcastReceiver to view/modify the current result values.  This method
+     * is always called within the main thread of its process, unless you
+     * explicitly asked for it to be scheduled on a different thread using
+     * {@link android.content.Context#registerReceiver(BroadcastReceiver,
+     * IntentFilter, String, android.os.Handler)}. When it runs on the main
+     * thread you should
      * never perform long-running operations in it (there is a timeout of
      * 10 seconds that the system allows before considering the receiver to
      * be blocked and a candidate to be killed). You cannot launch a popup dialog
      * in your implementation of onReceive().
-     * 
+     *
      * <p><b>If this BroadcastReceiver was launched through a &lt;receiver&gt; tag,
      * then the object is no longer alive after returning from this
      * function.</b>  This means you should not perform any operations that
@@ -735,7 +739,7 @@ public abstract class BroadcastReceiver {
     public final PendingResult getPendingResult() {
         return mPendingResult;
     }
-
+    
     /** @hide */
     public int getSendingUserId() {
         return mPendingResult.mSendingUser;
@@ -743,7 +747,7 @@ public abstract class BroadcastReceiver {
 
     /**
      * Control inclusion of debugging help for mismatched
-     * calls to {@ Context#registerReceiver(BroadcastReceiver, IntentFilter)
+     * calls to {@link Context#registerReceiver(BroadcastReceiver, IntentFilter)
      * Context.registerReceiver()}.
      * If called with true, before given to registerReceiver(), then the
      * callstack of the following {@link Context#unregisterReceiver(BroadcastReceiver)

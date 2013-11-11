@@ -16,6 +16,9 @@
 
 package android.content;
 
+import android.app.Activity;
+import android.app.ActivityManagerNative;
+import android.app.LoadedApk;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
@@ -30,6 +33,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.RemoteException;
 import android.os.UserHandle;
 import android.view.CompatibilityInfoHolder;
 import android.view.Display;
@@ -307,6 +311,12 @@ public class ContextWrapper extends Context {
         mBase.startActivities(intents, options);
     }
 
+    /** @hide */
+    @Override
+    public void startActivitiesAsUser(Intent[] intents, Bundle options, UserHandle userHandle) {
+        mBase.startActivitiesAsUser(intents, options, userHandle);
+    }
+
     @Override
     public void startIntentSender(IntentSender intent,
             Intent fillInIntent, int flagsMask, int flagsValues, int extraFlags)
@@ -322,7 +332,7 @@ public class ContextWrapper extends Context {
         mBase.startIntentSender(intent, fillInIntent, flagsMask,
                 flagsValues, extraFlags, options);
     }
-
+    
     @Override
     public void sendBroadcast(Intent intent) {
         mBase.sendBroadcast(intent);

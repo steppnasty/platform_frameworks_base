@@ -43,7 +43,6 @@ public class LocalSocket implements Closeable {
         isBound = false;
         isConnected = false;
     }
-
     /**
      * Creates a AF_LOCAL/UNIX domain stream socket with FileDescriptor.
      * @hide
@@ -169,6 +168,7 @@ public class LocalSocket implements Closeable {
      *
      * @throws IOException
      */
+    @Override
     public void close() throws IOException {
         implCreateIfNeeded();
         impl.close();

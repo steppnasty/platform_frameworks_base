@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,7 +176,7 @@ public class ActivityInfo extends ComponentInfo
      * "toast" window).
      * {@see android.app.Notification#FLAG_HIGH_PRIORITY}
      */
-    public static final int FLAG_IMMERSIVE = 0x0400;
+    public static final int FLAG_IMMERSIVE = 0x0800;
     /**
      * @hide Bit in {@link #flags}: If set, this component will only be seen
      * by the primary user.  Only works with broadcast receivers.  Set from the
@@ -202,7 +201,7 @@ public class ActivityInfo extends ComponentInfo
      * {@link #FLAG_STATE_NOT_NEEDED}, {@link #FLAG_EXCLUDE_FROM_RECENTS},
      * {@link #FLAG_ALLOW_TASK_REPARENTING}, {@link #FLAG_NO_HISTORY},
      * {@link #FLAG_FINISH_ON_CLOSE_SYSTEM_DIALOGS},
-     * {@link #FLAG_HARDWARE_ACCELERATED}
+     * {@link #FLAG_HARDWARE_ACCELERATED}, {@link #FLAG_SINGLE_USER}.
      */
     public int flags;
 
@@ -342,10 +341,6 @@ public class ActivityInfo extends ComponentInfo
      */
     public static final int CONFIG_ORIENTATION = 0x0080;
     /**
-     * @hide
-     */
-    public static final int CONFIG_THEME_RESOURCE = 0x008000;
-    /**
      * Bit in {@link #configChanges} that indicates that the activity
      * can itself handle changes to the screen layout.  Set from the
      * {@link android.R.attr#configChanges} attribute.
@@ -458,8 +453,9 @@ public class ActivityInfo extends ComponentInfo
      * {@link #CONFIG_MCC}, {@link #CONFIG_MNC},
      * {@link #CONFIG_LOCALE}, {@link #CONFIG_TOUCHSCREEN},
      * {@link #CONFIG_KEYBOARD}, {@link #CONFIG_NAVIGATION},
-     * {@link #CONFIG_ORIENTATION}, and {@link #CONFIG_SCREEN_LAYOUT}.  Set from the
-     * {@link android.R.attr#configChanges} attribute.
+     * {@link #CONFIG_ORIENTATION}, {@link #CONFIG_SCREEN_LAYOUT} and
+     * {@link #CONFIG_LAYOUT_DIRECTION}.  Set from the {@link android.R.attr#configChanges}
+     * attribute.
      */
     public int configChanges;
     
@@ -509,6 +505,7 @@ public class ActivityInfo extends ComponentInfo
         configChanges = orig.configChanges;
         softInputMode = orig.softInputMode;
         uiOptions = orig.uiOptions;
+        parentActivityName = orig.parentActivityName;
     }
     
     /**
@@ -568,6 +565,7 @@ public class ActivityInfo extends ComponentInfo
         dest.writeInt(configChanges);
         dest.writeInt(softInputMode);
         dest.writeInt(uiOptions);
+        dest.writeString(parentActivityName);
     }
 
     public static final Parcelable.Creator<ActivityInfo> CREATOR
@@ -592,5 +590,6 @@ public class ActivityInfo extends ComponentInfo
         configChanges = source.readInt();
         softInputMode = source.readInt();
         uiOptions = source.readInt();
+        parentActivityName = source.readString();
     }
 }

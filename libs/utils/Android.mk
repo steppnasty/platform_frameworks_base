@@ -27,7 +27,6 @@ commonSources:= \
 	LinearTransform.cpp \
 	Log.cpp \
 	PropertyMap.cpp \
-	PackageRedirectionMap.cpp \
 	RefBase.cpp \
 	SharedBuffer.cpp \
 	Static.cpp \

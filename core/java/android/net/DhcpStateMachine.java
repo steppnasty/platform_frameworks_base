@@ -174,7 +174,15 @@ public class DhcpStateMachine extends StateMachine {
         quit();
     }
 
+    protected void onQuitting() {
+        mController.sendMessage(CMD_ON_QUIT);
+    }
+
     class DefaultState extends State {
+        @Override
+        public void exit() {
+            mContext.unregisterReceiver(mBroadcastReceiver);
+        }
         @Override
         public boolean processMessage(Message message) {
             if (DBG) Log.d(TAG, getName() + message.toString() + "\n");
@@ -183,10 +191,6 @@ public class DhcpStateMachine extends StateMachine {
                     Log.e(TAG, "Error! Failed to handle a DHCP renewal on " + mInterfaceName);
                     mDhcpRenewWakeLock.release();
                     break;
-                case SM_QUIT_CMD:
-                    mContext.unregisterReceiver(mBroadcastReceiver);
-                    //let parent kill the state machine
-                    return NOT_HANDLED;
                 default:
                     Log.e(TAG, "Error! unhandled message  " + message);
                     break;
@@ -324,7 +328,7 @@ public class DhcpStateMachine extends StateMachine {
                     if (runDhcp(DhcpAction.RENEW)) {
                        transitionTo(mRunningState);
                     } else {
-                        transitionTo(mStoppedState);
+                       transitionTo(mStoppedState);
                     }
                     break;
                 case CMD_START_DHCP:
@@ -347,6 +351,8 @@ public class DhcpStateMachine extends StateMachine {
         DhcpInfoInternal dhcpInfoInternal = new DhcpInfoInternal();
 
         if (dhcpAction == DhcpAction.START) {
+            /* Stop any existing DHCP daemon before starting new */
+            NetworkUtils.stopDhcp(mInterfaceName);
             if (DBG) Log.d(TAG, "DHCP request on " + mInterfaceName);
             success = NetworkUtils.runDhcp(mInterfaceName, dhcpInfoInternal);
             mDhcpInfo = dhcpInfoInternal;
@@ -358,24 +364,26 @@ public class DhcpStateMachine extends StateMachine {
 
         if (success) {
             if (DBG) Log.d(TAG, "DHCP succeeded on " + mInterfaceName);
-           long leaseDuration = dhcpInfoInternal.leaseDuration; //int to long conversion
+            long leaseDuration = dhcpInfoInternal.leaseDuration; //int to long conversion
 
-           //To handle the leaseDuration Forever i.e 0xFFFFFFFF (in signed it is -1)
-           if(leaseDuration >= 0){
-               //Sanity check for renewal
-               //TODO: would be good to notify the user that his network configuration is
-               //bad and that the device cannot renew below MIN_RENEWAL_TIME_SECS
-               if (leaseDuration < MIN_RENEWAL_TIME_SECS) {
-                   leaseDuration = MIN_RENEWAL_TIME_SECS;
-               }
-               //Do it a bit earlier than half the lease duration time
-               //to beat the native DHCP client and avoid extra packets
-               //48% for one hour lease time = 29 minutes
-               mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                      SystemClock.elapsedRealtime() +
-                      leaseDuration * 480, //in milliseconds
-                      mDhcpRenewalIntent);
-           }
+            //Sanity check for renewal
+            if (leaseDuration >= 0) {
+                //TODO: would be good to notify the user that his network configuration is
+                //bad and that the device cannot renew below MIN_RENEWAL_TIME_SECS
+                if (leaseDuration < MIN_RENEWAL_TIME_SECS) {
+                    leaseDuration = MIN_RENEWAL_TIME_SECS;
+                }
+                //Do it a bit earlier than half the lease duration time
+                //to beat the native DHCP client and avoid extra packets
+                //48% for one hour lease time = 29 minutes
+                mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() +
+                        leaseDuration * 480, //in milliseconds
+                        mDhcpRenewalIntent);
+            } else {
+                //infinite lease time, no renewal needed
+            }
+
             mController.obtainMessage(CMD_POST_DHCP_ACTION, DHCP_SUCCESS, 0, dhcpInfoInternal)
                 .sendToTarget();
         } else {

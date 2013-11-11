@@ -59,7 +59,8 @@ public class ServiceInfo extends ComponentInfo
      * Options that have been set in the service declaration in the
      * manifest.
      * These include:
-     * {@link #FLAG_STOP_WITH_TASK}
+     * {@link #FLAG_STOP_WITH_TASK}, {@link #FLAG_ISOLATED_PROCESS},
+     * {@link #FLAG_SINGLE_USER}.
      */
     public int flags;
 

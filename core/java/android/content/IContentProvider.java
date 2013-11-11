@@ -35,8 +35,8 @@ import java.util.ArrayList;
  */
 public interface IContentProvider extends IInterface {
     public Cursor query(Uri url, String[] projection, String selection,
-            String[] selectionArgs, String sortOrder, ICancellationSignal cancellationSignal) 
-            throws RemoteException;
+            String[] selectionArgs, String sortOrder, ICancellationSignal cancellationSignal)
+                    throws RemoteException;
     public String getType(Uri url) throws RemoteException;
     public Uri insert(Uri url, ContentValues initialValues)
             throws RemoteException;
