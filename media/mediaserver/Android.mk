@@ -15,7 +15,7 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_C_INCLUDES := \
     frameworks/av/services/audioflinger \
     frameworks/base/services/camera/libcameraservice \
-    frameworks/base/media/libmediaplayerservice
+    frameworks/av/media/libmediaplayerservice
 
 LOCAL_MODULE:= mediaserver
 
