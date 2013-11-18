@@ -975,8 +975,7 @@ public class SettingsProvider extends ContentProvider {
                 // Only proxy the openFile call to drm or media providers
                 String authority = soundUri.getAuthority();
                 boolean isDrmAuthority = authority.equals(DrmStore.AUTHORITY);
-                if (isDrmAuthority || authority.equals(MediaStore.AUTHORITY) ||
-                        authority.equals(RingtoneManager.THEME_AUTHORITY)) {
+                if (isDrmAuthority || authority.equals(MediaStore.AUTHORITY)) {
 
                     if (isDrmAuthority) {
                         try {
@@ -1017,8 +1016,7 @@ public class SettingsProvider extends ContentProvider {
                 // Only proxy the openFile call to drm or media providers
                 String authority = soundUri.getAuthority();
                 boolean isDrmAuthority = authority.equals(DrmStore.AUTHORITY);
-                if (isDrmAuthority || authority.equals(MediaStore.AUTHORITY) ||
-                        authority.equals(RingtoneManager.THEME_AUTHORITY)) {
+                if (isDrmAuthority || authority.equals(MediaStore.AUTHORITY)) {
 
                     if (isDrmAuthority) {
                         try {

@@ -83,6 +83,7 @@
   <java-symbol type="bool" name="config_hasDockBattery" />
   <java-symbol type="bool" name="config_hasRotationLockSwitch" />
   <java-symbol type="bool" name="config_mms_content_disposition_support" />
+  <java-symbol type="bool" name="config_safe_media_volume_enabled" />
   <java-symbol type="bool" name="config_showMenuShortcutsWhenKeyboardPresent" />
   <java-symbol type="bool" name="config_sip_wifi_only" />
   <java-symbol type="bool" name="config_sms_capable" />
@@ -439,10 +440,12 @@
   <java-symbol type="integer" name="config_max_pan_devices" />
   <java-symbol type="integer" name="config_multiuserMaximumUsers" />
   <java-symbol type="integer" name="config_ntpTimeout" />
+  <java-symbol type="integer" name="config_safe_media_volume_index" />
   <java-symbol type="integer" name="config_screenBrightnessDim" />
   <java-symbol type="integer" name="config_screenBrightnessSettingDefault" />
   <java-symbol type="integer" name="config_screenBrightnessSettingMaximum" />
   <java-symbol type="integer" name="config_screenBrightnessSettingMinimum" />
+  <java-symbol type="integer" name="config_soundEffectVolumeDb" />
   <java-symbol type="integer" name="config_wallpaperMaxWidth" />
   <java-symbol type="integer" name="config_wifi_driver_stop_delay" />
   <java-symbol type="integer" name="config_wifi_framework_scan_interval" />

@@ -20,13 +20,8 @@ import android.hardware.Camera;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
-import android.os.SystemProperties;
 import android.util.Log;
 import android.view.Surface;
-import android.app.Application;
-import android.app.ActivityThread;
-import android.content.Context;
-import android.content.Intent;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -81,10 +76,8 @@ public class MediaRecorder
         System.loadLibrary("media_jni");
         native_init();
     }
-
     private final static String TAG = "MediaRecorder";
-    private final static String IOBUSY_VOTE = "com.android.server.CpuGovernorService.action.IOBUSY_VOTE";
-    private final static String IOBUSY_UNVOTE = "com.android.server.CpuGovernorService.action.IOBUSY_UNVOTE";
+
     // The two fields below are accessed by native methods
     @SuppressWarnings("unused")
     private int mNativeContext;
@@ -131,9 +124,15 @@ public class MediaRecorder
     /**
      * Sets a Surface to show a preview of recorded media (video). Calls this
      * before prepare() to make sure that the desirable preview display is
-     * set.
+     * set. If {@link #setCamera(Camera)} is used and the surface has been
+     * already set to the camera, application do not need to call this. If
+     * this is called with non-null surface, the preview surface of the camera
+     * will be replaced by the new surface. If this method is called with null
+     * surface or not called at all, media recorder will not change the preview
+     * surface of the camera.
      *
      * @param sv the Surface to use for the preview
+     * @see android.hardware.Camera#setPreviewDisplay(android.view.SurfaceHolder)
      */
     public void setPreviewDisplay(Surface sv) {
         mSurface = sv;
@@ -145,10 +144,13 @@ public class MediaRecorder
      */
     public final class AudioSource {
       /* Do not change these values without updating their counterparts
-       * in include/media/mediarecorder.h!
+       * in system/core/include/system/audio.h!
        */
         private AudioSource() {}
+
+        /** Default audio source **/
         public static final int DEFAULT = 0;
+
         /** Microphone audio source */
         public static final int MIC = 1;
 
@@ -175,6 +177,12 @@ public class MediaRecorder
          *  is applied.
          */
         public static final int VOICE_COMMUNICATION = 7;
+
+        /**
+         * @hide
+         * Audio source for remote submix.
+         */
+        public static final int REMOTE_SUBMIX_SOURCE = 8;
     }
 
     /**
@@ -208,18 +216,24 @@ public class MediaRecorder
         /** MPEG4 media file format*/
         public static final int MPEG_4 = 2;
 
-        /** The following formats are audio only .aac or .amr formats **/
-        /** @deprecated  Deprecated in favor of AMR_NB */
-        /** Deprecated in favor of MediaRecorder.OutputFormat.AMR_NB */
-        /** AMR NB file format */
+        /** The following formats are audio only .aac or .amr formats */
+
+        /**
+         * AMR NB file format
+         * @deprecated  Deprecated in favor of MediaRecorder.OutputFormat.AMR_NB
+         */
         public static final int RAW_AMR = 3;
+
         /** AMR NB file format */
         public static final int AMR_NB = 3;
+
         /** AMR WB file format */
         public static final int AMR_WB = 4;
+
         /** @hide AAC ADIF file format */
         public static final int AAC_ADIF = 5;
-        /** @hide AAC ADTS file format */
+
+        /** AAC ADTS file format */
         public static final int AAC_ADTS = 6;
 
         /** @hide Stream over a socket, limited to a single stream */
@@ -227,11 +241,6 @@ public class MediaRecorder
 
         /** @hide H.264/AAC data encapsulated in MPEG2/TS */
         public static final int OUTPUT_FORMAT_MPEG2TS = 8;
-
-        /** QCP file format */
-        public static final int QCP = 9;
-        /** 3GPP2 media file format*/
-        public static final int THREE_GPP2 = 10;
     };
 
     /**
@@ -248,16 +257,12 @@ public class MediaRecorder
         public static final int AMR_NB = 1;
         /** AMR (Wideband) audio codec */
         public static final int AMR_WB = 2;
-        /** AAC audio codec */
+        /** AAC Low Complexity (AAC-LC) audio codec */
         public static final int AAC = 3;
-        /** enhanced AAC audio codec */
-        public static final int AAC_PLUS = 4;
-        /** enhanced AAC plus audio codec */
-        public static final int EAAC_PLUS = 5;
-        /** EVRC audio codec */
-        public static final int EVRC = 6;
-        /** QCELP audio codec */
-        public static final int QCELP =7;
+        /** High Efficiency AAC (HE-AAC) audio codec */
+        public static final int HE_AAC = 4;
+        /** Enhanced Low Delay AAC (AAC-ELD) audio codec */
+        public static final int AAC_ELD = 5;
     }
 
     /**
@@ -292,7 +297,12 @@ public class MediaRecorder
      * Gets the maximum value for audio sources.
      * @see android.media.MediaRecorder.AudioSource
      */
-    public static final int getAudioSourceMax() { return AudioSource.VOICE_COMMUNICATION; }
+    public static final int getAudioSourceMax() {
+        // FIXME disable selection of the remote submxi source selection once test code
+        //       doesn't rely on it
+        return AudioSource.REMOTE_SUBMIX_SOURCE;
+        //return AudioSource.VOICE_COMMUNICATION;
+    }
 
     /**
      * Sets the video source to be used for recording. If this method is not
@@ -310,6 +320,8 @@ public class MediaRecorder
     /**
      * Uses the settings from a CamcorderProfile object for recording. This method should
      * be called after the video AND audio sources are set, and before setOutputFile().
+     * If a time lapse CamcorderProfile is used, audio related source or recording
+     * parameters are ignored.
      *
      * @param profile the CamcorderProfile to use
      * @see android.media.CamcorderProfile
@@ -322,8 +334,8 @@ public class MediaRecorder
         setVideoEncoder(profile.videoCodec);
         if (profile.quality >= CamcorderProfile.QUALITY_TIME_LAPSE_LOW &&
              profile.quality <= CamcorderProfile.QUALITY_TIME_LAPSE_QVGA) {
-            // Enable time lapse. Also don't set audio for time lapse.
-            setParameter(String.format("time-lapse-enable=1"));
+            // Nothing needs to be done. Call to setCaptureRate() enables
+            // time lapse video recording.
         } else {
             setAudioEncodingBitRate(profile.audioBitRate);
             setAudioChannels(profile.audioChannels);
@@ -334,7 +346,10 @@ public class MediaRecorder
 
     /**
      * Set video frame capture rate. This can be used to set a different video frame capture
-     * rate than the recorded video's playback rate. Currently this works only for time lapse mode.
+     * rate than the recorded video's playback rate. This method also sets the recording mode
+     * to time lapse. In time lapse video recording, only video is recorded. Audio related
+     * parameters are ignored when a time lapse recording session starts, if an application
+     * sets them.
      *
      * @param fps Rate at which frames should be captured in frames per second.
      * The fps can go as low as desired. However the fastest fps will be limited by the hardware.
@@ -346,10 +361,12 @@ public class MediaRecorder
      * possible.
      */
     public void setCaptureRate(double fps) {
+        // Make sure that time lapse is enabled when this method is called.
+        setParameter("time-lapse-enable=1");
+
         double timeBetweenFrameCapture = 1 / fps;
         int timeBetweenFrameCaptureMs = (int) (1000 * timeBetweenFrameCapture);
-        setParameter(String.format("time-between-time-lapse-frame-capture=%d",
-                    timeBetweenFrameCaptureMs));
+        setParameter("time-between-time-lapse-frame-capture=" + timeBetweenFrameCaptureMs);
     }
 
     /**
@@ -581,6 +598,7 @@ public class MediaRecorder
      * Currently not implemented. It does nothing.
      * @deprecated Time lapse mode video recording using camera still image capture
      * is not desirable, and will not be supported.
+     * @hide
      */
     public void setAuxiliaryOutputFile(FileDescriptor fd)
     {
@@ -591,6 +609,7 @@ public class MediaRecorder
      * Currently not implemented. It does nothing.
      * @deprecated Time lapse mode video recording using camera still image capture
      * is not desirable, and will not be supported.
+     * @hide
      */
     public void setAuxiliaryOutputFile(String path)
     {
@@ -670,7 +689,7 @@ public class MediaRecorder
      * @throws IllegalStateException if it is called before
      * prepare().
      */
-    public native void native_start() throws IllegalStateException;
+    public native void start() throws IllegalStateException;
 
     /**
      * Stops recording. Call this after start(). Once recording is stopped,
@@ -684,43 +703,7 @@ public class MediaRecorder
      *
      * @throws IllegalStateException if it is called before start()
      */
-    public native void native_stop() throws IllegalStateException;
-
-    public void start() throws IllegalStateException {
-        if (SystemProperties.QCOM_HARDWARE) {
-            try {
-                Application application = ActivityThread.currentApplication();
-                if (application != null) {
-                    Intent ioBusyVoteIntent = new Intent(IOBUSY_VOTE);
-                    // Vote for io_is_busy to be turned off.
-                    ioBusyVoteIntent.putExtra("com.android.server.CpuGovernorService.voteType", 0);
-                    application.sendBroadcast(ioBusyVoteIntent);
-                }
-            } catch (Exception exception) {
-                Log.e(TAG, "Unable to vote to turn io_is_busy off.");
-            }
-        }
-
-        native_start();
-    }
-
-    public void stop() throws IllegalStateException {
-        if (SystemProperties.QCOM_HARDWARE) {
-            try {
-                Application application = ActivityThread.currentApplication();
-                if (application != null) {
-                    Intent ioBusyUnVoteIntent = new Intent(IOBUSY_UNVOTE);
-                    // Remove vote for io_is_busy to be turned off.
-                    ioBusyUnVoteIntent.putExtra("com.android.server.CpuGovernorService.voteType", 0);
-                    application.sendBroadcast(ioBusyUnVoteIntent);
-                }
-            } catch (Exception exception) {
-                Log.e(TAG, "Unable to withdraw io_is_busy off vote.");
-            }
-        }
-
-        native_stop();
-    }
+    public native void stop() throws IllegalStateException;
 
     /**
      * Restarts the MediaRecorder to its idle state. After calling
@@ -748,12 +731,17 @@ public class MediaRecorder
     public native int getMaxAmplitude() throws IllegalStateException;
 
     /* Do not change this value without updating its counterpart
-     * in include/media/mediarecorder.h!
+     * in include/media/mediarecorder.h or mediaplayer.h!
      */
     /** Unspecified media recorder error.
      * @see android.media.MediaRecorder.OnErrorListener
      */
     public static final int MEDIA_RECORDER_ERROR_UNKNOWN = 1;
+    /** Media server died. In this case, the application must release the
+     * MediaRecorder object and instantiate a new one.
+     * @see android.media.MediaRecorder.OnErrorListener
+     */
+    public static final int MEDIA_ERROR_SERVER_DIED = 100;
 
     /**
      * Interface definition for a callback to be invoked when an error
@@ -768,6 +756,7 @@ public class MediaRecorder
          * @param what    the type of error that has occurred:
          * <ul>
          * <li>{@link #MEDIA_RECORDER_ERROR_UNKNOWN}
+         * <li>{@link #MEDIA_ERROR_SERVER_DIED}
          * </ul>
          * @param extra   an extra code, specific to the error type
          */

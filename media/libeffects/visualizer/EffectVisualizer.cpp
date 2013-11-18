@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "Visualizer"
+#define LOG_TAG "EffectVisualizer"
 //#define LOG_NDEBUG 0
 #include <cutils/log.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <new>
+#include <time.h>
 #include <audio_effects/effect_visualizer.h>
 
 
@@ -47,20 +48,23 @@ enum visualizer_state_e {
     VISUALIZER_STATE_ACTIVE,
 };
 
-// maximum number of reads from same buffer before resetting capture buffer. This means
+// maximum time since last capture buffer update before resetting capture buffer. This means
 // that the framework has stopped playing audio and we must start returning silence
-#define MAX_STALL_COUNT 10
+#define MAX_STALL_TIME_MS 1000
+
+#define CAPTURE_BUF_SIZE 65536 // "64k should be enough for everyone"
 
 struct VisualizerContext {
     const struct effect_interface_s *mItfe;
     effect_config_t mConfig;
     uint32_t mCaptureIdx;
     uint32_t mCaptureSize;
+    uint32_t mScalingMode;
     uint8_t mState;
-    uint8_t mCurrentBuf;
-    uint8_t mLastBuf;
-    uint8_t mStallCount;
-    uint8_t mCaptureBuf[2][VISUALIZER_CAPTURE_SIZE_MAX];
+    uint8_t mLastCaptureIdx;
+    uint32_t mLatency;
+    struct timespec mBufferUpdateTime;
+    uint8_t mCaptureBuf[CAPTURE_BUF_SIZE];
 };
 
 //
@@ -70,15 +74,14 @@ struct VisualizerContext {
 void Visualizer_reset(VisualizerContext *pContext)
 {
     pContext->mCaptureIdx = 0;
-    pContext->mCurrentBuf = 0;
-    pContext->mLastBuf = 1;
-    pContext->mStallCount = 0;
-    memset(pContext->mCaptureBuf[0], 0x80, VISUALIZER_CAPTURE_SIZE_MAX);
-    memset(pContext->mCaptureBuf[1], 0x80, VISUALIZER_CAPTURE_SIZE_MAX);
+    pContext->mLastCaptureIdx = 0;
+    pContext->mBufferUpdateTime.tv_sec = 0;
+    pContext->mLatency = 0;
+    memset(pContext->mCaptureBuf, 0x80, CAPTURE_BUF_SIZE);
 }
 
 //----------------------------------------------------------------------------
-// Visualizer_configure()
+// Visualizer_setConfig()
 //----------------------------------------------------------------------------
 // Purpose: Set input and output audio configuration.
 //
@@ -91,9 +94,9 @@ void Visualizer_reset(VisualizerContext *pContext)
 //
 //----------------------------------------------------------------------------
 
-int Visualizer_configure(VisualizerContext *pContext, effect_config_t *pConfig)
+int Visualizer_setConfig(VisualizerContext *pContext, effect_config_t *pConfig)
 {
-    ALOGV("Visualizer_configure start");
+    ALOGV("Visualizer_setConfig start");
 
     if (pConfig->inputCfg.samplingRate != pConfig->outputCfg.samplingRate) return -EINVAL;
     if (pConfig->inputCfg.channels != pConfig->outputCfg.channels) return -EINVAL;
@@ -103,11 +106,31 @@ int Visualizer_configure(VisualizerContext *pContext, effect_config_t *pConfig)
             pConfig->outputCfg.accessMode != EFFECT_BUFFER_ACCESS_ACCUMULATE) return -EINVAL;
     if (pConfig->inputCfg.format != AUDIO_FORMAT_PCM_16_BIT) return -EINVAL;
 
-    memcpy(&pContext->mConfig, pConfig, sizeof(effect_config_t));
+    pContext->mConfig = *pConfig;
 
     Visualizer_reset(pContext);
 
     return 0;
+}
+
+
+//----------------------------------------------------------------------------
+// Visualizer_getConfig()
+//----------------------------------------------------------------------------
+// Purpose: Get input and output audio configuration.
+//
+// Inputs:
+//  pContext:   effect engine context
+//  pConfig:    pointer to effect_config_t structure holding input and output
+//      configuration parameters
+//
+// Outputs:
+//
+//----------------------------------------------------------------------------
+
+void Visualizer_getConfig(VisualizerContext *pContext, effect_config_t *pConfig)
+{
+    *pConfig = pContext->mConfig;
 }
 
 
@@ -143,8 +166,9 @@ int Visualizer_init(VisualizerContext *pContext)
     pContext->mConfig.outputCfg.mask = EFFECT_CONFIG_ALL;
 
     pContext->mCaptureSize = VISUALIZER_CAPTURE_SIZE_MAX;
+    pContext->mScalingMode = VISUALIZER_SCALING_MODE_NORMALIZED;
 
-    Visualizer_configure(pContext, &pContext->mConfig);
+    Visualizer_setConfig(pContext, &pContext->mConfig);
 
     return 0;
 }
@@ -166,11 +190,11 @@ int VisualizerLib_QueryEffect(uint32_t index,
     if (index > 0) {
         return -EINVAL;
     }
-    memcpy(pDescriptor, &gVisualizerDescriptor, sizeof(effect_descriptor_t));
+    *pDescriptor = gVisualizerDescriptor;
     return 0;
 }
 
-int VisualizerLib_Create(effect_uuid_t *uuid,
+int VisualizerLib_Create(const effect_uuid_t *uuid,
                          int32_t sessionId,
                          int32_t ioId,
                          effect_handle_t *pHandle) {
@@ -220,7 +244,7 @@ int VisualizerLib_Release(effect_handle_t handle) {
     return 0;
 }
 
-int VisualizerLib_GetDescriptor(effect_uuid_t       *uuid,
+int VisualizerLib_GetDescriptor(const effect_uuid_t *uuid,
                                 effect_descriptor_t *pDescriptor) {
 
     if (pDescriptor == NULL || uuid == NULL){
@@ -229,7 +253,7 @@ int VisualizerLib_GetDescriptor(effect_uuid_t       *uuid,
     }
 
     if (memcmp(uuid, &gVisualizerDescriptor.uuid, sizeof(effect_uuid_t)) == 0) {
-        memcpy(pDescriptor, &gVisualizerDescriptor, sizeof(effect_descriptor_t));
+        *pDescriptor = gVisualizerDescriptor;
         return 0;
     }
 
@@ -264,43 +288,54 @@ int Visualizer_process(
     }
 
     // all code below assumes stereo 16 bit PCM output and input
+    int32_t shift;
 
-    // derive capture scaling factor from peak value in current buffer
-    // this gives more interesting captures for display.
-    int32_t shift = 32;
-    int len = inBuffer->frameCount * 2;
-    for (int i = 0; i < len; i++) {
-        int32_t smp = inBuffer->s16[i];
-        if (smp < 0) smp = -smp - 1; // take care to keep the max negative in range
-        int32_t clz = __builtin_clz(smp);
-        if (shift > clz) shift = clz;
+    if (pContext->mScalingMode == VISUALIZER_SCALING_MODE_NORMALIZED) {
+        // derive capture scaling factor from peak value in current buffer
+        // this gives more interesting captures for display.
+        shift = 32;
+        int len = inBuffer->frameCount * 2;
+        for (int i = 0; i < len; i++) {
+            int32_t smp = inBuffer->s16[i];
+            if (smp < 0) smp = -smp - 1; // take care to keep the max negative in range
+            int32_t clz = __builtin_clz(smp);
+            if (shift > clz) shift = clz;
+        }
+        // A maximum amplitude signal will have 17 leading zeros, which we want to
+        // translate to a shift of 8 (for converting 16 bit to 8 bit)
+        shift = 25 - shift;
+        // Never scale by less than 8 to avoid returning unaltered PCM signal.
+        if (shift < 3) {
+            shift = 3;
+        }
+        // add one to combine the division by 2 needed after summing left and right channels below
+        shift++;
+    } else {
+        assert(pContext->mScalingMode == VISUALIZER_SCALING_MODE_AS_PLAYED);
+        shift = 9;
     }
-    // A maximum amplitude signal will have 17 leading zeros, which we want to
-    // translate to a shift of 8 (for converting 16 bit to 8 bit)
-     shift = 25 - shift;
-    // Never scale by less than 8 to avoid returning unaltered PCM signal.
-    if (shift < 3) {
-        shift = 3;
-    }
-    // add one to combine the division by 2 needed after summing left and right channels below
-    shift++;
 
     uint32_t captIdx;
     uint32_t inIdx;
-    uint8_t *buf = pContext->mCaptureBuf[pContext->mCurrentBuf];
+    uint8_t *buf = pContext->mCaptureBuf;
     for (inIdx = 0, captIdx = pContext->mCaptureIdx;
-         inIdx < inBuffer->frameCount && captIdx < pContext->mCaptureSize;
+         inIdx < inBuffer->frameCount;
          inIdx++, captIdx++) {
+        if (captIdx >= CAPTURE_BUF_SIZE) {
+            // wrap around
+            captIdx = 0;
+        }
         int32_t smp = inBuffer->s16[2 * inIdx] + inBuffer->s16[2 * inIdx + 1];
         smp = smp >> shift;
         buf[captIdx] = ((uint8_t)smp)^0x80;
     }
-    pContext->mCaptureIdx = captIdx;
 
-    // go to next buffer when buffer full
-    if (pContext->mCaptureIdx == pContext->mCaptureSize) {
-        pContext->mCurrentBuf ^= 1;
-        pContext->mCaptureIdx = 0;
+    // XXX the following two should really be atomic, though it probably doesn't
+    // matter much for visualization purposes
+    pContext->mCaptureIdx = captIdx;
+    // update last buffer update time stamp
+    if (clock_gettime(CLOCK_MONOTONIC, &pContext->mBufferUpdateTime) < 0) {
+        pContext->mBufferUpdateTime.tv_sec = 0;
     }
 
     if (inBuffer->raw != outBuffer->raw) {
@@ -342,8 +377,15 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
                 || pReplyData == NULL || *replySize != sizeof(int)) {
             return -EINVAL;
         }
-        *(int *) pReplyData = Visualizer_configure(pContext,
+        *(int *) pReplyData = Visualizer_setConfig(pContext,
                 (effect_config_t *) pCmdData);
+        break;
+    case EFFECT_CMD_GET_CONFIG:
+        if (pReplyData == NULL ||
+            *replySize != sizeof(effect_config_t)) {
+            return -EINVAL;
+        }
+        Visualizer_getConfig(pContext, (effect_config_t *)pReplyData);
         break;
     case EFFECT_CMD_RESET:
         Visualizer_reset(pContext);
@@ -381,15 +423,26 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         effect_param_t *p = (effect_param_t *)pReplyData;
         p->status = 0;
         *replySize = sizeof(effect_param_t) + sizeof(uint32_t);
-        if (p->psize != sizeof(uint32_t) ||
-            *(uint32_t *)p->data != VISUALIZER_PARAM_CAPTURE_SIZE) {
+        if (p->psize != sizeof(uint32_t)) {
             p->status = -EINVAL;
             break;
         }
-        ALOGV("get mCaptureSize = %d", pContext->mCaptureSize);
-        *((uint32_t *)p->data + 1) = pContext->mCaptureSize;
-        p->vsize = sizeof(uint32_t);
-        *replySize += sizeof(uint32_t);
+        switch (*(uint32_t *)p->data) {
+        case VISUALIZER_PARAM_CAPTURE_SIZE:
+            ALOGV("get mCaptureSize = %d", pContext->mCaptureSize);
+            *((uint32_t *)p->data + 1) = pContext->mCaptureSize;
+            p->vsize = sizeof(uint32_t);
+            *replySize += sizeof(uint32_t);
+            break;
+        case VISUALIZER_PARAM_SCALING_MODE:
+            ALOGV("get mScalingMode = %d", pContext->mScalingMode);
+            *((uint32_t *)p->data + 1) = pContext->mScalingMode;
+            p->vsize = sizeof(uint32_t);
+            *replySize += sizeof(uint32_t);
+            break;
+        default:
+            p->status = -EINVAL;
+        }
         } break;
     case EFFECT_CMD_SET_PARAM: {
         if (pCmdData == NULL ||
@@ -399,14 +452,26 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         }
         *(int32_t *)pReplyData = 0;
         effect_param_t *p = (effect_param_t *)pCmdData;
-        if (p->psize != sizeof(uint32_t) ||
-            p->vsize != sizeof(uint32_t) ||
-            *(uint32_t *)p->data != VISUALIZER_PARAM_CAPTURE_SIZE) {
+        if (p->psize != sizeof(uint32_t) || p->vsize != sizeof(uint32_t)) {
             *(int32_t *)pReplyData = -EINVAL;
-            break;;
+            break;
         }
-        pContext->mCaptureSize = *((uint32_t *)p->data + 1);
-        ALOGV("set mCaptureSize = %d", pContext->mCaptureSize);
+        switch (*(uint32_t *)p->data) {
+        case VISUALIZER_PARAM_CAPTURE_SIZE:
+            pContext->mCaptureSize = *((uint32_t *)p->data + 1);
+            ALOGV("set mCaptureSize = %d", pContext->mCaptureSize);
+            break;
+        case VISUALIZER_PARAM_SCALING_MODE:
+            pContext->mScalingMode = *((uint32_t *)p->data + 1);
+            ALOGV("set mScalingMode = %d", pContext->mScalingMode);
+            break;
+        case VISUALIZER_PARAM_LATENCY:
+            pContext->mLatency = *((uint32_t *)p->data + 1);
+            ALOGV("set mLatency = %d", pContext->mLatency);
+            break;
+        default:
+            *(int32_t *)pReplyData = -EINVAL;
+        }
         } break;
     case EFFECT_CMD_SET_DEVICE:
     case EFFECT_CMD_SET_VOLUME:
@@ -421,23 +486,56 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
             return -EINVAL;
         }
         if (pContext->mState == VISUALIZER_STATE_ACTIVE) {
-            memcpy(pReplyData,
-                   pContext->mCaptureBuf[pContext->mCurrentBuf ^ 1],
-                   pContext->mCaptureSize);
-            // if audio framework has stopped playing audio although the effect is still
-            // active we must clear the capture buffer to return silence
-            if (pContext->mLastBuf == pContext->mCurrentBuf) {
-                if (pContext->mStallCount < MAX_STALL_COUNT) {
-                    if (++pContext->mStallCount == MAX_STALL_COUNT) {
-                        memset(pContext->mCaptureBuf[pContext->mCurrentBuf ^ 1],
-                                0x80,
-                                pContext->mCaptureSize);
+            int32_t latencyMs = pContext->mLatency;
+            uint32_t deltaMs = 0;
+            if (pContext->mBufferUpdateTime.tv_sec != 0) {
+                struct timespec ts;
+                if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+                    time_t secs = ts.tv_sec - pContext->mBufferUpdateTime.tv_sec;
+                    long nsec = ts.tv_nsec - pContext->mBufferUpdateTime.tv_nsec;
+                    if (nsec < 0) {
+                        --secs;
+                        nsec += 1000000000;
+                    }
+                    deltaMs = secs * 1000 + nsec / 1000000;
+                    latencyMs -= deltaMs;
+                    if (latencyMs < 0) {
+                        latencyMs = 0;
                     }
                 }
-            } else {
-                pContext->mStallCount = 0;
             }
-            pContext->mLastBuf = pContext->mCurrentBuf;
+            uint32_t deltaSmpl = pContext->mConfig.inputCfg.samplingRate * latencyMs / 1000;
+
+            int32_t capturePoint = pContext->mCaptureIdx - pContext->mCaptureSize - deltaSmpl;
+            int32_t captureSize = pContext->mCaptureSize;
+            if (capturePoint < 0) {
+                int32_t size = -capturePoint;
+                if (size > captureSize) {
+                    size = captureSize;
+                }
+                memcpy(pReplyData,
+                       pContext->mCaptureBuf + CAPTURE_BUF_SIZE + capturePoint,
+                       size);
+                pReplyData += size;
+                captureSize -= size;
+                capturePoint = 0;
+            }
+            memcpy(pReplyData,
+                   pContext->mCaptureBuf + capturePoint,
+                   captureSize);
+
+
+            // if audio framework has stopped playing audio although the effect is still
+            // active we must clear the capture buffer to return silence
+            if ((pContext->mLastCaptureIdx == pContext->mCaptureIdx) &&
+                    (pContext->mBufferUpdateTime.tv_sec != 0)) {
+                if (deltaMs > MAX_STALL_TIME_MS) {
+                    ALOGV("capture going to idle");
+                    pContext->mBufferUpdateTime.tv_sec = 0;
+                    memset(pReplyData, 0x80, pContext->mCaptureSize);
+                }
+            }
+            pContext->mLastCaptureIdx = pContext->mCaptureIdx;
         } else {
             memset(pReplyData, 0x80, pContext->mCaptureSize);
         }
@@ -463,7 +561,7 @@ int Visualizer_getDescriptor(effect_handle_t   self,
         return -EINVAL;
     }
 
-    memcpy(pDescriptor, &gVisualizerDescriptor, sizeof(effect_descriptor_t));
+    *pDescriptor = gVisualizerDescriptor;
 
     return 0;
 }   /* end Visualizer_getDescriptor */

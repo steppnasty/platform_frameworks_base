@@ -23,6 +23,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 
 import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
@@ -57,7 +58,24 @@ public class MediaMetadataRetriever
      * @param path The path of the input media file.
      * @throws IllegalArgumentException If the path is invalid.
      */
-    public native void setDataSource(String path) throws IllegalArgumentException;
+    public void setDataSource(String path) throws IllegalArgumentException {
+        FileInputStream is = null;
+        try {
+            is = new FileInputStream(path);
+            FileDescriptor fd = is.getFD();
+            setDataSource(fd, 0, 0x7ffffffffffffffL);
+        } catch (FileNotFoundException fileEx) {
+            throw new IllegalArgumentException();
+        } catch (IOException ioEx) {
+            throw new IllegalArgumentException();
+        }
+
+        try {
+            if (is != null) {
+                is.close();
+            }
+        } catch (Exception e) {}
+    }
 
     /**
      * Sets the data source (URI) to use. Call this
@@ -465,5 +483,10 @@ public class MediaMetadataRetriever
      * of 180 degrees will be retrieved as "-90.0000+180.0000", for instance.
      */
     public static final int METADATA_KEY_LOCATION        = 23;
+    /**
+     * This key retrieves the video rotation angle in degrees, if available.
+     * The video rotation angle may be 0, 90, 180, or 270 degrees.
+     */
+    public static final int METADATA_KEY_VIDEO_ROTATION = 24;
     // Add more here...
 }

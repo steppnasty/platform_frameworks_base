@@ -23,7 +23,7 @@
 #include <nativehelper/jni.h>
 #include <nativehelper/JNIHelp.h>
 #include <android_runtime/AndroidRuntime.h>
-#include "SoundPool.h"
+#include <media/SoundPool.h>
 
 using namespace android;
 
@@ -179,7 +179,7 @@ static jint
 android_media_SoundPool_native_setup(JNIEnv *env, jobject thiz, jobject weakRef, jint maxChannels, jint streamType, jint srcQuality)
 {
     ALOGV("android_media_SoundPool_native_setup");
-    SoundPool *ap = new SoundPool(maxChannels, streamType, srcQuality);
+    SoundPool *ap = new SoundPool(maxChannels, (audio_stream_type_t) streamType, srcQuality);
     if (ap == NULL) {
         return -1;
     }

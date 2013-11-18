@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "MediaProfilesJNI"
 #include <utils/Log.h>
 
@@ -36,15 +36,12 @@ MediaProfiles *sProfiles = NULL;
 static void
 android_media_MediaProfiles_native_init(JNIEnv *env)
 {
-    ALOGE("native_init");
+    ALOGV("native_init");
     Mutex::Autolock lock(sLock);
-    ALOGE("After native_init lock");
 
     if (sProfiles == NULL) {
-        ALOGE("Guru : native_init profiles");
         sProfiles = MediaProfiles::getInstance();
     }
-    ALOGE("retun sProfiles");
 }
 
 static jint
@@ -175,7 +172,7 @@ static bool isCamcorderQualityKnown(int quality)
 static jobject
 android_media_MediaProfiles_native_get_camcorder_profile(JNIEnv *env, jobject thiz, jint id, jint quality)
 {
-    ALOGE("native_get_camcorder_profile: %d %d", id, quality);
+    ALOGV("native_get_camcorder_profile: %d %d", id, quality);
     if (!isCamcorderQualityKnown(quality)) {
         jniThrowException(env, "java/lang/RuntimeException", "Unknown camcorder profile quality");
         return NULL;
@@ -224,7 +221,7 @@ android_media_MediaProfiles_native_get_camcorder_profile(JNIEnv *env, jobject th
 static jboolean
 android_media_MediaProfiles_native_has_camcorder_profile(JNIEnv *env, jobject thiz, jint id, jint quality)
 {
-    ALOGE("native_has_camcorder_profile: %d %d", id, quality);
+    ALOGV("native_has_camcorder_profile: %d %d", id, quality);
     if (!isCamcorderQualityKnown(quality)) {
         return false;
     }

@@ -61,12 +61,14 @@ public class CamcorderProfile
     public static final int QUALITY_QCIF = 2;
 
     /**
-     * Quality level corresponding to the cif (352 x 288) resolution. 
+     * Quality level corresponding to the cif (352 x 288) resolution.
      */
-    public static final int QUALITY_QVGA = 7;
+    public static final int QUALITY_CIF = 3;
 
     /**
      * Quality level corresponding to the 480p (720 x 480) resolution.
+     * Note that the horizontal resolution for 480p can also be other
+     * values, such as 640 or 704, instead of 720.
      */
     public static final int QUALITY_480P = 4;
 
@@ -76,40 +78,21 @@ public class CamcorderProfile
     public static final int QUALITY_720P = 5;
 
     /**
-     * Quality level corresponding to the 1080p (1920 x 1088) resolution.
+     * Quality level corresponding to the 1080p (1920 x 1080) resolution.
+     * Note that the vertical resolution for 1080p can also be 1088,
+     * instead of 1080 (used by some vendors to avoid cropping during
+     * video playback).
      */
     public static final int QUALITY_1080P = 6;
 
     /**
      * Quality level corresponding to the QVGA (320x240) resolution.
-     *
      */
-    public static final int QUALITY_CIF = 3;
-
-    /**
-     * {@hide}
-     */
-    public static final int QUALITY_WQVGA = 10;
-
-    /**
-     * {@hide}
-     */
-    public static final int QUALITY_VGA = 9;
-
-    /**
-     * {@hide}
-     */
-    public static final int QUALITY_WVGA = 8;
-
-    /**
-     * {@hide}
-     */
-    public static final int QUALITY_FWVGA = 11;
-
+    public static final int QUALITY_QVGA = 7;
 
     // Start and end of quality list
     private static final int QUALITY_LIST_START = QUALITY_LOW;
-    private static final int QUALITY_LIST_END = QUALITY_FWVGA;
+    private static final int QUALITY_LIST_END = QUALITY_QVGA;
 
     /**
      * Time lapse quality level corresponding to the lowest available resolution.

@@ -151,7 +151,7 @@ public class RemoteControlClient
      * @hide
      * Playback information indicating the playback volume is fixed, i.e. it cannot be controlled
      * from this object. An example of fixed playback volume is a remote player, playing over HDMI
-     * where the user prefer to control the volume on the HDMI sink, rather than attenuate at the 
+     * where the user prefer to control the volume on the HDMI sink, rather than attenuate at the
      * source.
      * @see #PLAYBACKINFO_VOLUME_HANDLING.
      */
@@ -162,7 +162,7 @@ public class RemoteControlClient
      * this object.
      * @see #PLAYBACKINFO_VOLUME_HANDLING.
      */
-     public final static int PLAYBACK_VOLUME_VARIABLE = 1;
+    public final static int PLAYBACK_VOLUME_VARIABLE = 1;
     /**
      * @hide (to be un-hidden)
      * The playback information value indicating the value of a given information type is invalid.
@@ -187,8 +187,8 @@ public class RemoteControlClient
     public final static int PLAYBACKINFO_VOLUME = 2;
     /**
      * @hide
-     * Playback information that defines the maximum volume value that is supported
-     * by the playback associated with this RemoteControlClient. This information is only used 
+     * Playback information that defines the maximum volume volume value that is supported
+     * by the playback associated with this RemoteControlClient. This information is only used
      * when the playback type is not local (see {@link #PLAYBACKINFO_PLAYBACK_TYPE}).
      */
     public final static int PLAYBACKINFO_VOLUME_MAX = 3;
@@ -601,6 +601,8 @@ public class RemoteControlClient
 
                 // send to remote control display if conditions are met
                 sendPlaybackState_syncCacheLock();
+                // update AudioService
+                sendAudioServiceNewPlaybackInfo_syncCacheLock(PLAYBACKINFO_PLAYSTATE, state);
             }
         }
     }
@@ -670,7 +672,7 @@ public class RemoteControlClient
                             mPlaybackVolume = value;
                             sendAudioServiceNewPlaybackInfo_syncCacheLock(what, value);
                         }
-                    } else { 
+                    } else {
                         Log.w(TAG, "using invalid value for PLAYBACKINFO_VOLUME");
                     }
                     break;
@@ -720,8 +722,8 @@ public class RemoteControlClient
      *        {@link #PLAYBACKINFO_VOLUME_MAX},
      *        and {@link #PLAYBACKINFO_VOLUME_HANDLING}.
      * @return the current value for the given information type, or
-     *   {@link #PLAYBACKINFO_INVALID_VALUE} if an error occurred or the request is invalid,
-     *   or the value is unknown.
+     *   {@link #PLAYBACKINFO_INVALID_VALUE} if an error occurred or the request is invalid, or
+     *   the value is unknown.
      */
     public int getIntPlaybackInformation(int what) {
         synchronized(mCacheLock) {
@@ -741,7 +743,7 @@ public class RemoteControlClient
                     return PLAYBACKINFO_INVALID_VALUE;
             }
         }
-    }     
+    }
 
     /**
      * Lock for all cached data
@@ -777,6 +779,7 @@ public class RemoteControlClient
     /**
      * Cache for the metadata strings.
      * Access synchronized on mCacheLock
+     * This is re-initialized in apply() and so cannot be final.
      */
     private Bundle mMetadata = new Bundle();
 
@@ -822,7 +825,7 @@ public class RemoteControlClient
     /**
      * The IRemoteControlClient implementation
      */
-    private IRemoteControlClient mIRCC = new IRemoteControlClient.Stub() {
+    private final IRemoteControlClient mIRCC = new IRemoteControlClient.Stub() {
 
         public void onInformationRequested(int clientGeneration, int infoFlags,
                 int artWidth, int artHeight) {
@@ -887,7 +890,7 @@ public class RemoteControlClient
     private int mRcseId = RCSE_ID_UNREGISTERED;
     /**
      * @hide
-     * To be only used by AudioManager after it has recieved the unique id from
+     * To be only used by AudioManager after it has received the unique id from
      * IAudioService.registerRemoteControlClient()
      * @param id the unique identifier of the RemoteControlStackEntry in AudioService with which
      *              this RemoteControlClient is associated.
@@ -958,6 +961,9 @@ public class RemoteControlClient
             }
         }
     }
+
+    //===========================================================
+    // Communication with IRemoteControlDisplay
 
     private void detachFromDisplay_syncCacheLock() {
         mRcDisplay = null;
@@ -1030,7 +1036,7 @@ public class RemoteControlClient
         }
     }
 
-    //==========================================================
+    //===========================================================
     // Communication with AudioService
 
     private static IAudioService sService;
@@ -1057,6 +1063,9 @@ public class RemoteControlClient
             Log.e(TAG, "Dead object in sendAudioServiceNewPlaybackInfo_syncCacheLock", e);
         }
     }
+
+    //===========================================================
+    // Message handlers
 
     private void onNewInternalClientGen(Integer clientGeneration, int artWidth, int artHeight) {
         synchronized (mCacheLock) {
@@ -1092,6 +1101,9 @@ public class RemoteControlClient
         }
     }
 
+    //===========================================================
+    // Internal utilities
+
     /**
      * Scale a bitmap to fit the smallest dimension by uniformly scaling the incoming bitmap.
      * If the bitmap fits, then do nothing and return the original.
@@ -1110,7 +1122,11 @@ public class RemoteControlClient
                 float scale = Math.min((float) maxWidth / width, (float) maxHeight / height);
                 int newWidth = Math.round(scale * width);
                 int newHeight = Math.round(scale * height);
-                Bitmap outBitmap = Bitmap.createBitmap(newWidth, newHeight, bitmap.getConfig());
+                Bitmap.Config newConfig = bitmap.getConfig();
+                if (newConfig == null) {
+                    newConfig = Bitmap.Config.ARGB_8888;
+                }
+                Bitmap outBitmap = Bitmap.createBitmap(newWidth, newHeight, newConfig);
                 Canvas canvas = new Canvas(outBitmap);
                 Paint paint = new Paint();
                 paint.setAntiAlias(true);

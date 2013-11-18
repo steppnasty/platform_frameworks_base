@@ -12,9 +12,9 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	frameworks/base/media/libstagefright/include \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax \
+	frameworks/av/media/libstagefright \
+	frameworks/av/media/libstagefright/include \
+	$(TOP)/frameworks/native/include/media/openmax \
         external/skia/include/core \
         external/skia/include/images \
 
@@ -45,8 +45,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax
+	frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_CFLAGS += -Wno-multichar
 
@@ -69,8 +69,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax
+	frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 LOCAL_C_INCLUDES += \
@@ -100,8 +100,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax
+	frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_CFLAGS += -Wno-multichar
 
@@ -124,8 +124,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax
+	frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_CFLAGS += -Wno-multichar
 
@@ -148,8 +148,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES:= \
 	$(JNI_H_INCLUDE) \
-	frameworks/base/media/libstagefright \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax
+	frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_CFLAGS += -Wno-multichar
 

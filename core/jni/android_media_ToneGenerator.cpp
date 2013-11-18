@@ -1,4 +1,4 @@
-/* //device/libs/android_runtime/android_media_AudioSystem.cpp
+/*
  **
  ** Copyright 2008, The Android Open Source Project
  **
@@ -21,13 +21,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "jni.h"
-#include "JNIHelp.h"
-#include "android_runtime/AndroidRuntime.h"
+#include <jni.h>
+#include <JNIHelp.h>
+#include <android_runtime/AndroidRuntime.h>
 
-#include "utils/Log.h"
-#include "media/AudioSystem.h"
-#include "media/ToneGenerator.h"
+#include <utils/Log.h>
+#include <media/AudioSystem.h>
+#include <media/ToneGenerator.h>
 
 // ----------------------------------------------------------------------------
 
@@ -39,7 +39,7 @@ struct fields_t {
 static fields_t fields;
 
 static jboolean android_media_ToneGenerator_startTone(JNIEnv *env, jobject thiz, jint toneType, jint durationMs) {
-    ALOGV("android_media_ToneGenerator_startTone: %x\n", (int)thiz);
+    ALOGV("android_media_ToneGenerator_startTone: %x", (int)thiz);
 
     ToneGenerator *lpToneGen = (ToneGenerator *)env->GetIntField(thiz,
             fields.context);
@@ -48,16 +48,16 @@ static jboolean android_media_ToneGenerator_startTone(JNIEnv *env, jobject thiz,
         return false;
     }
 
-    return lpToneGen->startTone(toneType, durationMs);
+    return lpToneGen->startTone((ToneGenerator::tone_type) toneType, durationMs);
 }
 
 static void android_media_ToneGenerator_stopTone(JNIEnv *env, jobject thiz) {
-    ALOGV("android_media_ToneGenerator_stopTone: %x\n", (int)thiz);
+    ALOGV("android_media_ToneGenerator_stopTone: %x", (int)thiz);
 
     ToneGenerator *lpToneGen = (ToneGenerator *)env->GetIntField(thiz,
             fields.context);
 
-    ALOGV("ToneGenerator lpToneGen: %x\n", (unsigned int)lpToneGen);
+    ALOGV("ToneGenerator lpToneGen: %x", (unsigned int)lpToneGen);
     if (lpToneGen == NULL) {
         jniThrowRuntimeException(env, "Method called after release()");
         return;
@@ -65,16 +65,24 @@ static void android_media_ToneGenerator_stopTone(JNIEnv *env, jobject thiz) {
     lpToneGen->stopTone();
 }
 
+static jint android_media_ToneGenerator_getAudioSessionId(JNIEnv *env, jobject thiz) {
+    ToneGenerator *lpToneGen = (ToneGenerator *)env->GetIntField(thiz,
+            fields.context);
+    if (lpToneGen == NULL) {
+        jniThrowRuntimeException(env, "Method called after release()");
+        return 0;
+    }
+    return lpToneGen->getSessionId();
+}
+
 static void android_media_ToneGenerator_release(JNIEnv *env, jobject thiz) {
     ToneGenerator *lpToneGen = (ToneGenerator *)env->GetIntField(thiz,
             fields.context);
-    ALOGV("android_media_ToneGenerator_release lpToneGen: %x\n", (int)lpToneGen);
+    ALOGV("android_media_ToneGenerator_release lpToneGen: %x", (int)lpToneGen);
 
     env->SetIntField(thiz, fields.context, 0);
 
-    if (lpToneGen) {
-        delete lpToneGen;
-    }
+    delete lpToneGen;
 }
 
 static void android_media_ToneGenerator_native_setup(JNIEnv *env, jobject thiz,
@@ -83,17 +91,17 @@ static void android_media_ToneGenerator_native_setup(JNIEnv *env, jobject thiz,
 
     env->SetIntField(thiz, fields.context, 0);
 
-    ALOGV("android_media_ToneGenerator_native_setup jobject: %x\n", (int)thiz);
+    ALOGV("android_media_ToneGenerator_native_setup jobject: %x", (int)thiz);
 
     if (lpToneGen == NULL) {
-        ALOGE("ToneGenerator creation failed \n");
+        ALOGE("ToneGenerator creation failed");
         jniThrowException(env, "java/lang/OutOfMemoryError", NULL);
         return;
     }
-    ALOGV("ToneGenerator lpToneGen: %x\n", (unsigned int)lpToneGen);
+    ALOGV("ToneGenerator lpToneGen: %x", (unsigned int)lpToneGen);
 
     if (!lpToneGen->isInited()) {
-        ALOGE("ToneGenerator init failed \n");
+        ALOGE("ToneGenerator init failed");
         jniThrowRuntimeException(env, "Init failed");
         return;
     }
@@ -101,18 +109,18 @@ static void android_media_ToneGenerator_native_setup(JNIEnv *env, jobject thiz,
     // Stow our new C++ ToneGenerator in an opaque field in the Java object.
     env->SetIntField(thiz, fields.context, (int)lpToneGen);
 
-    ALOGV("ToneGenerator fields.context: %x\n", env->GetIntField(thiz, fields.context));
+    ALOGV("ToneGenerator fields.context: %x", env->GetIntField(thiz, fields.context));
 }
 
 static void android_media_ToneGenerator_native_finalize(JNIEnv *env,
         jobject thiz) {
-    ALOGV("android_media_ToneGenerator_native_finalize jobject: %x\n", (int)thiz);
+    ALOGV("android_media_ToneGenerator_native_finalize jobject: %x", (int)thiz);
 
     ToneGenerator *lpToneGen = (ToneGenerator *)env->GetIntField(thiz,
             fields.context);
 
-    if (lpToneGen) {
-        ALOGV("delete lpToneGen: %x\n", (int)lpToneGen);
+    if (lpToneGen != NULL) {
+        ALOGV("delete lpToneGen: %p", lpToneGen);
         delete lpToneGen;
     }
 }
@@ -122,6 +130,7 @@ static void android_media_ToneGenerator_native_finalize(JNIEnv *env,
 static JNINativeMethod gMethods[] = {
     { "startTone", "(II)Z", (void *)android_media_ToneGenerator_startTone },
     { "stopTone", "()V", (void *)android_media_ToneGenerator_stopTone },
+    { "getAudioSessionId", "()I", (void *)android_media_ToneGenerator_getAudioSessionId},
     { "release", "()V", (void *)android_media_ToneGenerator_release },
     { "native_setup", "(II)V", (void *)android_media_ToneGenerator_native_setup },
     { "native_finalize", "()V", (void *)android_media_ToneGenerator_native_finalize }

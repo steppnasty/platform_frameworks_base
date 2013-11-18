@@ -44,12 +44,12 @@ LOCAL_STATIC_LIBRARIES := libgsm libstagefright_amrnbdec libstagefright_amrnbenc
 LOCAL_C_INCLUDES += \
 	$(JNI_H_INCLUDE) \
 	external/libgsm/inc \
-	frameworks/base/media/libstagefright/codecs/amrnb/common/include \
-	frameworks/base/media/libstagefright/codecs/amrnb/common/ \
-	frameworks/base/media/libstagefright/codecs/amrnb/enc/include \
-	frameworks/base/media/libstagefright/codecs/amrnb/enc/src \
-	frameworks/base/media/libstagefright/codecs/amrnb/dec/include \
-	frameworks/base/media/libstagefright/codecs/amrnb/dec/src \
+	frameworks/av/media/libstagefright/codecs/amrnb/common/include \
+	frameworks/av/media/libstagefright/codecs/amrnb/common/ \
+	frameworks/av/media/libstagefright/codecs/amrnb/enc/include \
+	frameworks/av/media/libstagefright/codecs/amrnb/enc/src \
+	frameworks/av/media/libstagefright/codecs/amrnb/dec/include \
+	frameworks/av/media/libstagefright/codecs/amrnb/dec/src \
 	system/media/audio_effects/include
 
 LOCAL_CFLAGS += -fvisibility=hidden

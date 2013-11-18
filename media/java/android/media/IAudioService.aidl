@@ -26,6 +26,7 @@ import android.media.IRemoteControlClient;
 import android.media.IRemoteControlDisplay;
 import android.media.IRemoteVolumeObserver;
 import android.media.IRingtonePlayer;
+import android.net.Uri;
 import android.view.KeyEvent;
 
 /**
@@ -38,12 +39,14 @@ interface IAudioService {
     oneway void adjustLocalOrRemoteStreamVolume(int streamType, int direction);
 
     void adjustSuggestedStreamVolume(int direction, int suggestedStreamType, int flags);
-    
+
     void adjustStreamVolume(int streamType, int direction, int flags);
 
     void adjustMasterVolume(int direction, int flags);
 
     void setStreamVolume(int streamType, int index, int flags);
+
+    oneway void setRemoteStreamVolume(int index);
 
     void setMasterVolume(int index, int flags);
     
@@ -57,12 +60,10 @@ interface IAudioService {
 
     boolean isMasterMute();
 
-    void toggleGlobalMute();
-
     int getStreamVolume(int streamType);
 
     int getMasterVolume();
-    
+
     int getStreamMaxVolume(int streamType);
 
     int getMasterMaxVolume();
@@ -135,12 +136,11 @@ interface IAudioService {
     oneway void remoteControlDisplayUsesBitmapSize(in IRemoteControlDisplay rcd, int w, int h);
 
     oneway void setPlaybackInfoForRcc(int rccId, int what, int value);
-           int getRemoteStreamMaxVolume();
-           int getRemoteStreamVolume();
+           int  getRemoteStreamMaxVolume();
+           int  getRemoteStreamVolume();
     oneway void registerRemoteVolumeObserverForRcc(int rccId, in IRemoteVolumeObserver rvo);
 
     void startBluetoothSco(IBinder cb);
-
     void stopBluetoothSco(IBinder cb);
 
     void forceVolumeControlStream(int streamType, IBinder cb);

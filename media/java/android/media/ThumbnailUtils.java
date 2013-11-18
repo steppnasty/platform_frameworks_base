@@ -104,8 +104,10 @@ public class ThumbnailUtils {
         }
 
         if (bitmap == null) {
+            FileInputStream stream = null;
             try {
-                FileDescriptor fd = new FileInputStream(filePath).getFD();
+                stream = new FileInputStream(filePath);
+                FileDescriptor fd = stream.getFD();
                 BitmapFactory.Options options = new BitmapFactory.Options();
                 options.inSampleSize = 1;
                 options.inJustDecodeBounds = true;
@@ -125,7 +127,16 @@ public class ThumbnailUtils {
                 Log.e(TAG, "", ex);
             } catch (OutOfMemoryError oom) {
                 Log.e(TAG, "Unable to decode file " + filePath + ". OutOfMemoryError.", oom);
+            } finally {
+                try {
+                    if (stream != null) {
+                        stream.close();
+                    }
+                } catch (IOException ex) {
+                    Log.e(TAG, "", ex);
+                }
             }
+
         }
 
         if (kind == Images.Thumbnails.MICRO_KIND) {
@@ -150,8 +161,6 @@ public class ThumbnailUtils {
         try {
             retriever.setDataSource(filePath);
             bitmap = retriever.getFrameAtTime(-1);
-        } catch (OutOfMemoryError e) {
-                Log.e(TAG, "Got OOM error", e);
         } catch (IllegalArgumentException ex) {
             // Assume this is a corrupt video file
         } catch (RuntimeException ex) {
@@ -474,9 +483,7 @@ public class ThumbnailUtils {
         byte [] thumbData = null;
         try {
             exif = new ExifInterface(filePath);
-            if (exif != null) {
-                thumbData = exif.getThumbnail();
-            }
+            thumbData = exif.getThumbnail();
         } catch (IOException ex) {
             Log.w(TAG, ex);
         }
