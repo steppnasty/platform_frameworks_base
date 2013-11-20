@@ -20,7 +20,10 @@ import android.app.ActivityManagerNative;
 import android.app.ActivityThread;
 import android.app.ApplicationErrorReport;
 import android.app.IActivityManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.util.Log;
 import android.util.Printer;
 import android.util.Singleton;
@@ -404,17 +407,17 @@ public final class StrictMode {
             }
 
             /**
-             * Enable detection of disk reads.
+             * Enable detection of slow calls.
              */
             public Builder detectCustomSlowCalls() {
                 return enable(DETECT_CUSTOM);
             }
 
             /**
-             * Enable detection of disk reads.
+             * Disable detection of slow calls.
              */
             public Builder permitCustomSlowCalls() {
-                return enable(DETECT_CUSTOM);
+                return disable(DETECT_CUSTOM);
             }
 
             /**
@@ -651,6 +654,15 @@ public final class StrictMode {
              */
             public Builder detectLeakedClosableObjects() {
                 return enable(DETECT_VM_CLOSABLE_LEAKS);
+            }
+
+            /**
+             * Detect when a {@link BroadcastReceiver} or
+             * {@link ServiceConnection} is leaked during {@link Context}
+             * teardown.
+             */
+            public Builder detectLeakedRegistrationObjects() {
+                return enable(DETECT_VM_REGISTRATION_LEAKS);
             }
 
             /**

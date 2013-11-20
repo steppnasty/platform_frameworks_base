@@ -32,7 +32,7 @@ import java.lang.reflect.Modifier;
  * the standard support creating a local implementation of such an object.
  * 
  * <p>Most developers will not implement this class directly, instead using the
- * <a href="{@docRoot}guide/developing/tools/aidl.html">aidl</a> tool to describe the desired
+ * <a href="{@docRoot}guide/components/aidl.html">aidl</a> tool to describe the desired
  * interface, having it generate the appropriate Binder subclass.  You can,
  * however, derive directly from Binder to implement your own custom RPC
  * protocol or simply instantiate a raw Binder object directly to use as a
@@ -49,6 +49,7 @@ public class Binder implements IBinder {
     private static final boolean FIND_POTENTIAL_LEAKS = false;
     private static final String TAG = "Binder";
 
+    /* mObject is used by native code, do not remove or rename */
     private int mObject;
     private IInterface mOwner;
     private String mDescriptor;
@@ -63,7 +64,7 @@ public class Binder implements IBinder {
     public static final native int getCallingPid();
     
     /**
-     * Return the ID of the user assigned to the process that sent you the
+     * Return the Linux uid assigned to the process that sent you the
      * current transaction that is being processed.  This uid can be used with
      * higher-level system services to determine its identity and check
      * permissions.  If the current thread is not currently executing an
@@ -81,34 +82,6 @@ public class Binder implements IBinder {
      */
     public static final UserHandle getCallingUserHandle() {
         return new UserHandle(UserHandle.getUserId(getCallingUid()));
-    }
-
-    /**
-     * Return the original ID of the user assigned to the process that sent you the current
-     * transaction that is being process. This uid can be used with higher-level system services
-     * to determine its identity and check permissions. If the current thread is not currently 
-     * executing an incoming transaction, then its own uid is returned.
-     * <p/>
-     * This value cannot be reset by calls to {@link #clearCallingIdentity()}.
-     * @hide
-     */
-    public static final int getOrigCallingUid() {
-        if (UserHandle.MU_ENABLED) {
-            return getOrigCallingUidNative();
-        } else {
-            return getCallingUid();
-        }
-    }
-
-    private static final native int getOrigCallingUidNative();
-
-    /**
-     * Utility function to return the user id of the calling process.
-     * @return userId of the calling process, extracted from the callingUid
-     * @hide
-     */
-    public static final int getOrigCallingUser() {
-        return UserHandle.getUserId(getOrigCallingUid());
     }
 
     /**

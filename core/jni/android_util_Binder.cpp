@@ -729,11 +729,6 @@ static jint android_os_Binder_getCallingUid(JNIEnv* env, jobject clazz)
     return IPCThreadState::self()->getCallingUid();
 }
 
-static jint android_os_Binder_getOrigCallingUid(JNIEnv* env, jobject clazz)
-{
-    return IPCThreadState::self()->getOrigCallingUid();
-}
-
 static jlong android_os_Binder_clearCallingIdentity(JNIEnv* env, jobject clazz)
 {
     return IPCThreadState::self()->clearCallingIdentity();
@@ -803,16 +798,15 @@ static void android_os_Binder_destroy(JNIEnv* env, jobject obj)
 
 static const JNINativeMethod gBinderMethods[] = {
      /* name, signature, funcPtr */
-    { "getCallingPid",             "()I",  (void*)android_os_Binder_getCallingPid },
-    { "getCallingUid",             "()I",  (void*)android_os_Binder_getCallingUid },
-    { "getOrigCallingUidNative",   "()I",  (void*)android_os_Binder_getOrigCallingUid },
-    { "clearCallingIdentity",      "()J",  (void*)android_os_Binder_clearCallingIdentity },
-    { "restoreCallingIdentity",    "(J)V", (void*)android_os_Binder_restoreCallingIdentity },
+    { "getCallingPid", "()I", (void*)android_os_Binder_getCallingPid },
+    { "getCallingUid", "()I", (void*)android_os_Binder_getCallingUid },
+    { "clearCallingIdentity", "()J", (void*)android_os_Binder_clearCallingIdentity },
+    { "restoreCallingIdentity", "(J)V", (void*)android_os_Binder_restoreCallingIdentity },
     { "setThreadStrictModePolicy", "(I)V", (void*)android_os_Binder_setThreadStrictModePolicy },
-    { "getThreadStrictModePolicy", "()I",  (void*)android_os_Binder_getThreadStrictModePolicy },
-    { "flushPendingCommands",      "()V",  (void*)android_os_Binder_flushPendingCommands },
-    { "init",                      "()V",  (void*)android_os_Binder_init },
-    { "destroy",                   "()V",  (void*)android_os_Binder_destroy }
+    { "getThreadStrictModePolicy", "()I", (void*)android_os_Binder_getThreadStrictModePolicy },
+    { "flushPendingCommands", "()V", (void*)android_os_Binder_flushPendingCommands },
+    { "init", "()V", (void*)android_os_Binder_init },
+    { "destroy", "()V", (void*)android_os_Binder_destroy }
 };
 
 const char* const kBinderPathName = "android/os/Binder";
@@ -1202,13 +1196,13 @@ static void android_os_BinderProxy_destroy(JNIEnv* env, jobject obj)
 
 static const JNINativeMethod gBinderProxyMethods[] = {
      /* name, signature, funcPtr */
-    { "pingBinder",              "()Z", (void*)android_os_BinderProxy_pingBinder},
-    { "isBinderAlive",           "()Z", (void*)android_os_BinderProxy_isBinderAlive},
-    { "getInterfaceDescriptor",  "()Ljava/lang/String;", (void*)android_os_BinderProxy_getInterfaceDescriptor},
-    { "transact",                "(ILandroid/os/Parcel;Landroid/os/Parcel;I)Z", (void*)android_os_BinderProxy_transact},
-    { "linkToDeath",             "(Landroid/os/IBinder$DeathRecipient;I)V", (void*)android_os_BinderProxy_linkToDeath},
-    { "unlinkToDeath",           "(Landroid/os/IBinder$DeathRecipient;I)Z", (void*)android_os_BinderProxy_unlinkToDeath},
-    { "destroy",                 "()V", (void*)android_os_BinderProxy_destroy},
+    {"pingBinder",          "()Z", (void*)android_os_BinderProxy_pingBinder},
+    {"isBinderAlive",       "()Z", (void*)android_os_BinderProxy_isBinderAlive},
+    {"getInterfaceDescriptor", "()Ljava/lang/String;", (void*)android_os_BinderProxy_getInterfaceDescriptor},
+    {"transact",            "(ILandroid/os/Parcel;Landroid/os/Parcel;I)Z", (void*)android_os_BinderProxy_transact},
+    {"linkToDeath",         "(Landroid/os/IBinder$DeathRecipient;I)V", (void*)android_os_BinderProxy_linkToDeath},
+    {"unlinkToDeath",       "(Landroid/os/IBinder$DeathRecipient;I)Z", (void*)android_os_BinderProxy_unlinkToDeath},
+    {"destroy",             "()V", (void*)android_os_BinderProxy_destroy},
 };
 
 const char* const kBinderProxyPathName = "android/os/BinderProxy";

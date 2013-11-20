@@ -70,7 +70,6 @@ LOCAL_SRC_FILES:= \
         android_os_Parcel.cpp               \
 	android_os_Power.cpp \
 	android_os_SELinux.cpp \
-	android_os_StatFs.cpp \
 	android_os_SystemClock.cpp \
 	android_os_SystemProperties.cpp \
         android_os_Trace.cpp \

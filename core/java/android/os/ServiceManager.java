@@ -91,7 +91,7 @@ public final class ServiceManager {
             Log.e(TAG, "error in addService", e);
         }
     }
-
+    
     /**
      * Retrieve an existing service called @a name from the
      * service manager.  Non-blocking.

@@ -16,11 +16,18 @@
 
 package android.os;
 
+import android.util.Slog;
+
 import com.google.android.collect.Maps;
 
 import java.util.HashMap;
+import java.util.concurrent.TimeoutException;
 
-/** @hide */
+/**
+ * Controls and utilities for low-level {@code init} services.
+ *
+ * @hide
+ */
 public class SystemService {
 
     private static HashMap<String, State> sStates = Maps.newHashMap();
@@ -39,12 +46,25 @@ public class SystemService {
         }
     }
 
-        /** Request that the init daemon start a named service. */
+    private static Object sPropertyLock = new Object();
+
+    static {
+        SystemProperties.addChangeCallback(new Runnable() {
+            @Override
+            public void run() {
+                synchronized (sPropertyLock) {
+                    sPropertyLock.notifyAll();
+                }
+            }
+        });
+    }
+
+    /** Request that the init daemon start a named service. */
     public static void start(String name) {
         SystemProperties.set("ctl.start", name);
     }
-    
-        /** Request that the init daemon stop a named service. */
+
+    /** Request that the init daemon stop a named service. */
     public static void stop(String name) {
         SystemProperties.set("ctl.stop", name);
     }
@@ -79,5 +99,51 @@ public class SystemService {
      */
     public static boolean isRunning(String service) {
         return State.RUNNING.equals(getState(service));
+    }
+
+    /**
+     * Wait until given service has entered specific state.
+     */
+    public static void waitForState(String service, State state, long timeoutMillis)
+            throws TimeoutException {
+        final long endMillis = SystemClock.elapsedRealtime() + timeoutMillis;
+        while (true) {
+            synchronized (sPropertyLock) {
+                final State currentState = getState(service);
+                if (state.equals(currentState)) {
+                    return;
+                }
+
+                if (SystemClock.elapsedRealtime() >= endMillis) {
+                    throw new TimeoutException("Service " + service + " currently " + currentState
+                            + "; waited " + timeoutMillis + "ms for " + state);
+                }
+
+                try {
+                    sPropertyLock.wait(timeoutMillis);
+                } catch (InterruptedException e) {
+                }
+            }
+        }
+    }
+
+    /**
+     * Wait until any of given services enters {@link State#STOPPED}.
+     */
+    public static void waitForAnyStopped(String... services)  {
+        while (true) {
+            synchronized (sPropertyLock) {
+                for (String service : services) {
+                    if (State.STOPPED.equals(getState(service))) {
+                        return;
+                    }
+                }
+
+                try {
+                    sPropertyLock.wait();
+                } catch (InterruptedException e) {
+                }
+            }
+        }
     }
 }

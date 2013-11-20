@@ -16,9 +16,6 @@
 
 package android.os;
 
-import android.os.Bundle;
-import android.os.Parcel;
-import android.os.Parcelable;
 import android.util.TimeUtils;
 
 /**
@@ -75,16 +72,13 @@ public final class Message implements Parcelable {
     public Messenger replyTo;
 
     /** If set message is in use */
-    /*package*/ static final int FLAG_IN_USE = 1;
+    /*package*/ static final int FLAG_IN_USE = 1 << 0;
 
     /** If set message is asynchronous */
     /*package*/ static final int FLAG_ASYNCHRONOUS = 1 << 1;
 
-    /** Flags reserved for future use (All are reserved for now) */
-    /*package*/ static final int FLAGS_RESERVED = ~FLAG_IN_USE;
-
     /** Flags to clear in the copyFrom method */
-    /*package*/ static final int FLAGS_TO_CLEAR_ON_COPY_FROM = FLAGS_RESERVED | FLAG_IN_USE;
+    /*package*/ static final int FLAGS_TO_CLEAR_ON_COPY_FROM = FLAG_IN_USE;
 
     /*package*/ int flags;
 
@@ -103,8 +97,8 @@ public final class Message implements Parcelable {
     private static Message sPool;
     private static int sPoolSize = 0;
 
-    private static final int MAX_POOL_SIZE = 10;
-    
+    private static final int MAX_POOL_SIZE = 50;
+
     /**
      * Return a new Message instance from the global pool. Allows us to
      * avoid allocating new objects in many cases.
@@ -509,7 +503,7 @@ public final class Message implements Parcelable {
         Messenger.writeMessengerOrNullToParcel(replyTo, dest);
     }
 
-    private final void readFromParcel(Parcel source) {
+    private void readFromParcel(Parcel source) {
         what = source.readInt();
         arg1 = source.readInt();
         arg2 = source.readInt();
