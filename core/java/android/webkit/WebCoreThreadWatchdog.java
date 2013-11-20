@@ -270,7 +270,7 @@ class WebCoreThreadWatchdog implements Runnable {
                                             SUBSEQUENT_TIMEOUT_PERIOD);
                                 }
                             })
-                    .setIconAttribute(android.R.attr.alertDialogIcon)
+                    .setIcon(android.R.drawable.ic_dialog_alert)
                     .show();
         }
     }

@@ -26,19 +26,18 @@ import android.os.Looper;
 import android.os.RemoteException;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
-import java.io.IOException;
-import java.security.KeyPair;
+import java.security.InvalidKeyException;
 import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import libcore.util.Objects;
+
+import org.apache.harmony.xnet.provider.jsse.OpenSSLEngine;
 import org.apache.harmony.xnet.provider.jsse.TrustedCertificateStore;
 
 /**
@@ -124,7 +123,7 @@ public final class KeyChain {
     public static final String EXTRA_SENDER = "sender";
 
     /**
-     * Action to bring up the CertInstaller
+     * Action to bring up the CertInstaller.
      */
     private static final String ACTION_INSTALL = "android.credentials.INSTALL";
 
@@ -166,6 +165,7 @@ public final class KeyChain {
      */
     // Compatible with old android.security.Credentials.PKCS12
     public static final String EXTRA_PKCS12 = "PKCS12";
+
 
     /**
      * Broadcast Action: Indicates the trusted storage has changed. Sent when
@@ -221,9 +221,6 @@ public final class KeyChain {
      *
      * <p>{@code alias} allows the chooser to preselect an existing
      * alias which will still be subject to user confirmation.
-     *
-     * <p>This method requires the caller to hold the permission
-     * {@link android.Manifest.permission#USE_CREDENTIALS}.
      *
      * @param activity The {@link Activity} context to use for
      *     launching the new sub-Activity to prompt the user to select
@@ -292,9 +289,6 @@ public final class KeyChain {
      * Returns the {@code PrivateKey} for the requested alias, or null
      * if no there is no result.
      *
-     * <p>This method requires the caller to hold the permission
-     * {@link android.Manifest.permission#USE_CREDENTIALS}.
-     *
      * @param alias The alias of the desired private key, typically
      * returned via {@link KeyChainAliasCallback#alias}.
      * @throws KeyChainException if the alias was valid but there was some problem accessing it.
@@ -306,13 +300,20 @@ public final class KeyChain {
         }
         KeyChainConnection keyChainConnection = bind(context);
         try {
-            IKeyChainService keyChainService = keyChainConnection.getService();
-            byte[] privateKeyBytes = keyChainService.getPrivateKey(alias);
-            return toPrivateKey(privateKeyBytes);
+            final IKeyChainService keyChainService = keyChainConnection.getService();
+            final String keyId = keyChainService.requestPrivateKey(alias);
+            if (keyId == null) {
+                throw new KeyChainException("keystore had a problem");
+            }
+
+            final OpenSSLEngine engine = OpenSSLEngine.getInstance("keystore");
+            return engine.getPrivateKeyById(keyId);
         } catch (RemoteException e) {
             throw new KeyChainException(e);
         } catch (RuntimeException e) {
             // only certain RuntimeExceptions can be propagated across the IKeyChainService call
+            throw new KeyChainException(e);
+        } catch (InvalidKeyException e) {
             throw new KeyChainException(e);
         } finally {
             keyChainConnection.close();
@@ -322,9 +323,6 @@ public final class KeyChain {
     /**
      * Returns the {@code X509Certificate} chain for the requested
      * alias, or null if no there is no result.
-     *
-     * <p>This method requires the caller to hold the permission
-     * {@link android.Manifest.permission#USE_CREDENTIALS}.
      *
      * @param alias The alias of the desired certificate chain, typically
      * returned via {@link KeyChainAliasCallback#alias}.
@@ -339,20 +337,9 @@ public final class KeyChain {
         try {
             IKeyChainService keyChainService = keyChainConnection.getService();
             byte[] certificateBytes = keyChainService.getCertificate(alias);
-            List<X509Certificate> chain = new ArrayList<X509Certificate>();
-            chain.add(toCertificate(certificateBytes));
             TrustedCertificateStore store = new TrustedCertificateStore();
-            for (int i = 0; true; i++) {
-                X509Certificate cert = chain.get(i);
-                if (Objects.equal(cert.getSubjectX500Principal(), cert.getIssuerX500Principal())) {
-                    break;
-                }
-                X509Certificate issuer = store.findIssuer(cert);
-                if (issuer == null) {
-                    break;
-                }
-                chain.add(issuer);
-            }
+            List<X509Certificate> chain = store
+                    .getCertificateChain(toCertificate(certificateBytes));
             return chain.toArray(new X509Certificate[chain.size()]);
         } catch (RemoteException e) {
             throw new KeyChainException(e);
@@ -361,18 +348,6 @@ public final class KeyChain {
             throw new KeyChainException(e);
         } finally {
             keyChainConnection.close();
-        }
-    }
-
-    private static PrivateKey toPrivateKey(byte[] bytes) {
-        if (bytes == null) {
-            throw new IllegalArgumentException("bytes == null");
-        }
-        try {
-            KeyPair keyPair = (KeyPair) Credentials.convertFromPem(bytes).get(0);
-            return keyPair.getPrivate();
-        } catch (IOException e) {
-            throw new AssertionError(e);
         }
     }
 

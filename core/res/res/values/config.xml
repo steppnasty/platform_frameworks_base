@@ -907,6 +907,10 @@
          movement threshold where scrolling should begin. -->
     <dimen name="config_viewConfigurationTouchSlop">8dp</dimen>
 
+    <!-- Maximum number of grid columns permitted in the ResolverActivity
+         used for picking activities to handle an intent. -->
+    <integer name="config_maxResolverActivityColumns">2</integer>
+
     <!-- CM CHANGES START HERE -->
 
     <!-- LUN file to be used by legacy USB manager.

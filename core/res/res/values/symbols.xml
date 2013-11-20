@@ -268,7 +268,9 @@
   <java-symbol type="id" name="btn_next" />
   <java-symbol type="id" name="btn_play" />
   <java-symbol type="id" name="btn_prev" />
+  <java-symbol type="id" name="button_always" />
   <java-symbol type="id" name="button_bar" />
+  <java-symbol type="id" name="button_once" />
   <java-symbol type="id" name="buttonPanel" />
   <java-symbol type="id" name="by_common" />
   <java-symbol type="id" name="by_org" />
@@ -369,6 +371,7 @@
   <java-symbol type="id" name="progress_horizontal" />
   <java-symbol type="id" name="progress_number" />
   <java-symbol type="id" name="progress_percent" />
+  <java-symbol type="id" name="resolver_grid" />
   <java-symbol type="id" name="rew" />
   <java-symbol type="id" name="right_icon" />
   <java-symbol type="id" name="rightSpacer" />
@@ -437,6 +440,7 @@
   <java-symbol type="integer" name="config_cursorWindowSize" />
   <java-symbol type="integer" name="config_lockSoundVolumeDb" />
   <java-symbol type="integer" name="config_longPressOnPowerBehavior" />
+  <java-symbol type="integer" name="config_maxResolverActivityColumns" />
   <java-symbol type="integer" name="config_max_pan_devices" />
   <java-symbol type="integer" name="config_multiuserMaximumUsers" />
   <java-symbol type="integer" name="config_ntpTimeout" />
@@ -523,6 +527,7 @@
   <java-symbol type="layout" name="preference_widget_seekbar" />
   <java-symbol type="layout" name="progress_dialog" />
   <java-symbol type="layout" name="remote_views_adapter_default_loading_view" />
+  <java-symbol type="layout" name="resolver_grid" />
   <java-symbol type="layout" name="resolve_list_item" />
   <java-symbol type="layout" name="search_bar" />
   <java-symbol type="layout" name="search_dropdown_item_icons_2line" />
@@ -798,6 +803,7 @@
   <java-symbol type="string" name="imTypeHome" />
   <java-symbol type="string" name="imTypeOther" />
   <java-symbol type="string" name="imTypeWork" />
+  <java-symbol type="string" name="inputMethod" />
   <java-symbol type="string" name="invalidPin" />
   <java-symbol type="string" name="js_dialog_before_unload" />
   <java-symbol type="string" name="js_dialog_title" />

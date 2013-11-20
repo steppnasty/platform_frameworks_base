@@ -72,6 +72,12 @@ public class StandaloneActionMode extends ActionMode implements MenuBuilder.Call
     }
 
     @Override
+    public void setTitleOptionalHint(boolean titleOptional) {
+        super.setTitleOptionalHint(titleOptional);
+        mContextView.setTitleOptional(titleOptional);
+    }
+
+    @Override
     public boolean isTitleOptional() {
         return mContextView.isTitleOptional();
     }

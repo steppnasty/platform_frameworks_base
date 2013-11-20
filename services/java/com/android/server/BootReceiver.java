@@ -20,13 +20,16 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Downloads;
+import android.content.pm.IPackageManager;
 import android.os.Build;
 import android.os.DropBoxManager;
 import android.os.FileObserver;
 import android.os.FileUtils;
 import android.os.RecoverySystem;
+import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.provider.Downloads;
 import android.util.Slog;
 
 import java.io.File;
@@ -39,8 +42,10 @@ import java.io.IOException;
 public class BootReceiver extends BroadcastReceiver {
     private static final String TAG = "BootReceiver";
 
-    // Maximum size of a logged event (files get truncated if they're longer)
-    private static final int LOG_SIZE = 65536;
+    // Maximum size of a logged event (files get truncated if they're longer).
+    // Give userdebug builds a larger max to capture extra debug, esp. for last_kmsg.
+    private static final int LOG_SIZE =
+        SystemProperties.getInt("ro.debuggable", 0) == 1 ? 98304 : 65536;
 
     private static final File TOMBSTONE_DIR = new File("/data/tombstones");
 
@@ -67,7 +72,15 @@ public class BootReceiver extends BroadcastReceiver {
                     Slog.e(TAG, "Can't log boot events", e);
                 }
                 try {
-                    removeOldUpdatePackages(context);
+                    boolean onlyCore = false;
+                    try {
+                        onlyCore = IPackageManager.Stub.asInterface(ServiceManager.getService(
+                                "package")).isOnlyCoreApps();
+                    } catch (RemoteException e) {
+                    }
+                    if (!onlyCore) {
+                        removeOldUpdatePackages(context);
+                    }
                 } catch (Exception e) {
                     Slog.e(TAG, "Can't remove old update packages", e);
                 }
@@ -76,9 +89,8 @@ public class BootReceiver extends BroadcastReceiver {
         }.start();
     }
 
-    private void removeOldUpdatePackages(Context ctx) {
-        Downloads.ByUri.removeAllDownloadsByPackage(
-            ctx, OLD_UPDATER_PACKAGE, OLD_UPDATER_CLASS);
+    private void removeOldUpdatePackages(Context context) {
+        Downloads.removeAllDownloadsByPackage(context, OLD_UPDATER_PACKAGE, OLD_UPDATER_CLASS);
     }
 
     private void logBootEvents(Context ctx) throws IOException {
@@ -87,6 +99,8 @@ public class BootReceiver extends BroadcastReceiver {
         final String headers = new StringBuilder(512)
             .append("Build: ").append(Build.FINGERPRINT).append("\n")
             .append("Hardware: ").append(Build.BOARD).append("\n")
+            .append("Revision: ")
+            .append(SystemProperties.get("ro.revision", "")).append("\n")
             .append("Bootloader: ").append(Build.BOOTLOADER).append("\n")
             .append("Radio: ").append(Build.RADIO).append("\n")
             .append("Kernel: ")
