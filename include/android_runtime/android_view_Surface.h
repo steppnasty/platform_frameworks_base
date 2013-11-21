@@ -26,7 +26,7 @@ namespace android {
 class Surface;
 class ISurfaceTexture;
 
-extern sp<ANativeWindow> android_Surface_getNativeWindow(
+extern sp<ANativeWindow> android_view_Surface_getNativeWindow(
         JNIEnv* env, jobject clazz);
 
 /* Gets the underlying ANativeWindow for a Surface. */

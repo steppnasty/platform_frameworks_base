@@ -33,6 +33,7 @@ import java.util.ArrayList;
  * </p>
  */
 public final class DisplayManager {
+    private static final String TAG = "DisplayManager";
     private static final boolean DEBUG = false;
 
     private final Context mContext;

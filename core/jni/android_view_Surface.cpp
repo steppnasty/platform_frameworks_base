@@ -160,9 +160,8 @@ static sp<Surface> getSurface(JNIEnv* env, jobject surfaceObj) {
     return result;
 }
 
-sp<ANativeWindow> android_Surface_getNativeWindow(
-        JNIEnv* env, jobject clazz) {
-    return getSurface(env, clazz);
+sp<ANativeWindow> android_view_Surface_getNativeWindow(JNIEnv* env, jobject surfaceObj) {
+    return getSurface(env, surfaceObj);
 }
 
 bool android_Surface_isInstanceOf(JNIEnv* env, jobject obj) {

@@ -108,10 +108,12 @@ public final class DisplayManagerGlobal {
                         return info;
                     }
                 }
+
                 info = mDm.getDisplayInfo(displayId);
                 if (info == null) {
                     return null;
                 }
+
                 if (USE_CACHE) {
                     mDisplayInfoCache.put(displayId, info);
                 }
@@ -327,7 +329,7 @@ public final class DisplayManagerGlobal {
         public final DisplayListener mListener;
 
         public DisplayListenerDelegate(DisplayListener listener, Handler handler) {
-            super(handler != null ? handler.getLooper() : Looper.myLooper(), null);
+            super(handler != null ? handler.getLooper() : Looper.myLooper(), null, true /*async*/);
             mListener = listener;
         }
 

@@ -17,6 +17,7 @@
 package android.server.search;
 
 import com.android.internal.content.PackageMonitor;
+import com.android.internal.util.IndentingPrintWriter;
 
 import android.app.ActivityManager;
 import android.app.ActivityManagerNative;
@@ -44,6 +45,8 @@ import android.util.Log;
 import android.util.Slog;
 import android.util.SparseArray;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.util.List;
 
 /**
@@ -60,8 +63,6 @@ public class SearchManagerService extends ISearchManager.Stub {
 
     // This field is initialized lazily in getSearchables(), and then never modified.
     private final SparseArray<Searchables> mSearchables = new SparseArray<Searchables>();
-
-    private ContentObserver mGlobalSearchObserver;
 
     /**
      * Initializes the Search Manager service in the provided system context.
@@ -279,5 +280,20 @@ public class SearchManagerService extends ISearchManager.Stub {
             Log.e(TAG, "Exception in getAssistIntent: " + e);
         }
         return null;
+    }
+
+    @Override
+    public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+        mContext.enforceCallingOrSelfPermission(android.Manifest.permission.DUMP, TAG);
+
+        IndentingPrintWriter ipw = new IndentingPrintWriter(pw, "  ");
+        synchronized (mSearchables) {
+            for (int i = 0; i < mSearchables.size(); i++) {
+                ipw.print("\nUser: "); ipw.println(mSearchables.keyAt(i));
+                ipw.increaseIndent();
+                mSearchables.valueAt(i).dump(fd, ipw, args);
+                ipw.decreaseIndent();
+            }
+        }
     }
 }

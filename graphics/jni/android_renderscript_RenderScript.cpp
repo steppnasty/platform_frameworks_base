@@ -197,7 +197,7 @@ nContextSetSurface(JNIEnv *_env, jobject _this, RsContext con, jint width, jint 
     if (wnd == NULL) {
 
     } else {
-        window = android_Surface_getNativeWindow(_env, wnd).get();
+        window = android_view_Surface_getNativeWindow(_env, wnd).get();
     }
 
     rsContextSetSurface(con, width, height, window);

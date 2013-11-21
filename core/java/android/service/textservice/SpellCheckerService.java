@@ -32,6 +32,7 @@ import android.util.Log;
 import android.view.textservice.SentenceSuggestionsInfo;
 import android.view.textservice.SuggestionsInfo;
 import android.view.textservice.TextInfo;
+import android.widget.SpellChecker;
 
 import java.lang.ref.WeakReference;
 import java.text.BreakIterator;
@@ -118,7 +119,7 @@ public abstract class SpellCheckerService extends Service {
          * So, this is not called on the main thread,
          * but will be called in series on another thread.
          * @param textInfo the text metadata
-         * @param suggestionsLimit the number of limit of suggestions returned
+         * @param suggestionsLimit the maximum number of suggestions to be returned
          * @return SuggestionsInfo which contains suggestions for textInfo
          */
         public abstract SuggestionsInfo onGetSuggestions(TextInfo textInfo, int suggestionsLimit);
@@ -129,9 +130,10 @@ public abstract class SpellCheckerService extends Service {
          * So, this is not called on the main thread,
          * but will be called in series on another thread.
          * @param textInfos an array of the text metadata
-         * @param suggestionsLimit the number of limit of suggestions returned
+         * @param suggestionsLimit the maximum number of suggestions to be returned
          * @param sequentialWords true if textInfos can be treated as sequential words.
-         * @return an array of SuggestionsInfo of onGetSuggestions
+         * @return an array of {@link SentenceSuggestionsInfo} returned by
+         * {@link SpellCheckerService.Session#onGetSuggestions(TextInfo, int)}
          */
         public SuggestionsInfo[] onGetSuggestionsMultiple(TextInfo[] textInfos,
                 int suggestionsLimit, boolean sequentialWords) {

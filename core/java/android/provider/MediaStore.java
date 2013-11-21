@@ -120,7 +120,39 @@ public final class MediaStore {
      */
     public static final String INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH =
             "android.media.action.MEDIA_PLAY_FROM_SEARCH";
-    
+
+    /**
+     * An intent to perform a search for readable media and automatically play content from the
+     * result when possible. This can be fired, for example, by the result of a voice recognition
+     * command to read a book or magazine.
+     * <p>
+     * Contains the {@link android.app.SearchManager#QUERY} extra, which is a string that can
+     * contain any type of unstructured text search, like the name of a book or magazine, an author
+     * a genre, a publisher, or any combination of these.
+     * <p>
+     * Because this intent includes an open-ended unstructured search string, it makes the most
+     * sense for apps that can support large-scale search of text media, such as services connected
+     * to an online database of books and/or magazines which can be read on the device.
+     */
+    public static final String INTENT_ACTION_TEXT_OPEN_FROM_SEARCH =
+            "android.media.action.TEXT_OPEN_FROM_SEARCH";
+
+    /**
+     * An intent to perform a search for video media and automatically play content from the
+     * result when possible. This can be fired, for example, by the result of a voice recognition
+     * command to play movies.
+     * <p>
+     * Contains the {@link android.app.SearchManager#QUERY} extra, which is a string that can
+     * contain any type of unstructured video search, like the name of a movie, one or more actors,
+     * a genre, or any combination of these.
+     * <p>
+     * Because this intent includes an open-ended unstructured search string, it makes the most
+     * sense for apps that can support large-scale search of video, such as services connected to an
+     * online database of videos which can be streamed and played on the device.
+     */
+    public static final String INTENT_ACTION_VIDEO_PLAY_FROM_SEARCH =
+            "android.media.action.VIDEO_PLAY_FROM_SEARCH";
+
     /**
      * The name of the Intent-extra used to define the artist
      */
@@ -206,8 +238,30 @@ public final class MediaStore {
     public final static String ACTION_IMAGE_CAPTURE = "android.media.action.IMAGE_CAPTURE";
 
     /**
+     * Intent action that can be sent to have the camera application capture an image and return
+     * it when the device is secured (e.g. with a pin, password, pattern, or face unlock).
+     * Applications responding to this intent must not expose any personal content like existing
+     * photos or videos on the device. The applications should be careful not to share any photo
+     * or video with other applications or internet. The activity should use {@link
+     * android.view.WindowManager.LayoutParams#FLAG_SHOW_WHEN_LOCKED} to display on top of the
+     * lock screen while secured. There is no activity stack when this flag is used, so
+     * launching more than one activity is strongly discouraged.
+     * <p>
+     * The caller may pass an extra EXTRA_OUTPUT to control where this image will be written.
+     * If the EXTRA_OUTPUT is not present, then a small sized image is returned as a Bitmap
+     * object in the extra field. This is useful for applications that only need a small image.
+     * If the EXTRA_OUTPUT is present, then the full-sized image will be written to the Uri
+     * value of EXTRA_OUTPUT.
+     *
+     * @see #ACTION_IMAGE_CAPTURE
+     * @see #EXTRA_OUTPUT
+     */
+    public static final String ACTION_IMAGE_CAPTURE_SECURE =
+            "android.media.action.IMAGE_CAPTURE_SECURE";
+
+    /**
      * Standard Intent action that can be sent to have the camera application
-     * capture an video and return it.
+     * capture a video and return it.
      * <p>
      * The caller may pass in an extra EXTRA_VIDEO_QUALITY to control the video quality.
      * <p>
@@ -454,12 +508,12 @@ public final class MediaStore {
             public static final int MEDIA_TYPE_AUDIO = 2;
 
             /**
-             * Constant for the {@link #MEDIA_TYPE} column indicating that file is an video file.
+             * Constant for the {@link #MEDIA_TYPE} column indicating that file is a video file.
              */
             public static final int MEDIA_TYPE_VIDEO = 3;
 
             /**
-             * Constant for the {@link #MEDIA_TYPE} column indicating that file is an playlist file.
+             * Constant for the {@link #MEDIA_TYPE} column indicating that file is a playlist file.
              */
             public static final int MEDIA_TYPE_PLAYLIST = 4;
         }
@@ -626,8 +680,6 @@ public final class MediaStore {
                         bitmap = ThumbnailUtils.createImageThumbnail(filePath, kind);
                     }
                 }
-            } catch (OutOfMemoryError e) {
-                Log.w(TAG, e);
             } catch (SQLiteException ex) {
                 Log.w(TAG, ex);
             } finally {
@@ -1848,19 +1900,19 @@ public final class MediaStore {
             public static final String LANGUAGE = "language";
 
             /**
-             * The latitude where the image was captured.
+             * The latitude where the video was captured.
              * <P>Type: DOUBLE</P>
              */
             public static final String LATITUDE = "latitude";
 
             /**
-             * The longitude where the image was captured.
+             * The longitude where the video was captured.
              * <P>Type: DOUBLE</P>
              */
             public static final String LONGITUDE = "longitude";
 
             /**
-             * The date & time that the image was taken in units
+             * The date & time that the video was taken in units
              * of milliseconds since jan 1, 1970.
              * <P>Type: INTEGER</P>
              */
