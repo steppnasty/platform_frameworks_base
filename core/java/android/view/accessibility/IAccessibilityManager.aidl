@@ -29,7 +29,7 @@ import android.view.IWindow;
 
 /**
  * Interface implemented by the AccessibilityManagerService called by
- * the AccessibilityManagers.
+ * the AccessibilityMasngers.
  *
  * @hide
  */

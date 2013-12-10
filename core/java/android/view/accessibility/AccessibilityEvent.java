@@ -59,6 +59,12 @@ import java.util.List;
  * by this class. For each event type there is a corresponding constant defined
  * in this class. Follows a specification of the event types and their associated properties:
  * </p>
+ * <div class="special reference">
+ * <h3>Developer Guides</h3>
+ * <p>For more information about creating and processing AccessibilityEvents, read the
+ * <a href="{@docRoot}guide/topics/ui/accessibility/index.html">Accessibility</a>
+ * developer guide.</p>
+ * </div>
  * <p>
  * <b>VIEW TYPES</b></br>
  * </p>
@@ -218,6 +224,31 @@ import java.util.List;
  *   <li>{@link #getItemCount()} - The length of the source text.</li>
  *   <li>{@link #isEnabled()} - Whether the source is enabled.</li>
  *   <li>{@link #getContentDescription()} - The content description of the source.</li>
+ * </ul>
+ * </p>
+ * <b>View text traversed at movement granularity</b> - represents the event of traversing the
+ * text of a view at a given granularity. For example, moving to the next word.</br>
+ * <em>Type:</em> {@link #TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY} </br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ *   <li>{@link #getSource()} - The source info (for registered clients).</li>
+ *   <li>{@link #getClassName()} - The class name of the source.</li>
+ *   <li>{@link #getPackageName()} - The package name of the source.</li>
+ *   <li>{@link #getEventTime()}  - The event time.</li>
+ *   <li>{@link #getMovementGranularity()} - Sets the granularity at which a view's text
+ *       was traversed.</li>
+ *   <li>{@link #getText()} -  The text of the source's sub-tree.</li>
+ *   <li>{@link #getFromIndex()} - The start of the next/previous text at the specified granularity
+ *           - inclusive.</li>
+ *   <li>{@link #getToIndex()} - The end of the next/previous text at the specified granularity
+ *           - exclusive.</li>
+ *   <li>{@link #isPassword()} - Whether the source is password.</li>
+ *   <li>{@link #isEnabled()} - Whether the source is enabled.</li>
+ *   <li>{@link #getContentDescription()} - The content description of the source.</li>
+ *   <li>{@link #getMovementGranularity()} - Sets the granularity at which a view's text
+ *       was traversed.</li>
+ *   <li>{@link #getAction()} - Gets traversal action which specifies the direction.</li>
  * </ul>
  * </p>
  * <p>
@@ -393,6 +424,28 @@ import java.util.List;
  * </ul>
  * </p>
  * <p>
+ * <b>Touch interaction start</b> - represents the event of starting a touch
+ * interaction, which is the user starts touching the screen.</br>
+ * <em>Type:</em> {@link #TYPE_TOUCH_INTERACTION_START}</br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ * </ul>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
+ * </p>
+ * <p>
+ * <b>Touch interaction end</b> - represents the event of ending a touch
+ * interaction, which is the user stops touching the screen.</br>
+ * <em>Type:</em> {@link #TYPE_TOUCH_INTERACTION_END}</br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ * </ul>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
+ * </p>
+ * <p>
  * <b>Touch exploration gesture start</b> - represents the event of starting a touch
  * exploring gesture.</br>
  * <em>Type:</em> {@link #TYPE_TOUCH_EXPLORATION_GESTURE_START}</br>
@@ -400,15 +453,8 @@ import java.util.List;
  * <ul>
  *   <li>{@link #getEventType()} - The type of the event.</li>
  * </ul>
- * <em>Note:</em> This event type is not dispatched to descendants though
- * {@link android.view.View#dispatchPopulateAccessibilityEvent(AccessibilityEvent)
- * View.dispatchPopulateAccessibilityEvent(AccessibilityEvent)}, hence the event
- * source {@link android.view.View} and the sub-tree rooted at it will not receive
- * calls to {@link android.view.View#onPopulateAccessibilityEvent(AccessibilityEvent)
- * View.onPopulateAccessibilityEvent(AccessibilityEvent)}. The preferred way to add
- * text content to such events is by setting the
- * {@link android.R.styleable#View_contentDescription contentDescription} of the source
- * view.</br>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
  * </p>
  * <p>
  * <b>Touch exploration gesture end</b> - represents the event of ending a touch
@@ -418,15 +464,50 @@ import java.util.List;
  * <ul>
  *   <li>{@link #getEventType()} - The type of the event.</li>
  * </ul>
- * <em>Note:</em> This event type is not dispatched to descendants though
- * {@link android.view.View#dispatchPopulateAccessibilityEvent(AccessibilityEvent)
- * View.dispatchPopulateAccessibilityEvent(AccessibilityEvent)}, hence the event
- * source {@link android.view.View} and the sub-tree rooted at it will not receive
- * calls to {@link android.view.View#onPopulateAccessibilityEvent(AccessibilityEvent)
- * View.onPopulateAccessibilityEvent(AccessibilityEvent)}. The preferred way to add
- * text content to such events is by setting the
- * {@link android.R.styleable#View_contentDescription contentDescription} of the source
- * view.</br>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
+ * </p>
+ * <p>
+ * <b>Touch gesture detection start</b> - represents the event of starting a user
+ * gesture detection.</br>
+ * <em>Type:</em> {@link #TYPE_GESTURE_DETECTION_START}</br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ * </ul>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
+ * </p>
+ * <p>
+ * <b>Touch gesture detection end</b> - represents the event of ending a user
+ * gesture detection.</br>
+ * <em>Type:</em> {@link #TYPE_GESTURE_DETECTION_END}</br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ * </ul>
+ * <em>Note:</em> This event is fired only by the system and is not passed to the
+ * view tree to be populated.</br>
+ * </p>
+ * <p>
+ * <b>MISCELLANEOUS TYPES</b></br>
+ * </p>
+ * <p>
+ * <b>Announcement</b> - represents the event of an application making an
+ * announcement. Usually this announcement is related to some sort of a context
+ * change for which none of the events representing UI transitions is a good fit.
+ * For example, announcing a new page in a book.</br>
+ * <em>Type:</em> {@link #TYPE_ANNOUNCEMENT}</br>
+ * <em>Properties:</em></br>
+ * <ul>
+ *   <li>{@link #getEventType()} - The type of the event.</li>
+ *   <li>{@link #getSource()} - The source info (for registered clients).</li>
+ *   <li>{@link #getClassName()} - The class name of the source.</li>
+ *   <li>{@link #getPackageName()} - The package name of the source.</li>
+ *   <li>{@link #getEventTime()}  - The event time.</li>
+ *   <li>{@link #getText()} - The text of the announcement.</li>
+ *   <li>{@link #isEnabled()} - Whether the source is enabled.</li>
+ * </ul>
  * </p>
  * <p>
  * <b>Security note</b>
@@ -482,7 +563,7 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public static final int TYPE_VIEW_SELECTED = 0x00000004;
 
     /**
-     * Represents the event of focusing a {@link android.view.View}.
+     * Represents the event of setting input focus of a {@link android.view.View}.
      */
     public static final int TYPE_VIEW_FOCUSED = 0x00000008;
 
@@ -523,7 +604,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public static final int TYPE_TOUCH_EXPLORATION_GESTURE_END = 0x00000400;
 
     /**
-     * Represents the event of changing the content of a window.
+     * Represents the event of changing the content of a window and more
+     * specifically the sub-tree rooted at the event's source.
      */
     public static final int TYPE_WINDOW_CONTENT_CHANGED = 0x00000800;
 
@@ -595,6 +677,11 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
      * @see #TYPE_VIEW_SCROLLED
      * @see #TYPE_VIEW_TEXT_SELECTION_CHANGED
      * @see #TYPE_ANNOUNCEMENT
+     * @see #TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY
+     * @see #TYPE_GESTURE_DETECTION_START
+     * @see #TYPE_GESTURE_DETECTION_END
+     * @see #TYPE_TOUCH_INTERACTION_START
+     * @see #TYPE_TOUCH_INTERACTION_END
      */
     public static final int TYPES_ALL_MASK = 0xFFFFFFFF;
 
@@ -627,6 +714,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     void init(AccessibilityEvent event) {
         super.init(event);
         mEventType = event.mEventType;
+        mMovementGranularity = event.mMovementGranularity;
+        mAction = event.mAction;
         mEventTime = event.mEventTime;
         mPackageName = event.mPackageName;
     }
@@ -873,6 +962,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     protected void clear() {
         super.clear();
         mEventType = 0;
+        mMovementGranularity = 0;
+        mAction = 0;
         mPackageName = null;
         mEventTime = 0;
         while (!mRecords.isEmpty()) {
@@ -889,6 +980,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public void initFromParcel(Parcel parcel) {
         mSealed = (parcel.readInt() == 1);
         mEventType = parcel.readInt();
+        mMovementGranularity = parcel.readInt();
+        mAction = parcel.readInt();
         mPackageName = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(parcel);
         mEventTime = parcel.readLong();
         mConnectionId = parcel.readInt();
@@ -929,7 +1022,7 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
         record.mParcelableData = parcel.readParcelable(null);
         parcel.readList(record.mText, null);
         record.mSourceWindowId = parcel.readInt();
-        record.mSourceViewId = parcel.readInt();
+        record.mSourceNodeId = parcel.readLong();
         record.mSealed = (parcel.readInt() == 1);
     }
 
@@ -939,6 +1032,8 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
     public void writeToParcel(Parcel parcel, int flags) {
         parcel.writeInt(isSealed() ? 1 : 0);
         parcel.writeInt(mEventType);
+        parcel.writeInt(mMovementGranularity);
+        parcel.writeInt(mAction);
         TextUtils.writeToParcel(mPackageName, parcel, 0);
         parcel.writeLong(mEventTime);
         parcel.writeInt(mConnectionId);
@@ -978,7 +1073,7 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
         parcel.writeParcelable(record.mParcelableData, flags);
         parcel.writeList(record.mText);
         parcel.writeInt(record.mSourceWindowId);
-        parcel.writeInt(record.mSourceViewId);
+        parcel.writeLong(record.mSourceNodeId);
         parcel.writeInt(record.mSealed ? 1 : 0);
     }
 
@@ -995,11 +1090,13 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
         builder.append("EventType: ").append(eventTypeToString(mEventType));
         builder.append("; EventTime: ").append(mEventTime);
         builder.append("; PackageName: ").append(mPackageName);
+        builder.append("; MovementGranularity: ").append(mMovementGranularity);
+        builder.append("; Action: ").append(mAction);
         builder.append(super.toString());
         if (DEBUG) {
             builder.append("\n");
             builder.append("; sourceWindowId: ").append(mSourceWindowId);
-            builder.append("; sourceViewId: ").append(mSourceViewId);
+            builder.append("; mSourceNodeId: ").append(mSourceNodeId);
             for (int i = 0; i < mRecords.size(); i++) {
                 AccessibilityRecord record = mRecords.get(i);
                 builder.append("  Record ");
@@ -1076,7 +1173,15 @@ public final class AccessibilityEvent extends AccessibilityRecord implements Par
             case TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED:
                 return "TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED";
             case TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY:
-                return "TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY";
+                return "TYPE_CURRENT_AT_GRANULARITY_MOVEMENT_CHANGED";
+            case TYPE_GESTURE_DETECTION_START:
+                return "TYPE_GESTURE_DETECTION_START";
+            case TYPE_GESTURE_DETECTION_END:
+                return "TYPE_GESTURE_DETECTION_END";
+            case TYPE_TOUCH_INTERACTION_START:
+                return "TYPE_TOUCH_INTERACTION_START";
+            case TYPE_TOUCH_INTERACTION_END:
+                return "TYPE_TOUCH_INTERACTION_END";
             default:
                 return null;
         }

@@ -86,7 +86,7 @@ class TouchExplorer implements EventStreamTransformation {
 
     // This constant captures the current implementation detail that
     // pointer IDs are between 0 and 31 inclusive (subject to change).
-    // (See MAX_POINTER_ID in frameworks/base/include/androidfw/Input.h)
+    // (See MAX_POINTER_ID in frameworks/base/include/ui/Input.h)
     private static final int MAX_POINTER_COUNT = 32;
 
     // Invalid pointer ID.

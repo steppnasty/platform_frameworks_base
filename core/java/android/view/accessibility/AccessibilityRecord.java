@@ -41,6 +41,13 @@ import java.util.List;
  * event types. For detailed information please refer to {@link AccessibilityEvent}.
  * </p>
  *
+ * <div class="special reference">
+ * <h3>Developer Guides</h3>
+ * <p>For more information about creating and processing AccessibilityRecords, read the
+ * <a href="{@docRoot}guide/topics/ui/accessibility/index.html">Accessibility</a>
+ * developer guide.</p>
+ * </div>
+ *
  * @see AccessibilityEvent
  * @see AccessibilityManager
  * @see android.accessibilityservice.AccessibilityService
@@ -71,7 +78,7 @@ public class AccessibilityRecord {
     private boolean mIsInPool;
 
     boolean mSealed;
-    int mBooleanProperties;
+    int mBooleanProperties = PROPERTY_IMPORTANT_FOR_ACCESSIBILITY;
     int mCurrentItemIndex = UNDEFINED;
     int mItemCount = UNDEFINED;
     int mFromIndex = UNDEFINED;
@@ -84,7 +91,6 @@ public class AccessibilityRecord {
     int mAddedCount= UNDEFINED;
     int mRemovedCount = UNDEFINED;
     long mSourceNodeId = AccessibilityNodeInfo.makeNodeId(UNDEFINED, UNDEFINED);
-    int mSourceViewId = UNDEFINED;
     int mSourceWindowId = UNDEFINED;
 
     CharSequence mClassName;
@@ -153,12 +159,23 @@ public class AccessibilityRecord {
     public AccessibilityNodeInfo getSource() {
         enforceSealed();
         if (mConnectionId == UNDEFINED || mSourceWindowId == UNDEFINED
-                || mSourceViewId == UNDEFINED) {
+                || AccessibilityNodeInfo.getAccessibilityViewId(mSourceNodeId) == UNDEFINED) {
             return null;
         }
         AccessibilityInteractionClient client = AccessibilityInteractionClient.getInstance();
         return client.findAccessibilityNodeInfoByAccessibilityId(mConnectionId, mSourceWindowId,
-                mSourceViewId, GET_SOURCE_PREFETCH_FLAGS);
+                mSourceNodeId, GET_SOURCE_PREFETCH_FLAGS);
+    }
+
+    /**
+     * Sets the window id.
+     *
+     * @param windowId The window id.
+     *
+     * @hide
+     */
+    public void setWindowId(int windowId) {
+        mSourceWindowId = windowId;
     }
 
     /**
@@ -428,6 +445,7 @@ public class AccessibilityRecord {
     public int getMaxScrollX() {
         return mMaxScrollX;
     }
+
     /**
      * Sets the max scroll offset of the source left edge in pixels.
      *
@@ -657,7 +675,7 @@ public class AccessibilityRecord {
     void enforceNotSealed() {
         if (isSealed()) {
             throw new IllegalStateException("Cannot perform this "
-                    + "action on an sealed instance.");
+                    + "action on a sealed instance.");
         }
     }
 
@@ -764,7 +782,7 @@ public class AccessibilityRecord {
         mParcelableData = record.mParcelableData;
         mText.addAll(record.mText);
         mSourceWindowId = record.mSourceWindowId;
-        mSourceViewId = record.mSourceViewId;
+        mSourceNodeId = record.mSourceNodeId;
         mConnectionId = record.mConnectionId;
     }
 
@@ -773,7 +791,7 @@ public class AccessibilityRecord {
      */
     void clear() {
         mSealed = false;
-        mBooleanProperties = 0;
+        mBooleanProperties = PROPERTY_IMPORTANT_FOR_ACCESSIBILITY;
         mCurrentItemIndex = UNDEFINED;
         mItemCount = UNDEFINED;
         mFromIndex = UNDEFINED;
@@ -789,7 +807,7 @@ public class AccessibilityRecord {
         mBeforeText = null;
         mParcelableData = null;
         mText.clear();
-        mSourceViewId = UNDEFINED;
+        mSourceNodeId = AccessibilityNodeInfo.makeNodeId(UNDEFINED, UNDEFINED);
         mSourceWindowId = UNDEFINED;
         mConnectionId = UNDEFINED;
     }

@@ -61,6 +61,7 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
     private int mEnabledFeatures;
 
     private TouchExplorer mTouchExplorer;
+    private ScreenMagnifier mScreenMagnifier;
     private EventStreamTransformation mEventHandler;
 
     AccessibilityInputFilter(Context context, AccessibilityManagerService service) {
@@ -167,6 +168,10 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
     }
 
     private void enableFeatures() {
+        if ((mEnabledFeatures & FLAG_FEATURE_SCREEN_MAGNIFIER) != 0) {
+            mEventHandler = mScreenMagnifier = new ScreenMagnifier(mContext);
+            mEventHandler.setNext(this);
+        }
         if ((mEnabledFeatures & FLAG_FEATURE_TOUCH_EXPLORATION) != 0) {
             mTouchExplorer = new TouchExplorer(mContext, mAms);
             mTouchExplorer.setNext(this);
@@ -183,6 +188,11 @@ class AccessibilityInputFilter extends InputFilter implements EventStreamTransfo
             mTouchExplorer.clear();
             mTouchExplorer.onDestroy();
             mTouchExplorer = null;
+        }
+        if (mScreenMagnifier != null) {
+            mScreenMagnifier.clear();
+            mScreenMagnifier.onDestroy();
+            mScreenMagnifier = null;
         }
         mEventHandler = null;
     }

@@ -18,16 +18,24 @@ package android.view.accessibility;
 
 import android.accessibilityservice.IAccessibilityServiceConnection;
 import android.graphics.Rect;
+import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.LongSparseArray;
 import android.util.SparseArray;
+import android.util.SparseLongArray;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -71,6 +79,8 @@ public final class AccessibilityInteractionClient
 
     private static final boolean DEBUG = false;
 
+    private static final boolean CHECK_INTEGRITY = true;
+
     private static final long TIMEOUT_INTERACTION_MILLIS = 5000;
 
     private static final Object sStaticLock = new Object();
@@ -78,13 +88,11 @@ public final class AccessibilityInteractionClient
     private static final LongSparseArray<AccessibilityInteractionClient> sClients =
         new LongSparseArray<AccessibilityInteractionClient>();
 
-    private static AccessibilityInteractionClient sInstance;
-
     private final AtomicInteger mInteractionIdCounter = new AtomicInteger();
 
     private final Object mInstanceLock = new Object();
 
-    private int mInteractionId = -1;
+    private volatile int mInteractionId = -1;
 
     private AccessibilityNodeInfo mFindAccessibilityNodeInfoResult;
 
@@ -130,6 +138,10 @@ public final class AccessibilityInteractionClient
             }
             return client;
         }
+    }
+
+    private AccessibilityInteractionClient() {
+        /* reducing constructor visibility */
     }
 
     /**
@@ -296,7 +308,7 @@ public final class AccessibilityInteractionClient
         } catch (RemoteException re) {
             if (DEBUG) {
                 Log.w(LOG_TAG, "Error while calling remote"
-                        + " findAccessibilityNodeInfosByText", re);
+                        + " findAccessibilityNodeInfosByViewText", re);
             }
         }
         return Collections.emptyList();
@@ -432,6 +444,10 @@ public final class AccessibilityInteractionClient
         return false;
     }
 
+    public void clearCache() {
+        sAccessibilityNodeInfoCache.clear();
+    }
+
     public void onAccessibilityEvent(AccessibilityEvent event) {
         sAccessibilityNodeInfoCache.onAccessibilityEvent(event);
     }
@@ -475,8 +491,16 @@ public final class AccessibilityInteractionClient
                 int interactionId) {
         synchronized (mInstanceLock) {
             final boolean success = waitForResultTimedLocked(interactionId);
-            List<AccessibilityNodeInfo> result = success ? mFindAccessibilityNodeInfosResult : null;
+            List<AccessibilityNodeInfo> result = null;
+            if (success) {
+                result = mFindAccessibilityNodeInfosResult;
+            } else {
+                result = Collections.emptyList();
+            }
             clearResultLocked();
+            if (Build.IS_DEBUGGABLE && CHECK_INTEGRITY) {
+                checkFindAccessibilityNodeInfoResultIntegrity(result);
+            }
             return result;
         }
     }
@@ -488,7 +512,19 @@ public final class AccessibilityInteractionClient
                 int interactionId) {
         synchronized (mInstanceLock) {
             if (interactionId > mInteractionId) {
-                mFindAccessibilityNodeInfosResult = infos;
+                if (infos != null) {
+                    // If the call is not an IPC, i.e. it is made from the same process, we need to
+                    // instantiate new result list to avoid passing internal instances to clients.
+                    final boolean isIpcCall = (Binder.getCallingPid() != Process.myPid());
+                    if (!isIpcCall) {
+                        mFindAccessibilityNodeInfosResult =
+                            new ArrayList<AccessibilityNodeInfo>(infos);
+                    } else {
+                        mFindAccessibilityNodeInfosResult = infos;
+                    }
+                } else {
+                    mFindAccessibilityNodeInfosResult = Collections.emptyList();
+                }
                 mInteractionId = interactionId;
             }
             mInstanceLock.notifyAll();
@@ -668,6 +704,58 @@ public final class AccessibilityInteractionClient
     public void removeConnection(int connectionId) {
         synchronized (sConnectionCache) {
             sConnectionCache.remove(connectionId);
+        }
+    }
+
+    /**
+     * Checks whether the infos are a fully connected tree with no duplicates.
+     *
+     * @param infos The result list to check.
+     */
+    private void checkFindAccessibilityNodeInfoResultIntegrity(List<AccessibilityNodeInfo> infos) {
+        if (infos.size() == 0) {
+            return;
+        }
+        // Find the root node.
+        AccessibilityNodeInfo root = infos.get(0);
+        final int infoCount = infos.size();
+        for (int i = 1; i < infoCount; i++) {
+            for (int j = i; j < infoCount; j++) {
+                AccessibilityNodeInfo candidate = infos.get(j);
+                if (root.getParentNodeId() == candidate.getSourceNodeId()) {
+                    root = candidate;
+                    break;
+                }
+            }
+        }
+        if (root == null) {
+            Log.e(LOG_TAG, "No root.");
+        }
+        // Check for duplicates.
+        HashSet<AccessibilityNodeInfo> seen = new HashSet<AccessibilityNodeInfo>();
+        Queue<AccessibilityNodeInfo> fringe = new LinkedList<AccessibilityNodeInfo>();
+        fringe.add(root);
+        while (!fringe.isEmpty()) {
+            AccessibilityNodeInfo current = fringe.poll();
+            if (!seen.add(current)) {
+                Log.e(LOG_TAG, "Duplicate node.");
+                return;
+            }
+            SparseLongArray childIds = current.getChildNodeIds();
+            final int childCount = childIds.size();
+            for (int i = 0; i < childCount; i++) {
+                final long childId = childIds.valueAt(i);
+                for (int j = 0; j < infoCount; j++) {
+                    AccessibilityNodeInfo child = infos.get(j);
+                    if (child.getSourceNodeId() == childId) {
+                        fringe.add(child);
+                    }
+                }
+            }
+        }
+        final int disconnectedCount = infos.size() - seen.size();
+        if (disconnectedCount > 0) {
+            Log.e(LOG_TAG, disconnectedCount + " Disconnected nodes.");
         }
     }
 }

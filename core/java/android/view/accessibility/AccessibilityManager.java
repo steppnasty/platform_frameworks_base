@@ -187,6 +187,7 @@ public final class AccessibilityManager {
      *
      * @param context A {@link Context}.
      * @param service An interface to the backing service.
+     * @param userId User id under which to run.
      *
      * @hide
      */
@@ -243,6 +244,12 @@ public final class AccessibilityManager {
      * @param event The event to send.
      *
      * @throws IllegalStateException if accessibility is not enabled.
+     *
+     * <strong>Note:</strong> The preferred mechanism for sending custom accessibility
+     * events is through calling
+     * {@link android.view.ViewParent#requestSendAccessibilityEvent(View, AccessibilityEvent)}
+     * instead of this method to allow predecessors to augment/filter events sent by
+     * their descendants.
      */
     public void sendAccessibilityEvent(AccessibilityEvent event) {
         if (!mIsEnabled) {
