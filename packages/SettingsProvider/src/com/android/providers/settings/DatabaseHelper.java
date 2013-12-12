@@ -37,14 +37,13 @@ import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.provider.Settings.Secure;
 import android.provider.Settings.Global;
+import android.provider.Settings.Secure;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.internal.content.PackageHelper;
-import com.android.internal.telephony.BaseCommands;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.RILConstants;
@@ -71,8 +70,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // Please, please please. If you update the database version, check to make sure the
     // database gets upgraded properly. At a minimum, please confirm that 'upgradeVersion'
     // is properly propagated through your change.  Not doing so will result in a loss of user
-    // settings
-    private static final int DATABASE_VERSION = 91;
+    // settings.
+    private static final int DATABASE_VERSION = 95;
 
     private Context mContext;
     private int mUserHandle;
@@ -679,8 +678,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
            String[] settingsToMove = {
                    Secure.LOCK_PATTERN_ENABLED,
                    Secure.LOCK_PATTERN_VISIBLE,
-                   Secure.LOCK_SHOW_ERROR_PATH,
-                   Secure.LOCK_DOTS_VISIBLE,
                    Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED,
                    "lockscreen.password_type",
                    "lockscreen.lockoutattemptdeadline",
@@ -736,7 +733,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (upgradeVersion == 55) {
             /* Move the install location settings. */
             String[] settingsToMove = {
-                    Secure.SET_INSTALL_LOCATION,
+                    Global.SET_INSTALL_LOCATION,
                     Global.DEFAULT_INSTALL_LOCATION
             };
             moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_SECURE, settingsToMove, false);
@@ -745,7 +742,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             try {
                 stmt = db.compileStatement("INSERT INTO system(name,value)"
                         + " VALUES(?,?);");
-                loadSetting(stmt, Secure.SET_INSTALL_LOCATION, 0);
+                loadSetting(stmt, Global.SET_INSTALL_LOCATION, 0);
                 loadSetting(stmt, Global.DEFAULT_INSTALL_LOCATION,
                         PackageHelper.APP_INSTALL_AUTO);
                 db.setTransactionSuccessful();
@@ -1041,7 +1038,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
 
         if (upgradeVersion == 73) {
-            // update vibration settings
             upgradeVibrateSettingFromNone(db);
             upgradeVersion = 74;
         }
@@ -1061,7 +1057,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             }
             upgradeVersion = 75;
         }
-
         if (upgradeVersion == 75) {
             db.beginTransaction();
             SQLiteStatement stmt = null;
@@ -1449,6 +1444,86 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             upgradeVersion = 91;
         }
 
+        if (upgradeVersion == 91) {
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                try {
+                    // Move ringer mode from system to global settings
+                    String[] settingsToMove = { Settings.Global.MODE_RINGER };
+                    moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_GLOBAL, settingsToMove, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            }
+            upgradeVersion = 92;
+        }
+
+        if (upgradeVersion == 92) {
+            SQLiteStatement stmt = null;
+            try {
+                stmt = db.compileStatement("INSERT OR IGNORE INTO secure(name,value)"
+                        + " VALUES(?,?);");
+                if (mUserHandle == UserHandle.USER_OWNER) {
+                    // consider existing primary users to have made it through user setup
+                    // if the globally-scoped device-provisioned bit is set
+                    // (indicating they already made it through setup as primary)
+                    int deviceProvisioned = getIntValueFromTable(db, TABLE_GLOBAL,
+                            Settings.Global.DEVICE_PROVISIONED, 0);
+                    loadSetting(stmt, Settings.Secure.USER_SETUP_COMPLETE,
+                            deviceProvisioned);
+                } else {
+                    // otherwise use the default
+                    loadBooleanSetting(stmt, Settings.Secure.USER_SETUP_COMPLETE,
+                            R.bool.def_user_setup_complete);
+                }
+            } finally {
+                if (stmt != null) stmt.close();
+            }
+            upgradeVersion = 93;
+        }
+
+        if (upgradeVersion == 93) {
+            // Redo this step, since somehow it didn't work the first time for some users
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                SQLiteStatement stmt = null;
+                try {
+                    // Migrate now-global settings
+                    String[] settingsToMove = hashsetToStringArray(SettingsProvider.sSystemGlobalKeys);
+                    moveSettingsToNewTable(db, TABLE_SYSTEM, TABLE_GLOBAL, settingsToMove, true);
+                    settingsToMove = hashsetToStringArray(SettingsProvider.sSecureGlobalKeys);
+                    moveSettingsToNewTable(db, TABLE_SECURE, TABLE_GLOBAL, settingsToMove, true);
+
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                    if (stmt != null) stmt.close();
+                }
+            }
+            upgradeVersion = 94;
+        }
+
+        if (upgradeVersion == 94) {
+            // Add wireless charging started sound setting
+            if (mUserHandle == UserHandle.USER_OWNER) {
+                db.beginTransaction();
+                SQLiteStatement stmt = null;
+                try {
+                    stmt = db.compileStatement("INSERT OR REPLACE INTO global(name,value)"
+                            + " VALUES(?,?);");
+                    loadStringSetting(stmt, Settings.Global.WIRELESS_CHARGING_STARTED_SOUND,
+                            R.string.def_wireless_charging_started_sound);
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                    if (stmt != null) stmt.close();
+                }
+            }
+            upgradeVersion = 95;
+        }
+
         // *** Remember to update DATABASE_VERSION above!
 
         if (upgradeVersion != currentVersion) {
@@ -1536,6 +1611,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 insertStmt.bindLong(1, prefix.length() + 1);
                 insertStmt.bindString(2, prefix);
                 insertStmt.execute();
+
+                deleteStmt.bindLong(1, prefix.length() + 1);
+                deleteStmt.bindString(2, prefix);
+                deleteStmt.execute();
             }
             db.setTransactionSuccessful();
         } finally {
@@ -1550,7 +1629,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void upgradeLockPatternLocation(SQLiteDatabase db) {
-        Cursor c = db.query("system", new String[] {"_id", "value"}, "name='lock_pattern'",
+        Cursor c = db.query(TABLE_SYSTEM, new String[] {"_id", "value"}, "name='lock_pattern'",
                 null, null, null, null);
         if (c.getCount() > 0) {
             c.moveToFirst();
@@ -1560,14 +1639,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 try {
                     LockPatternUtils lpu = new LockPatternUtils(mContext);
                     List<LockPatternView.Cell> cellPattern =
-                            lpu.stringToPattern(lockPattern);
+                            LockPatternUtils.stringToPattern(lockPattern);
                     lpu.saveLockPattern(cellPattern);
                 } catch (IllegalArgumentException e) {
                     // Don't want corrupted lock pattern to hang the reboot process
                 }
             }
             c.close();
-            db.delete("system", "name='lock_pattern'", null);
+            db.delete(TABLE_SYSTEM, "name='lock_pattern'", null);
         } else {
             c.close();
         }
@@ -1575,7 +1654,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private void upgradeScreenTimeoutFromNever(SQLiteDatabase db) {
         // See if the timeout is -1 (for "Never").
-        Cursor c = db.query("system", new String[] { "_id", "value" }, "name=? AND value=?",
+        Cursor c = db.query(TABLE_SYSTEM, new String[] { "_id", "value" }, "name=? AND value=?",
                 new String[] { Settings.System.SCREEN_OFF_TIMEOUT, "-1" },
                 null, null, null);
 
@@ -1585,7 +1664,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             try {
                 stmt = db.compileStatement("INSERT OR REPLACE INTO system(name,value)"
                         + " VALUES(?,?);");
-    
+
                 // Set the timeout to 30 minutes in milliseconds
                 loadSetting(stmt, Settings.System.SCREEN_OFF_TIMEOUT,
                         Integer.toString(30 * 60 * 1000));
@@ -1747,7 +1826,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             stmt = db.compileStatement("INSERT OR IGNORE INTO system(name,value)"
                     + " VALUES(?,?);");
-    
+
             loadSetting(stmt, Settings.System.VOLUME_MUSIC,
                     AudioManager.DEFAULT_STREAM_VOLUME[AudioManager.STREAM_MUSIC]);
             loadSetting(stmt, Settings.System.VOLUME_RING,
@@ -1768,12 +1847,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     stmt,
                     Settings.System.VOLUME_BLUETOOTH_SCO,
                     AudioManager.DEFAULT_STREAM_VOLUME[AudioManager.STREAM_BLUETOOTH_SCO]);
-    
-            loadSetting(stmt, Settings.System.MODE_RINGER,
-                    AudioManager.RINGER_MODE_NORMAL);
-    
-            loadVibrateSetting(db, false);
-    
+
             // By default:
             // - ringtones, notification, system and music streams are affected by ringer mode
             // on non voice capable devices (tablets)
@@ -1798,6 +1872,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } finally {
             if (stmt != null) stmt.close();
         }
+
+        loadVibrateWhenRingingSetting(db);
     }
 
     private void loadVibrateSetting(SQLiteDatabase db, boolean deleteOld) {
@@ -1809,7 +1885,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             stmt = db.compileStatement("INSERT OR IGNORE INTO system(name,value)"
                     + " VALUES(?,?);");
-    
+
             // Vibrate on by default for ringer, on for notification
             int vibrate = 0;
             vibrate = AudioService.getValueForVibrateSetting(vibrate,
@@ -1896,10 +1972,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void loadUISoundEffectsSettings(SQLiteStatement stmt) {
-        loadIntegerSetting(stmt, Settings.System.POWER_SOUNDS_ENABLED,
-            R.integer.def_power_sounds_enabled);
-        loadStringSetting(stmt, Settings.System.LOW_BATTERY_SOUND,
-            R.string.def_low_battery_sound);
         loadBooleanSetting(stmt, Settings.System.DTMF_TONE_WHEN_DIALING,
                 R.bool.def_dtmf_tones_enabled);
         loadBooleanSetting(stmt, Settings.System.SOUND_EFFECTS_ENABLED,
@@ -1907,23 +1979,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         loadBooleanSetting(stmt, Settings.System.HAPTIC_FEEDBACK_ENABLED,
                 R.bool.def_haptic_feedback);
 
-        loadIntegerSetting(stmt, Settings.System.DOCK_SOUNDS_ENABLED,
-            R.integer.def_dock_sounds_enabled);
-        loadStringSetting(stmt, Settings.System.DESK_DOCK_SOUND,
-            R.string.def_desk_dock_sound);
-        loadStringSetting(stmt, Settings.System.DESK_UNDOCK_SOUND,
-            R.string.def_desk_undock_sound);
-        loadStringSetting(stmt, Settings.System.CAR_DOCK_SOUND,
-            R.string.def_car_dock_sound);
-        loadStringSetting(stmt, Settings.System.CAR_UNDOCK_SOUND,
-            R.string.def_car_undock_sound);
-
         loadIntegerSetting(stmt, Settings.System.LOCKSCREEN_SOUNDS_ENABLED,
             R.integer.def_lockscreen_sounds_enabled);
-        loadStringSetting(stmt, Settings.System.LOCK_SOUND,
-            R.string.def_lock_sound);
-        loadStringSetting(stmt, Settings.System.UNLOCK_SOUND,
-            R.string.def_unlock_sound);
     }
 
     private void loadDefaultAnimationSettings(SQLiteStatement stmt) {

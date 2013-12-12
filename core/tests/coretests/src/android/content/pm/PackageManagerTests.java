@@ -2341,7 +2341,8 @@ public class PackageManagerTests extends AndroidTestCase {
     */
    private boolean getUserSettingSetInstallLocation() {
        try {
-           return Settings.System.getInt(mContext.getContentResolver(), Settings.Secure.SET_INSTALL_LOCATION) != 0;
+           return Settings.Global.getInt(
+                   mContext.getContentResolver(), Settings.Global.SET_INSTALL_LOCATION) != 0;
 
        } catch (SettingNotFoundException e1) {
        }
@@ -2349,8 +2350,8 @@ public class PackageManagerTests extends AndroidTestCase {
    }
 
    private void setUserSettingSetInstallLocation(boolean value) {
-       Settings.System.putInt(mContext.getContentResolver(),
-               Settings.Secure.SET_INSTALL_LOCATION, value ? 1 : 0);
+       Settings.Global.putInt(mContext.getContentResolver(),
+               Settings.Global.SET_INSTALL_LOCATION, value ? 1 : 0);
    }
    private void setUserX(boolean enable, int userSetting, int iloc) {
        boolean origUserSetting = getUserSettingSetInstallLocation();

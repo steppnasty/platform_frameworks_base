@@ -22,7 +22,7 @@ import android.util.AttributeSet;
 
 /**
  * An animation that controls the rotation of an object. This rotation takes
- * place int the X-Y plane. You can specify the point to use for the center of
+ * place in the X-Y plane. You can specify the point to use for the center of
  * the rotation, where (0,0) is the top left point. If not specified, (0,0) is
  * the default rotation point.
  * 
@@ -66,6 +66,8 @@ public class RotateAnimation extends Animation {
         mPivotYValue = d.value;
 
         a.recycle();
+
+        initializePivotPoint();
     }
 
     /**
@@ -107,6 +109,7 @@ public class RotateAnimation extends Animation {
         mPivotYType = ABSOLUTE;
         mPivotXValue = pivotX;
         mPivotYValue = pivotY;
+        initializePivotPoint();
     }
 
     /**
@@ -143,6 +146,20 @@ public class RotateAnimation extends Animation {
         mPivotXType = pivotXType;
         mPivotYValue = pivotYValue;
         mPivotYType = pivotYType;
+        initializePivotPoint();
+    }
+
+    /**
+     * Called at the end of constructor methods to initialize, if possible, values for
+     * the pivot point. This is only possible for ABSOLUTE pivot values.
+     */
+    private void initializePivotPoint() {
+        if (mPivotXType == ABSOLUTE) {
+            mPivotX = mPivotXValue;
+        }
+        if (mPivotYType == ABSOLUTE) {
+            mPivotY = mPivotYValue;
+        }
     }
 
     @Override

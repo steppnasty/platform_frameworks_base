@@ -48,10 +48,14 @@ import java.util.Vector;
  * <p>When a state machine is created <code>addState</code> is used to build the
  * hierarchy and <code>setInitialState</code> is used to identify which of these
  * is the initial state. After construction the programmer calls <code>start</code>
- * which initializes the state machine and calls <code>enter</code> for all of the initial
- * state's hierarchy, starting at its eldest parent. For example given the simple
- * state machine below after start is called mP1.enter will have been called and
- * then mS1.enter.</p>
+ * which initializes and starts the state machine. The first action the StateMachine
+ * is to the invoke <code>enter</code> for all of the initial state's hierarchy,
+ * starting at its eldest parent. The calls to enter will be done in the context
+ * of the StateMachines Handler not in the context of the call to start and they
+ * will be invoked before any messages are processed. For example, given the simple
+ * state machine below mP1.enter will be invoked and then mS1.enter. Finally,
+ * messages sent to the state machine will be processed by the current state,
+ * in our simple state machine below that would initially be mS1.processMessage.</p>
 <code>
         mP1
        /   \
@@ -76,9 +80,9 @@ import java.util.Vector;
  * and invoke <code>halting</code>. Any message subsequently received by the state
  * machine will cause <code>haltedProcessMessage</code> to be invoked.</p>
  *
- * <p>If it is desirable to completely stop the state machine call <code>quit</code>. This
- * will exit the current state and its parent and then exit from the controlling thread
- * and no further messages will be processed.</p>
+ * <p>If it is desirable to completely stop the state machine call <code>quit</code> or
+ * <code>abort</code>. These will call <code>exit</code> of the current state and its parents, call
+ * <code>onQuiting</code> and then exit Thread/Loopers.</p>
  *
  * <p>In addition to <code>processMessage</code> each <code>State</code> has
  * an <code>enter</code> method and <code>exit</exit> method which may be overridden.</p>
@@ -358,7 +362,7 @@ class Hsm1 extends StateMachine {
     }
 
     &#64;Override
-    void halting() {
+    void onHalting() {
         Log.d(TAG, "halting");
         synchronized (this) {
             this.notifyAll();
@@ -419,10 +423,10 @@ public class StateMachine {
     private String mName;
 
     /** Message.what value when quitting */
-    public static final int SM_QUIT_CMD = -1;
+    private static final int SM_QUIT_CMD = -1;
 
     /** Message.what value when initializing */
-    public static final int SM_INIT_CMD = -2;
+    private static final int SM_INIT_CMD = -2;
 
     /**
      * Convenience constant that maybe returned by processMessage
@@ -538,89 +542,6 @@ public class StateMachine {
                 sb.append(mInfo);
             }
             return sb.toString();
-        }
-    }
-
-    /**
-     * {@hide}
-     *
-     * The information maintained for a processed message.
-     */
-    public static class ProcessedMessageInfo {
-        private int what;
-        private State state;
-        private State orgState;
-
-        /**
-         * Constructor
-         * @param message
-         * @param state that handled the message
-         * @param orgState is the first state the received the message but
-         * did not processes the message.
-         */
-        ProcessedMessageInfo(Message message, State state, State orgState) {
-            update(message, state, orgState);
-        }
-
-        /**
-         * Update the information in the record.
-         * @param state that handled the message
-         * @param orgState is the first state the received the message but
-         * did not processes the message.
-         */
-        public void update(Message message, State state, State orgState) {
-            this.what = message.what;
-            this.state = state;
-            this.orgState = orgState;
-        }
-
-        /**
-         * @return the command that was executing
-         */
-        public int getWhat() {
-            return what;
-        }
-
-        /**
-         * @return the state that handled this message
-         */
-        public State getState() {
-            return state;
-        }
-
-        /**
-         * @return the original state that received the message.
-         */
-        public State getOriginalState() {
-            return orgState;
-        }
-
-        /**
-         * @return as string
-         */
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("what=");
-            sb.append(what);
-            sb.append(" state=");
-            sb.append(cn(state));
-            sb.append(" orgState=");
-            sb.append(cn(orgState));
-            return sb.toString();
-        }
-
-        /**
-         * @return an objects class name
-         */
-        private String cn(Object n) {
-            if (n == null) {
-                return "null";
-            } else {
-                String name = n.getClass().getName();
-                int lastDollar = name.lastIndexOf('$');
-                return name.substring(lastDollar + 1);
-            }
         }
     }
 
@@ -834,19 +755,18 @@ public class StateMachine {
             /** Save the current message */
             mMsg = msg;
 
-            /**
-             * Check that construction was completed
-             */
-            if (!mIsConstructionCompleted) {
-                Log.e(TAG, "The start method not called, ignore msg: " + msg);
-                return;
+            if (mIsConstructionCompleted) {
+                /** Normal path */
+                processMsg(msg);
+            } else if (!mIsConstructionCompleted &&
+                    (mMsg.what == SM_INIT_CMD) && (mMsg.obj == mSmHandlerObj)) {
+                /** Initial one time path. */
+                mIsConstructionCompleted = true;
+                invokeEnterMethods(0);
+            } else {
+                throw new RuntimeException("StateMachine.handleMessage: " +
+                            "The start method not called, received msg: " + msg);
             }
-
-            /**
-             * Process the message abiding by the hierarchical semantics
-             * and perform any requested transitions.
-             */
-            processMsg(msg);
             performTransitions();
 
             if (mDbg) Log.d(TAG, "handleMessage: X");
@@ -898,15 +818,18 @@ public class StateMachine {
              */
             if (destState != null) {
                 if (destState == mQuittingState) {
+                    /**
+                     * Call onQuitting to let subclasses cleanup.
+                     */
+                    mSm.onQuitting();
                     cleanupAfterQuitting();
-
                 } else if (destState == mHaltingState) {
                     /**
-                     * Call halting() if we've transitioned to the halting
+                     * Call onHalting() if we've transitioned to the halting
                      * state. All subsequent messages will be processed in
                      * in the halting state which invokes haltedProcessMessage(msg);
                      */
-                    mSm.halting();
+                    mSm.onHalting();
                 }
             }
         }
@@ -915,7 +838,6 @@ public class StateMachine {
          * Cleanup all the static variables and the looper after the SM has been quit.
          */
         private final void cleanupAfterQuitting() {
-            mSm.quitting();
             if (mSm.mSmThread != null) {
                 // If we made the thread then quit looper which stops the thread.
                 getLooper().quit();
@@ -960,18 +882,8 @@ public class StateMachine {
             mTempStateStack = new StateInfo[maxDepth];
             setupInitialStateStack();
 
-            /**
-             * Construction is complete call all enter methods
-             * starting at the first entry.
-             */
-            mIsConstructionCompleted = true;
-            mMsg = obtainMessage(SM_INIT_CMD);
-            invokeEnterMethods(0);
-
-            /**
-             * Perform any transitions requested by the enter methods
-             */
-            performTransitions();
+            /** Sending SM_INIT_CMD message to invoke enter methods asynchronously */
+            sendMessageAtFrontOfQueue(obtainMessage(SM_INIT_CMD, mSmHandlerObj));
 
             if (mDbg) Log.d(TAG, "completeConstruction: X");
         }
@@ -986,23 +898,25 @@ public class StateMachine {
             if (mDbg) {
                 Log.d(TAG, "processMsg: " + curStateInfo.state.getName());
             }
-            while (!curStateInfo.state.processMessage(msg)) {
-                /**
-                 * Not processed
-                 */
-                curStateInfo = curStateInfo.parentStateInfo;
-                if (curStateInfo == null) {
+
+            if (isQuit(msg)) {
+                transitionTo(mQuittingState);
+            } else {
+                while (!curStateInfo.state.processMessage(msg)) {
                     /**
-                     * No parents left so it's not handled
+                     * Not processed
                      */
-                    mSm.unhandledMessage(msg);
-                    if (isQuit(msg)) {
-                        transitionTo(mQuittingState);
+                    curStateInfo = curStateInfo.parentStateInfo;
+                    if (curStateInfo == null) {
+                        /**
+                         * No parents left so it's not handled
+                         */
+                        mSm.unhandledMessage(msg);
+                        break;
                     }
-                    break;
-                }
-                if (mDbg) {
-                    Log.d(TAG, "processMsg: " + curStateInfo.state.getName());
+                    if (mDbg) {
+                        Log.d(TAG, "processMsg: " + curStateInfo.state.getName());
+                    }
                 }
 
                 /**
@@ -1214,14 +1128,14 @@ public class StateMachine {
 
         /** @see StateMachine#setInitialState(State) */
         private final void setInitialState(State initialState) {
-            if (mDbg) Log.d(TAG, "setInitialState: initialState" + initialState.getName());
+            if (mDbg) Log.d(TAG, "setInitialState: initialState=" + initialState.getName());
             mInitialState = initialState;
         }
 
         /** @see StateMachine#transitionTo(IState) */
         private final void transitionTo(IState destState) {
             mDestState = (State) destState;
-            if (mDbg) Log.d(TAG, "StateMachine.transitionTo EX destState" + mDestState.getName());
+            if (mDbg) Log.d(TAG, "transitionTo: destState=" + mDestState.getName());
         }
 
         /** @see StateMachine#deferMessage(Message) */
@@ -1362,8 +1276,8 @@ public class StateMachine {
     /**
      * transition to halt state. Upon returning
      * from processMessage we will exit all current
-     * states, execute the halting() method and then
-     * all subsequent messages haltedProcessMesage
+     * states, execute the onHalting() method and then
+     * for all subsequent messages haltedProcessMessage
      * will be called.
      */
     protected final void transitionToHaltingState() {
@@ -1382,7 +1296,6 @@ public class StateMachine {
     protected final void deferMessage(Message msg) {
         mSmHandler.deferMessage(msg);
     }
-
 
     /**
      * Called when message wasn't handled
@@ -1405,7 +1318,7 @@ public class StateMachine {
      * transitionToHalting. All subsequent messages will invoke
      * {@link StateMachine#haltedProcessMessage(Message)}
      */
-    protected void halting() {
+    protected void onHalting() {
     }
 
     /**
@@ -1414,7 +1327,7 @@ public class StateMachine {
      * ignored. In addition, if this StateMachine created the thread, the thread will
      * be stopped after this method returns.
      */
-    protected void quitting() {
+    protected void onQuitting() {
     }
 
     /**
@@ -1452,6 +1365,25 @@ public class StateMachine {
      */
     public final LogRec getLogRec(int index) {
         return mSmHandler.mLogRecords.get(index);
+    }
+
+    /**
+     * Add the string to LogRecords.
+     *
+     * @param string
+     */
+    protected void addLogRec(String string) {
+        mSmHandler.mLogRecords.add(null, string, null, null);
+    }
+
+    /**
+     * Add the string and state to LogRecords
+     *
+     * @param string
+     * @param state current state
+     */
+    protected void addLogRec(String string, State state) {
+        mSmHandler.mLogRecords.add(null, string, state, null);
     }
 
     /**
@@ -1663,8 +1595,7 @@ public class StateMachine {
     }
 
     /**
-     * Quit the state machine immediately.
-     * All currently queued messages will be discarded.
+     * Quit the state machine immediately all currently queued messages will be discarded.
      */
     protected final void quitNow() {
         // mSmHandler can be null if the state machine is already stopped.

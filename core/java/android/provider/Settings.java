@@ -4963,12 +4963,6 @@ public final class Settings {
         public static final String SCREENSAVER_DEFAULT_COMPONENT = "screensaver_default_component";
 
         /**
-         * Let user pick default install location.
-         * @hide
-         */
-        public static final String SET_INSTALL_LOCATION = "set_install_location";
-
-        /**
          * ms during which to consume extra events related to Inet connection condition
          * after a transtion to fully-connected
          * @hide

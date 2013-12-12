@@ -110,7 +110,7 @@ public class Transformation {
         mAlpha *= t.getAlpha();
         mMatrix.preConcat(t.getMatrix());
     }
-
+    
     /**
      * Like {@link #compose(Transformation)} but does this.postConcat(t) of
      * the transformation matrix.
