@@ -17,6 +17,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
 	EGLUtils.cpp \
+	Fence.cpp \
 	FramebufferNativeWindow.cpp \
 	GraphicBuffer.cpp \
 	GraphicBufferAllocator.cpp \
@@ -34,9 +35,11 @@ LOCAL_SHARED_LIBRARIES := \
 	libhardware \
 	libhardware_legacy \
 	libskia \
+        libsync \
 	libbinder
 
 LOCAL_C_INCLUDES := \
+    system/core/include \
     external/skia/include/core
 
 ifeq ($(BOARD_USES_HTC_CAMERA),true)
