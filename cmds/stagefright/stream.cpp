@@ -32,7 +32,7 @@
 
 #include <binder/IServiceManager.h>
 #include <media/IMediaPlayerService.h>
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 
 #include <fcntl.h>

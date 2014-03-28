@@ -23,7 +23,7 @@
 #include <utils/threads.h>
 #include <androidfw/AssetManager.h>
 
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 
 #include <EGL/egl.h>

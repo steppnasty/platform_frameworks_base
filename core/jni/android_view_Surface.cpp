@@ -26,8 +26,8 @@
 #include <binder/IMemory.h>
 
 #include <gui/SurfaceTexture.h>
-#include <surfaceflinger/SurfaceComposerClient.h>
-#include <surfaceflinger/Surface.h>
+#include <gui/SurfaceComposerClient.h>
+#include <gui/Surface.h>
 
 #include <ui/PixelFormat.h>
 #include <ui/DisplayInfo.h>

@@ -24,7 +24,7 @@
 #include <utils/threads.h>
 #include <utils/AssetManager.h>
 
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 #include <errno.h>
 #include <stdio.h>

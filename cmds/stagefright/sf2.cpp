@@ -32,7 +32,7 @@
 #include <media/stagefright/NativeWindowWrapper.h>
 #include <media/stagefright/Utils.h>
 
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 
 #include "include/ESDS.h"

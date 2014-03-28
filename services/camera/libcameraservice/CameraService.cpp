@@ -34,7 +34,7 @@
 #include <hardware/hardware.h>
 #include <media/AudioSystem.h>
 #include <media/mediaplayer.h>
-#include <surfaceflinger/ISurface.h>
+#include <gui/ISurface.h>
 #include <utils/Errors.h>
 #include <utils/Log.h>
 #include <utils/String16.h>

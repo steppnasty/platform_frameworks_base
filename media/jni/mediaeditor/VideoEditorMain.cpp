@@ -30,7 +30,7 @@
 #include <M4OSA_Debug.h>
 #include <M4xVSS_Internal.h>
 #include <gui/Surface.h>
-#include <surfaceflinger/ISurface.h>
+#include <gui/ISurface.h>
 #include "VideoEditorPreviewController.h"
 
 #include "VideoEditorMain.h"

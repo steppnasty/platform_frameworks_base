@@ -56,7 +56,7 @@
 
 #include <gui/SurfaceTextureClient.h>
 
-#include <surfaceflinger/ISurfaceComposer.h>
+#include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
 
 using namespace android;
