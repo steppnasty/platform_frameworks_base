@@ -36,7 +36,7 @@ import android.util.Log;
  */
 public class Surface implements Parcelable {
     private static final String TAG = "Surface";
-    private static final boolean DEBUG_RELEASE = true;
+
     private static final boolean HEADLESS = "1".equals(
         SystemProperties.get("ro.config.headless", "0"));
 
@@ -228,8 +228,6 @@ public class Surface implements Parcelable {
     private int mWidth;
     private int mHeight;
 
-    private Exception mCreationStack;
-
     private native void nativeCreate(SurfaceSession session, String name,
             int w, int h, int format, int flags)
             throws OutOfResourcesException;
@@ -245,7 +243,7 @@ public class Surface implements Parcelable {
     private native Canvas nativeLockCanvas(Rect dirty);
     private native void nativeUnlockCanvasAndPost(Canvas canvas);
 
-    private static native Bitmap nativeScreenshot(int displayToken,
+    private static native Bitmap nativeScreenshot(IBinder displayToken,
             int width, int height, int minLayer, int maxLayer, boolean allLayers);
 
     private static native void nativeOpenTransaction();
@@ -262,27 +260,24 @@ public class Surface implements Parcelable {
     private native void nativeSetWindowCrop(Rect crop);
     private native void nativeSetLayerStack(int layerStack);
 
+    private static native IBinder nativeGetBuiltInDisplay(int physicalDisplayId);
     private static native IBinder nativeCreateDisplay(String name, boolean secure);
     private static native void nativeSetDisplaySurface(
-            int displayToken, Surface surface);
+            IBinder displayToken, Surface surface);
     private static native void nativeSetDisplayLayerStack(
-            int displayToken, int layerStack);
+            IBinder displayToken, int layerStack);
     private static native void nativeSetDisplayProjection(
-            int displayToken, int orientation, Rect layerStackRect, Rect displayRect);
-    private static native boolean nativeGetDisplayInfo(int display, PhysicalDisplayInfo outInfo);
+            IBinder displayToken, int orientation, Rect layerStackRect, Rect displayRect);
+    private static native boolean nativeGetDisplayInfo(
+            IBinder displayToken, PhysicalDisplayInfo outInfo);
+    private static native void nativeBlankDisplay(IBinder displayToken);
+    private static native void nativeUnblankDisplay(IBinder displayToken);
 
     private native void nativeCopyFrom(Surface other);
     private native void nativeTransferFrom(Surface other);
     private native void nativeReadFromParcel(Parcel source);
     private native void nativeWriteToParcel(Parcel dest);
 
-    private static native void setOrientation(int display, int orientation);
-
-    /*
-     * We use a class initializeer to allow the native code to cache some field offsets.
-     */
-    native private static void nativeClassInit();
-    static { nativeClassInit(); }
 
     /**
      * Create an empty surface, which will later be filled in by readFromParcel().
@@ -495,7 +490,8 @@ public class Surface implements Parcelable {
      */
     public static Bitmap screenshot(int width, int height) {
         // TODO: should take the display as a parameter
-        return nativeScreenshot(0, width, height, 0, 0, true);
+        IBinder displayToken = getBuiltInDisplay(BUILT_IN_DISPLAY_ID_MAIN);
+        return nativeScreenshot(displayToken, width, height, 0, 0, true);
     }
 
     /**
@@ -516,7 +512,8 @@ public class Surface implements Parcelable {
      */
     public static Bitmap screenshot(int width, int height, int minLayer, int maxLayer) {
         // TODO: should take the display as a parameter
-        return nativeScreenshot(0, width, height, minLayer, maxLayer, false);
+        IBinder displayToken = getBuiltInDisplay(BUILT_IN_DISPLAY_ID_MAIN);
+        return nativeScreenshot(displayToken, width, height, minLayer, maxLayer, false);
     }
 
     /*
@@ -612,6 +609,11 @@ public class Surface implements Parcelable {
     }
 
     /** @hide */
+    public static IBinder getBuiltInDisplay(int builtInDisplayId) {
+        return nativeGetBuiltInDisplay(builtInDisplayId);
+    }
+
+    /** @hide */
     public static IBinder createDisplay(String name, boolean secure) {
         if (name == null) {
             throw new IllegalArgumentException("name must not be null");
@@ -620,18 +622,27 @@ public class Surface implements Parcelable {
     }
 
     /** @hide */
-    public static void setDisplaySurface(int displayToken, Surface surface) {
+    public static void setDisplaySurface(IBinder displayToken, Surface surface) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
         nativeSetDisplaySurface(displayToken, surface);
     }
 
     /** @hide */
-    public static void setDisplayLayerStack(int displayToken, int layerStack) {
+    public static void setDisplayLayerStack(IBinder displayToken, int layerStack) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
         nativeSetDisplayLayerStack(displayToken, layerStack);
     }
 
     /** @hide */
-    public static void setDisplayProjection(int displayToken,
+    public static void setDisplayProjection(IBinder displayToken,
             int orientation, Rect layerStackRect, Rect displayRect) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
         if (layerStackRect == null) {
             throw new IllegalArgumentException("layerStackRect must not be null");
         }
@@ -642,14 +653,30 @@ public class Surface implements Parcelable {
     }
 
     /** @hide */
-    public static boolean getDisplayInfo(int display, PhysicalDisplayInfo outInfo) {
-        if (display < 0) {
-            throw new IllegalArgumentException("Invalid Display");
+    public static boolean getDisplayInfo(IBinder displayToken, PhysicalDisplayInfo outInfo) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
         }
         if (outInfo == null) {
             throw new IllegalArgumentException("outInfo must not be null");
         }
-        return nativeGetDisplayInfo(display, outInfo);
+        return nativeGetDisplayInfo(displayToken, outInfo);
+    }
+
+    /** @hide */
+    public static void blankDisplay(IBinder displayToken) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
+        nativeBlankDisplay(displayToken);
+    }
+
+    /** @hide */
+    public static void unblankDisplay(IBinder displayToken) {
+        if (displayToken == null) {
+            throw new IllegalArgumentException("displayToken must not be null");
+        }
+        nativeUnblankDisplay(displayToken);
     }
 
     /**
@@ -723,15 +750,6 @@ public class Surface implements Parcelable {
         if (HEADLESS) {
             throw new UnsupportedOperationException("Device is headless");
         }
-    }
-
-    /**
-     * set the orientation of the given display.
-     * @param orientation
-     * @hide
-     */
-    public static void setOrientation(int orientation) {
-        setOrientation(0, orientation);
     }
 
     /**
@@ -865,10 +883,4 @@ public class Surface implements Parcelable {
             mOrigMatrix.set(m);
         }
     }
-
-    private native void init(Parcel source);
-
-    private native void initFromSurfaceTexture(SurfaceTexture surfaceTexture);
-
-    private native int getIdentity();
 }
