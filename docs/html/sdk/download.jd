@@ -36,7 +36,7 @@ download one of the archived SDKs, because these SDK packages contain Google sof
 <a href="http://developer.android.com/sdk/index.html">current SDK</a> packages do not require a
 license agreement, because they contain only the open sourced SDK tools).</p>
 
-  <iframe id="terms" style="border:1px solid #888;margin:0 0 1em;height:400px;width:95%;"
+  <iframe id="terms" style="border:1px solid #888;margin:0 0 1em;height:400px;width:100%;"
 src="terms_body.html">
   </iframe>
 
@@ -52,7 +52,7 @@ onclick="submit()" />
   <script language="javascript">
     var loc = window.location.href;
     if (loc.indexOf('?v=') != -1) {
-      var filename = loc.substring(loc.indexOf('=')+1,loc.length).replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      var filename = loc.substring(loc.indexOf('=')+1,loc.length);
       document.write("File: " + filename);
     }
   </script>
@@ -85,7 +85,6 @@ Android 1.1.</p>
     $(this).attr({href: "/sdk/" + version + "/" + oldHref});
   });
 </script>
-
 
 
 

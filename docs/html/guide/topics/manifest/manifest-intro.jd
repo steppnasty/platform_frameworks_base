@@ -115,6 +115,7 @@ other mention of the element name.
         <a href="{@docRoot}guide/topics/manifest/provider-element.html">&lt;provider&gt;</a>
             <a href="{@docRoot}guide/topics/manifest/grant-uri-permission-element.html">&lt;grant-uri-permission /&gt;</a>
             <a href="{@docRoot}guide/topics/manifest/meta-data-element.html">&lt;meta-data /&gt;</a>
+            <a href="{@docRoot}guide/topics/manifest/path-permission-element.html">&lt;path-permission /&gt;</a>
         <a href="{@docRoot}guide/topics/manifest/provider-element.html">&lt;/provider&gt;</a>
 
         <a href="{@docRoot}guide/topics/manifest/uses-library-element.html">&lt;uses-library /&gt;</a>
@@ -345,7 +346,7 @@ filters.
 <p>
 For information on how Intent objects are tested against intent filters, 
 see a separate document, 
-<a href="{@docRoot}guide/topics/intents/intents-filters.html">Intents 
+<a href="{@docRoot}guide/components/intents-filters.html">Intents 
 and Intent Filters</a>.
 </p>
 

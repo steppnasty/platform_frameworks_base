@@ -1,17 +1,14 @@
-page.title=Orientation to Android Training
+page.title=Getting Started
+page.trainingcourse=true
+page.metaDescription=Android Training provides a collection of classes that aim to help you build great apps for Android. Each class explains the steps required to solve a problem or implement a feature using code snippets and sample code for you to use in your apps.
 
 @jd:body
 
-<div class="figure" style="width:450px;margin-top:-30px">
-  <img src="{@docRoot}images/training/training-prof.png" alt="" />
-</div>
 
-<p>Welcome to Android Training. Here you'll find a collection of classes that aim to help you
-build great apps for Android, using best practices in a variety of framework topics.</p>
+<p>Welcome to Training for Android developers. Here you'll find sets of lessons within classes
+that describe how to accomplish a specific task with code samples you can re-use in your app.
+Classes are organized into several groups you can see at the top-level of the left navigation.</p>
 
-<p>Each class explains the steps required to solve a problem or implement a feature using code
-snippets and sample code for you to use in your apps.</p>
-
-<p>What you see now is just the beginning. We plan to add many more classes, expand and refine
-existing classes, and build Training Courses that help you enhance your apps using
-objective-oriented collections of classes.</p>
+<p>This first group, <em>Getting Started</em>, teaches you the bare
+essentials for Android app development.
+If you're a new Android app developer, you should complete each of these classes in order:</p>
