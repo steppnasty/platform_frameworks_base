@@ -6151,7 +6151,7 @@ public class WindowManagerService extends IWindowManager.Stub
                     updateLayoutToAnimationLocked();
                 }
             }
-            Surface.setOrientation(rotation);
+
             mDisplayManagerService.performTraversalInTransactionFromWindowManager();
         } finally {
             if (!inTransaction) {
@@ -10229,7 +10229,7 @@ public class WindowManagerService extends IWindowManager.Stub
         // now to catch that.
         configChanged = updateOrientationFromAppTokensLocked(false);
 
-        // A little kludge: a lot could have happened while the
+        // A little nudge: a lot could have happened while the
         // display was frozen, so now that we are coming back we
         // do a gc so that any remote references the system
         // processes holds on others can be released if they are

@@ -46,7 +46,7 @@ final class HeadlessDisplayAdapter extends DisplayAdapter {
         private DisplayDeviceInfo mInfo;
 
         public HeadlessDisplayDevice() {
-            super(HeadlessDisplayAdapter.this, 0);
+            super(HeadlessDisplayAdapter.this, null);
         }
 
         @Override

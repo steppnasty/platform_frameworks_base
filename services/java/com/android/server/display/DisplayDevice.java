@@ -31,7 +31,7 @@ import java.io.PrintWriter;
  */
 abstract class DisplayDevice {
     private final DisplayAdapter mDisplayAdapter;
-    private final int mDisplayToken;
+    private final IBinder mDisplayToken;
 
     // The display device does not manage these properties itself, they are set by
     // the display manager service.  The display device shouldn't really be looking at these.
@@ -44,7 +44,7 @@ abstract class DisplayDevice {
     // within a transaction from performTraversalInTransactionLocked.
     private Surface mCurrentSurface;
 
-    public DisplayDevice(DisplayAdapter displayAdapter, int displayToken) {
+    public DisplayDevice(DisplayAdapter displayAdapter, IBinder displayToken) {
         mDisplayAdapter = displayAdapter;
         mDisplayToken = displayToken;
     }
@@ -64,7 +64,7 @@ abstract class DisplayDevice {
      * @return The display token, or null if the display is not being managed
      * by Surface Flinger.
      */
-    public final int getDisplayTokenLocked() {
+    public final IBinder getDisplayTokenLocked() {
         return mDisplayToken;
     }
 

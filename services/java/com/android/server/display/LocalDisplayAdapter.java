@@ -61,12 +61,12 @@ final class LocalDisplayAdapter extends DisplayAdapter {
 
     private void scanDisplaysLocked() {
         for (int builtInDisplayId : BUILT_IN_DISPLAY_IDS_TO_SCAN) {
-            int display = 0;
-            if (Surface.getDisplayInfo(display, mTempPhys)) {
+            IBinder displayToken = Surface.getBuiltInDisplay(builtInDisplayId);
+            if (displayToken != null && Surface.getDisplayInfo(displayToken, mTempPhys)) {
                 LocalDisplayDevice device = mDevices.get(builtInDisplayId);
                 if (device == null) {
                     // Display was added.
-                    device = new LocalDisplayDevice(display, builtInDisplayId, mTempPhys);
+                    device = new LocalDisplayDevice(displayToken, builtInDisplayId, mTempPhys);
                     mDevices.put(builtInDisplayId, device);
                     sendDisplayDeviceEventLocked(device, DISPLAY_DEVICE_EVENT_ADDED);
                 } else if (device.updatePhysicalDisplayInfoLocked(mTempPhys)) {
@@ -90,10 +90,11 @@ final class LocalDisplayAdapter extends DisplayAdapter {
 
         private DisplayDeviceInfo mInfo;
         private boolean mHavePendingChanges;
+        private boolean mBlanked;
 
-        public LocalDisplayDevice(int display, int builtInDisplayId,
+        public LocalDisplayDevice(IBinder displayToken, int builtInDisplayId,
                 PhysicalDisplayInfo phys) {
-            super(LocalDisplayAdapter.this, display);
+            super(LocalDisplayAdapter.this, displayToken);
             mBuiltInDisplayId = builtInDisplayId;
             mPhys = new PhysicalDisplayInfo(phys);
         }
@@ -158,10 +159,23 @@ final class LocalDisplayAdapter extends DisplayAdapter {
         }
 
         @Override
+        public void blankLocked() {
+            mBlanked = true;
+            Surface.blankDisplay(getDisplayTokenLocked());
+        }
+
+        @Override
+        public void unblankLocked() {
+            mBlanked = false;
+            Surface.unblankDisplay(getDisplayTokenLocked());
+        }
+
+        @Override
         public void dumpLocked(PrintWriter pw) {
             super.dumpLocked(pw);
             pw.println("mBuiltInDisplayId=" + mBuiltInDisplayId);
             pw.println("mPhys=" + mPhys);
+            pw.println("mBlanked=" + mBlanked);
         }
     }
 }
