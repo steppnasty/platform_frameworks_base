@@ -31,7 +31,7 @@
 #include <gui/SurfaceTexture.h>
 #include <gui/SurfaceTextureClient.h>
 
-#include <ui/egl/android_natives.h>
+#include <ui/ANativeObjectBase.h>
 
 static int initialized = 0;
 
