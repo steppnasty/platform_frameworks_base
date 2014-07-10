@@ -306,8 +306,10 @@ int main(int argc, char **argv) {
     sp<SurfaceComposerClient> composerClient = new SurfaceComposerClient;
     CHECK_EQ(composerClient->initCheck(), (status_t)OK);
 
-    ssize_t displayWidth = composerClient->getDisplayWidth(0);
-    ssize_t displayHeight = composerClient->getDisplayHeight(0);
+    DisplayInfo info;
+    SurfaceComposerClient::getDisplayInfo(0, &info);
+    ssize_t displayWidth = info.w;
+    ssize_t displayHeight = info.h;
 
     ALOGV("display is %d x %d\n", displayWidth, displayHeight);
 
