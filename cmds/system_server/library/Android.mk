@@ -10,7 +10,7 @@ LOCAL_C_INCLUDES := \
 	$(base)/services/camera/libcameraservice \
 	$(base)/services/audioflinger \
 	frameworks/native/services/surfaceflinger \
-	$(base)/services/sensorservice \
+	frameworks/native/services/sensorservice \
 	frameworks/av/media/libmediaplayerservice \
 	$(JNI_H_INCLUDE)
 
