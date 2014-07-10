@@ -227,9 +227,9 @@ public final class GLUtils {
     /**
      * Return a string for the EGL error code, or the hex representation
      * if the error is unknown.
-     * 
+     *
      * @param error The EGL error to convert into a String.
-     * 
+     *
      * @return An error string corresponding to the EGL error code.
      */
     public static String getEGLErrorString(int error) {
