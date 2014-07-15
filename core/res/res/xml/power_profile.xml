@@ -18,10 +18,18 @@
 -->
 
 <device name="Android">
-  <!-- All values are in mAh except as noted -->
+  <!-- Most values are the incremental current used by a feature,
+       in mA (measured at nominal voltage).
+       The default values are deliberately incorrect dummy values.
+       OEM's must measure and provide actual values before
+       shipping a device.
+       Example real-world values are given in comments, but they
+       are totally dependent on the platform and can vary
+       significantly, so should be measured on the shipping platform
+       with a power meter. -->
   <item name="none">0</item>
-  <item name="screen.on">0.1</item>
-  <item name="bluetooth.active">0.1</item>
+  <item name="screen.on">0.1</item>  <!-- ~200mA -->
+  <item name="bluetooth.active">0.1</item>  <!-- ~300mA -->
   <item name="bluetooth.on">0.1</item>
   <item name="screen.full">0.1</item>
   <item name="wifi.on">0.1</item>

@@ -39,8 +39,6 @@
   <java-symbol type="array" name="networkAttributes" />
   <java-symbol type="array" name="preloaded_color_state_lists" />
   <java-symbol type="array" name="preloaded_drawables" />
-  <java-symbol type="array" name="shutdown_reboot_actions" />
-  <java-symbol type="array" name="shutdown_reboot_options" />
   <java-symbol type="array" name="special_locale_codes" />
   <java-symbol type="array" name="special_locale_names" />
 
@@ -242,7 +240,6 @@
   <java-symbol type="drawable" name="unlock_wave" />
 
   <java-symbol type="id" name="account_name" />
-  <java-symbol type="id" name="account_row_checkmark" />
   <java-symbol type="id" name="account_row_icon" />
   <java-symbol type="id" name="account_row_text" />
   <java-symbol type="id" name="account_type" />
@@ -486,7 +483,6 @@
   <java-symbol type="layout" name="choose_account" />
   <java-symbol type="layout" name="choose_account_row" />
   <java-symbol type="layout" name="choose_account_type" />
-  <java-symbol type="layout" name="choose_selected_account_row" />
   <java-symbol type="layout" name="choose_type_and_account" />
   <java-symbol type="layout" name="date_picker" />
   <java-symbol type="layout" name="date_picker_dialog" />

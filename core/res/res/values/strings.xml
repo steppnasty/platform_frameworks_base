@@ -38,7 +38,7 @@
 
     <!-- Used in Contacts for a field that has no label and in Note Pad
          for a note with no name. -->
-    <string name="untitled">&lt;untitled&gt;</string>
+    <string name="untitled">&lt;Untitled&gt;</string>
 
     <!-- Used to replace a range of characters in text that is too wide
          for the space allocated to it (three dots). -->
@@ -84,11 +84,11 @@
     <!-- Displayed when a phone feature triggered by an MMI code is complete. -->
     <string name="mmiComplete">MMI complete.</string>
     <!-- Displayed when a SIM PIN password is entered incorrectly. -->
-    <string name="badPin">The old PIN you typed is not correct.</string>
+    <string name="badPin">The old PIN you typed isn\'t correct.</string>
     <!-- Displayed when a SIM PUK password is entered incorrectly. -->
-    <string name="badPuk">The PUK you typed is not correct.</string>
+    <string name="badPuk">The PUK you typed isn\'t correct.</string>
     <!-- Displayed when SIM PIN passwords are entered inconsistently. -->
-    <string name="mismatchPin">The PINs you entered do not match.</string>
+    <string name="mismatchPin">The PINs you entered don\'t match.</string>
     <!-- Displayed when a SIM PIN password is too long or too short. -->
     <string name="invalidPin">Type a PIN that is 4 to 8 numbers.</string>
     <!-- Displayed when a SIM PUK password is too short. -->
@@ -1338,8 +1338,16 @@
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_recordAudio">record audio</string>
     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
-    <string name="permdesc_recordAudio">Allows application to access
-        the audio record path.</string>
+    <string name="permdesc_recordAudio">Allows the app to record audio with the
+      microphone.  This permission allows the app to record audio at any time
+      without your confirmation.</string>
+
+    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permlab_camera">take pictures and videos</string>
+    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+    <string name="permdesc_camera">Allows the app to take pictures and videos
+      with the camera.  This permission allows the app to use the camera at any
+      time without your confirmation.</string>
 
     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
     <string name="permlab_brick" product="tablet">permanently disable tablet</string>
@@ -2348,6 +2356,15 @@
     <string name="password_keyboard_label_alpha_key">ABC</string>
     <!-- Label for ALT modifier key.  Must be short to fit on key! -->
     <string name="password_keyboard_label_alt_key">ALT</string>
+
+    <!-- Label for granularity to traverse the content on an AccessibilityNodeInfo by character. Only spoken to the user. [CHAR LIMIT=NONE] -->
+    <string name="granularity_label_character">character</string>
+    <!-- Label for granularity to traverse the content on an AccessibilityNodeInfo by word. Only spoken to the user. [CHAR LIMIT=NONE] -->
+    <string name="granularity_label_word">word</string>
+    <!-- Label for granularity to traverse the content on an AccessibilityNodeInfo by link. Only spoken to the user. [CHAR LIMIT=NONE] -->
+    <string name="granularity_label_link">link</string>
+    <!-- Label for granularity to traverse the content on an AccessibilityNodeInfo by line. Only spoken to the user. [CHAR LIMIT=NONE] -->
+    <string name="granularity_label_line">line</string>
 
     <!-- A format string for 12-hour time of day, just the hour, not the minute, with lower-case "am" or "pm" (example: "3pm"). -->
     <string name="hour_ampm">"<xliff:g id="hour" example="3">%-l</xliff:g><xliff:g id="ampm" example="pm">%P</xliff:g>"</string>
@@ -3408,7 +3425,12 @@
     <!-- Title of an application permission that lets an application use default container service. -->
     <string name="permlab_copyProtectedData">Allows to invoke default container service to copy content. Not for use by normal applications.</string>
     <!-- Description of an application permission,  used to invoke default container service to copy content. -->
-    <string name="permdesc_copyProtectedData">Allows to invoke default container service to copy content. Not for use by normal applications.</string>
+    <string name="permdesc_copyProtectedData">Allows the app to invoke default container service to copy content. Not for use by normal apps.</string>
+
+    <!-- Title of an application permission that lets an application route media output. -->
+    <string name="permlab_route_media_output">Route media output</string>
+    <!-- Description of an application permission that lets an application route media output. -->
+    <string name="permdesc_route_media_output">Allows an application to route media output to other external devices.</string>
 
     <!-- Shown in the tutorial for tap twice for zoom control. -->
     <string name="tutorial_double_tap_to_zoom_message_short">Tap twice for zoom control</string>
@@ -3586,6 +3608,10 @@
     <string name="find">Find</string>
     <!-- ActionBar action to use the current selection to perform a web search [CHAR-LIMIT=16] -->
     <string name="websearch">Web Search</string>
+    <!-- ActionBar action to find the next match in the page [CHAR LIMIT=24] -->
+    <string name="find_next">Find next</string>
+    <!-- ActionBar action to find the previous match in the page [CHAR LIMIT=24] -->
+    <string name="find_previous">Find previous</string>
 
     <!-- Network positioning notification ticker. The name of the user (e.g. John Doe) who sent
          the request is shown as a dynamic string. -->
@@ -3880,6 +3906,9 @@
 
     <!-- Name of the default audio route category. [CHAR LIMIT=50] -->
     <string name="default_audio_route_category_name">System</string>
+
+    <!-- Default name of the bluetooth a2dp audio route. [CHAR LIMIT=50] -->
+    <string name="bluetooth_a2dp_audio_route_name">Bluetooth audio</string>
 
     <!-- "Done" button for MediaRouter chooser dialog when grouping routes. [CHAR LIMIT=NONE] -->
     <string name="media_route_chooser_grouping_done">Done</string>

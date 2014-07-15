@@ -18,8 +18,8 @@
 */
 -->
 <resources>
-      <drawable name="screen_background_light">#ffffffff</drawable>
-      <drawable name="screen_background_dark">#ff000000</drawable>
+    <drawable name="screen_background_light">#ffffffff</drawable>
+    <drawable name="screen_background_dark">#ff000000</drawable>
     <drawable name="status_bar_closed_default_background">#ff000000</drawable>
     <drawable name="status_bar_opened_default_background">#ff000000</drawable>
     <drawable name="notification_item_background_color">#ff111111</drawable>
@@ -91,7 +91,7 @@
     <color name="perms_dangerous_perm_color">#33b5e5</color>
     <color name="shadow">#cc222222</color>
     <color name="perms_costs_money">#ffffbb33</color>
-
+    
     <!-- For search-related UIs -->
     <color name="search_url_text_normal">#7fa87f</color>
     <color name="search_url_text_selected">@android:color/black</color>
@@ -116,6 +116,8 @@
     <color name="lockscreen_owner_info">#ff9a9a9a</color>
 
     <!-- keyguard overscroll widget pager -->
+    <color name="kg_multi_user_text_active">#ffffffff</color>
+    <color name="kg_multi_user_text_inactive">#ff808080</color>
     <color name="kg_widget_pager_gradient">#ffffffff</color>
 
     <!-- FaceLock -->

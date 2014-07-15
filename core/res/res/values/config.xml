@@ -18,7 +18,7 @@
 -->
 
 <!-- These resources are around just to allow their values to be customized
-     for different hardware and product builds. -->
+     for different hardware and product builds. Do no translate. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- Do not translate. Defines the slots for the right-hand side icons.  That is to say, the
          icons in the status bar that are not notifications. -->
@@ -254,8 +254,11 @@
     <!-- Common options are [1, 4] for TYPE_WIFI and TYPE_MOBILE_DUN or
     <!== [0,1,5,7] for TYPE_MOBILE, TYPE_WIFI, TYPE_MOBILE_HIPRI and TYPE_BLUETOOTH -->
     <integer-array translatable="false" name="config_tether_upstream_types">
+        <item>0</item>
         <item>1</item>
-        <item>4</item>
+	<item>5</item>
+        <item>7</item>
+        <item>9</item>
     </integer-array>
 
     <!-- If the DUN connection for this CDMA device supports more than just DUN -->
@@ -283,15 +286,14 @@
     <!-- Boolean indicating whether the wifi chipset supports background scanning mechanism.
          This mechanism allows the host to remain in suspend state and the dongle to actively
          scan and wake the host when a configured SSID is detected by the dongle. This chipset
-         capability can provide power savings when wifi needs to be always kept on.
-         The driver commands needed to support the feature are BGSCAN-START and BGSCAN-STOP -->
+         capability can provide power savings when wifi needs to be always kept on. -->
     <bool translatable="false" name="config_wifi_background_scan_support">false</bool>
-
-    <!-- Integer indicating wpa_supplicant scan interval when p2p is connected in milliseconds -->
-    <integer translatable="false" name="config_wifi_scan_interval_p2p_connected">60000</integer>
 
     <!-- Integer indicating wpa_supplicant scan interval in milliseconds -->
     <integer translatable="false" name="config_wifi_supplicant_scan_interval">15000</integer>
+
+    <!-- Integer indicating wpa_supplicant scan interval when p2p is connected in milliseconds -->
+    <integer translatable="false" name="config_wifi_scan_interval_p2p_connected">60000</integer>
 
     <!-- Integer indicating the framework scan interval in milliseconds. This is used in the scenario
          where the chipset does not support background scanning (config_wifi_background_scan_suport
@@ -303,17 +305,6 @@
          Default value is 2 minutes. -->
     <integer translatable="false" name="config_wifi_driver_stop_delay">120000</integer>
 
-    <!-- Boolean indicating whether Softap rely only on one interface -->
-    <bool name="config_wifi_ap_use_single_interface">false</bool>
-
-    <!-- Boolean indicating whether Softap require reloading AP firware -->
-    <bool name="config_wifi_ap_firmware_reload">true</bool>
-
-    <!-- Flag indicating whether the keyguard should be bypassed when
-         the slider is open.  This can be set or unset depending how easily
-         the slider can be opened (for example, in a pocket or purse). -->
-    <bool name="config_bypass_keyguard_if_slider_open">true</bool>
-
     <!-- Flag indicating whether the we should enable the automatic brightness in Settings.
          Software implementation will be used if config_hardware_auto_brightness_available is not set -->
     <bool name="config_automatic_brightness_available">false</bool>
@@ -321,13 +312,13 @@
     <!-- Don't name config resources like this.  It should look like config_annoyDianne -->
     <bool name="config_annoy_dianne">true</bool>
 
+    <!-- XXXXXX END OF RESOURCES USING WRONG NAMING CONVENTION -->
+
     <!-- If this is true, the screen will come on when you unplug usb/power/whatever. -->
     <bool name="config_unplugTurnsOnScreen">false</bool>
 
     <!-- If this is true, the screen will fade off. -->
     <bool name="config_animateScreenLights">true</bool>
-
-    <!-- XXXXXX END OF RESOURCES USING WRONG NAMING CONVENTION -->
 
     <!-- If this is true, key chords can be used to take a screenshot on the device. -->
     <bool name="config_enableScreenshotChord">true</bool>
@@ -344,8 +335,9 @@
          true here reverses that logic. -->
     <bool name="config_reverseDefaultRotation">false</bool>
 
-    <!-- The number of degrees to rotate the display when the keyboard is open. -->
-    <integer name="config_lidOpenRotation">90</integer>
+    <!-- The number of degrees to rotate the display when the keyboard is open.
+         A value of -1 means no change in orientation by default. -->
+    <integer name="config_lidOpenRotation">-1</integer>
 
     <!-- The number of degrees to rotate the display when the device is in a desk dock.
          A value of -1 means no change in orientation by default. -->
@@ -376,9 +368,12 @@
     <integer name="config_carDockKeepsScreenOn">1</integer>
 
     <!-- Control whether being in the desk dock should enable accelerometer
-         based screen orientation.  Note this should probably default to true
-         like car dock, but we haven't had a chance to test it. -->
-    <bool name="config_deskDockEnablesAccelerometer">false</bool>
+         based screen orientation.  This defaults to true because it is
+         common for desk docks to be sold in a variety of form factors
+         with different orientations.  Since we cannot always tell these docks
+         apart and the docks cannot report their true orientation on their own,
+         we rely on gravity to determine the effective orientation. -->
+    <bool name="config_deskDockEnablesAccelerometer">true</bool>
 
     <!-- Control whether being in the car dock should enable accelerometer based
          screen orientation.  This defaults to true because putting a device in
@@ -388,11 +383,11 @@
     <!-- Indicate whether the lid state impacts the accessibility of
          the physical keyboard.  0 means it doesn't, 1 means it is accessible
          when the lid is open, 2 means it is accessible when the lid is
-         closed.  The default is 1. -->
-    <integer name="config_lidKeyboardAccessibility">1</integer>
+         closed.  The default is 0. -->
+    <integer name="config_lidKeyboardAccessibility">0</integer>
 
     <!-- Indicate whether the lid state impacts the accessibility of
-         the physical keyboard.  0 means it doesn't, 1 means it is accessible
+         the navigation buttons.  0 means it doesn't, 1 means it is accessible
          when the lid is open, 2 means it is accessible when the lid is
          closed.  The default is 0. -->
     <integer name="config_lidNavigationAccessibility">0</integer>
@@ -423,7 +418,7 @@
          with the modem or some other restricted hardware, add "/dev/bus/usb/001/"
          to this list.  If this is empty, no parts of the host USB bus will be excluded.
     -->
-    <string-array name="config_usbHostBlacklist">
+    <string-array name="config_usbHostBlacklist" translatable="false">
     </string-array>
 
     <!-- Vibrator pattern for feedback about a long screen/key press -->
@@ -487,7 +482,7 @@
     <integer name="config_lowBatteryCloseWarningLevel">20</integer>
 
     <!-- Default color for notification LED. -->
-    <color name="config_defaultNotificationColor">#ff00ff00</color>
+    <color name="config_defaultNotificationColor">#ffffffff</color>
 
     <!-- Default LED on time for notification LED in milliseconds. -->
     <integer name="config_defaultNotificationLedOn">500</integer>
@@ -565,8 +560,10 @@
          Must be in the range specified by minimum and maximum. -->
     <integer name="config_screenBrightnessSettingDefault">102</integer>
 
-    <!-- Minimum screen brightness allowed by the power manager. -->
-    <integer name="config_screenBrightnessDim">20</integer>
+    <!-- Screen brightness used to dim the screen when the user activity
+         timeout expires.  May be less than the minimum allowed brightness setting
+         that can be set by the user. -->
+    <integer name="config_screenBrightnessDim">10</integer>
 
     <!-- Array of output values for LCD backlight corresponding to the LUX values
          in the config_autoBrightnessLevels array.  This array should have size one greater

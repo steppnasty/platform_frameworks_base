@@ -198,8 +198,8 @@
              (optionally) be granted to development applications. -->
         <flag name="development" value="0x20" />
     </attr>
-    
-    <!-- Flags indicating more context for a permission group. @hide -->
+
+    <!-- Flags indicating more context for a permission group. -->
     <attr name="permissionGroupFlags">
         <!-- Set to indicate that this permission group contains permissions
              protecting access to some information that is considered
@@ -576,13 +576,13 @@
         <enum name="sensorLandscape" value="6" />
         <!-- Would like to have the screen in portrait orientation, but can
              use the sensor to change which direction the screen is facing. -->
-        <enum name="sensorPortait" value="7" />
+        <enum name="sensorPortrait" value="7" />
         <!-- Would like to have the screen in landscape orientation, turned in
              the opposite direction from normal landscape. -->
         <enum name="reverseLandscape" value="8" />
         <!-- Would like to have the screen in portrait orientation, turned in
              the opposite direction from normal portrait. -->
-        <enum name="reversePortait" value="9" />
+        <enum name="reversePortrait" value="9" />
         <!-- Orientation is determined by a physical orientation sensor:
              the display will rotate based on how the user moves the device.
              This allows any of the 4 possible rotations, regardless of what
@@ -712,11 +712,11 @@
          backup and restore of the application's data on external storage. -->
     <attr name="backupAgent" format="string" />
 
-    <!-- Whether to allow the application to participate in backup
-         infrastructure.  If this attribute is set to <code>false</code>, no backup
-         of the application will ever be performed, even by a full-system backup that
-         would otherwise cause all application data to be saved via adb.  The
-         default value of this attribute is <code>true</code>. -->
+    <!-- Whether to allow the application to participate in the backup
+         and restore infrastructure.  If this attribute is set to <code>false</code>,
+         no backup or restore of the application will ever be performed, even by a
+         full-system backup that would otherwise cause all application data to be saved
+         via adb.  The default value of this attribute is <code>true</code>. -->
     <attr name="allowBackup" format="boolean" />
 
     <!-- Whether the application in question should be terminated after its
@@ -981,6 +981,14 @@
         tag; often this is one of the {@link android.Manifest.permission standard
         system permissions}. -->
         <attr name="name" />
+        <!--  Specify whether this permission is required for the application.
+              The default is true, meaning the application requires the
+              permission, and it must always be granted when it is installed.
+              If you set this to false, then in some cases the application may
+              be installed with it being granted the permission, and it will
+              need to request the permission later if it needs it.
+        <attr name="required" format="boolean" />
+        -->
     </declare-styleable>
 
     <!-- The <code>uses-configuration</code> tag specifies
@@ -1333,7 +1341,7 @@
         <attr name="exported" />
         <attr name="singleUser" />
     </declare-styleable>
-    
+
     <!-- The <code>activity</code> tag declares an
          {@link android.app.Activity} class that is available
          as part of the package's application components, implementing
