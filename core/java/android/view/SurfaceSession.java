@@ -26,9 +26,13 @@ public final class SurfaceSession {
     // Note: This field is accessed by native code.
     private int mNativeClient; // SurfaceComposerClient*
 
+    private static native int nativeCreate();
+    private static native void nativeDestroy(int ptr);
+    private static native void nativeKill(int ptr);
+
     /** Create a new connection with the surface flinger. */
     public SurfaceSession() {
-        mNativeClient = init();
+        mNativeClient = nativeCreate();
     }
 
     /* no user serviceable parts here ... */
@@ -36,7 +40,7 @@ public final class SurfaceSession {
     protected void finalize() throws Throwable {
         try {
             if (mNativeClient != 0) {
-                destroy(mNativeClient);
+                nativeDestroy(mNativeClient);
             }
         } finally {
             super.finalize();
@@ -51,9 +55,5 @@ public final class SurfaceSession {
     public void kill() {
         nativeKill(mNativeClient);
     }
-
-    public native void nativeKill(int ptr);
-    private native int init();
-    private native void destroy(int ptr);
 }
 

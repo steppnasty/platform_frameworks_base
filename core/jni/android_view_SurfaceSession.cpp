@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,37 +31,44 @@ static struct {
     jfieldID mNativeClient;
 } gSurfaceSessionClassInfo;
 
+
 sp<SurfaceComposerClient> android_view_SurfaceSession_getClient(
         JNIEnv* env, jobject surfaceSessionObj) {
     return reinterpret_cast<SurfaceComposerClient*>(
             env->GetIntField(surfaceSessionObj, gSurfaceSessionClassInfo.mNativeClient));
 }
 
-static jint SurfaceSession_init(JNIEnv* env, jobject clazz) {
+
+static jint nativeCreate(JNIEnv* env, jclass clazz) {
     SurfaceComposerClient* client = new SurfaceComposerClient();
     client->incStrong(clazz);
     return reinterpret_cast<jint>(client);
 }
 
-static void SurfaceSession_destroy(JNIEnv* env, jobject clazz, jint ptr) {
+static void nativeDestroy(JNIEnv* env, jclass clazz, jint ptr) {
     SurfaceComposerClient* client = reinterpret_cast<SurfaceComposerClient*>(ptr);
     client->decStrong(clazz);
 }
 
-static void SurfaceSession_kill(JNIEnv* env, jobject clazz, jint ptr) {
+static void nativeKill(JNIEnv* env, jclass clazz, jint ptr) {
     SurfaceComposerClient* client = reinterpret_cast<SurfaceComposerClient*>(ptr);
     client->dispose();
 }
 
-static JNINativeMethod gSurfaceSessionMethods[] = {
-    {"init",       "()I",  (void*)SurfaceSession_init },
-    {"destroy",    "(I)V", (void*)SurfaceSession_destroy },
-    {"nativeKill", "(I)V", (void*)SurfaceSession_kill },
+
+static JNINativeMethod gMethods[] = {
+    /* name, signature, funcPtr */
+    { "nativeCreate", "()I",
+            (void*)nativeCreate },
+    { "nativeDestroy", "(I)V",
+            (void*)nativeDestroy },
+    { "nativeKill", "(I)V",
+            (void*)nativeKill }
 };
 
 int register_android_view_SurfaceSession(JNIEnv* env) {
     int res = jniRegisterNativeMethods(env, "android/view/SurfaceSession",
-            gSurfaceSessionMethods, NELEM(gSurfaceSessionMethods));
+            gMethods, NELEM(gMethods));
     LOG_ALWAYS_FATAL_IF(res < 0, "Unable to register native methods.");
 
     jclass clazz = env->FindClass("android/view/SurfaceSession");

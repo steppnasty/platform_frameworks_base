@@ -46,27 +46,6 @@ public interface SurfaceHolder {
     public static final int SURFACE_TYPE_PUSH_BUFFERS = 3;
 
     /**
-     * Stereoscopic Side-by-Side Half 3D format
-     * @hide
-     */
-    public static final int STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_HALF_L_R = 0x10000;
-    /**
-     * Stereoscopic Top Bottom 3D format
-     * @hide
-     */
-    public static final int STEREOSCOPIC_3D_FORMAT_TOP_BOTTOM   = 0x20000;
-    /**
-     * Stereoscopic Interleaved 3D format
-     * @hide
-     */
-    public static final int STEREOSCOPIC_3D_FORMAT_INTERLEAVED  = 0x40000;
-    /**
-     * Stereoscopic Side-by-Side Full 3D format
-     * @hide
-     */
-    public static final int STEREOSCOPIC_3D_FORMAT_SIDE_BY_SIDE_R_L = 0x80000;
-
-    /**
      * Exception that is thrown from {@link #lockCanvas} when called on a Surface
      * whose type is SURFACE_TYPE_PUSH_BUFFERS.
      */
@@ -176,7 +155,7 @@ public interface SurfaceHolder {
 
     /**
      * Make the surface a fixed size.  It will never change from this size.
-     * When working with a {link SurfaceView}, this must be called from the
+     * When working with a {@link SurfaceView}, this must be called from the
      * same thread running the SurfaceView's window.
      * 
      * @param width The surface's width.
@@ -188,14 +167,14 @@ public interface SurfaceHolder {
      * Allow the surface to resized based on layout of its container (this is
      * the default).  When this is enabled, you should monitor
      * {@link Callback#surfaceChanged} for changes to the size of the surface.
-     * When working with a {link SurfaceView}, this must be called from the
+     * When working with a {@link SurfaceView}, this must be called from the
      * same thread running the SurfaceView's window.
      */
     public void setSizeFromLayout();
 
     /**
      * Set the desired PixelFormat of the surface.  The default is OPAQUE.
-     * When working with a {link SurfaceView}, this must be called from the
+     * When working with a {@link SurfaceView}, this must be called from the
      * same thread running the SurfaceView's window.
      * 
      * @param format A constant from PixelFormat.

@@ -76,6 +76,7 @@ class GLES20RecordingCanvas extends GLES20Canvas implements Poolable<GLES20Recor
 
     void start() {
         mDisplayList.mBitmaps.clear();
+        mDisplayList.mChildDisplayLists.clear();
     }
 
     int end(int nativeDisplayList) {
@@ -143,8 +144,8 @@ class GLES20RecordingCanvas extends GLES20Canvas implements Poolable<GLES20Recor
     @Override
     public void drawBitmapMesh(Bitmap bitmap, int meshWidth, int meshHeight, float[] verts,
             int vertOffset, int[] colors, int colorOffset, Paint paint) {
-        super.drawBitmapMesh(bitmap, meshWidth, meshHeight, verts, vertOffset, colors, colorOffset,
-                paint);
+        super.drawBitmapMesh(bitmap, meshWidth, meshHeight, verts, vertOffset,
+                colors, colorOffset, paint);
         mDisplayList.mBitmaps.add(bitmap);
         // Shaders in the Paint are ignored when drawing a Bitmap
     }
@@ -153,6 +154,13 @@ class GLES20RecordingCanvas extends GLES20Canvas implements Poolable<GLES20Recor
     public void drawCircle(float cx, float cy, float radius, Paint paint) {
         super.drawCircle(cx, cy, radius, paint);
         recordShaderBitmap(paint);
+    }
+
+    @Override
+    public int drawDisplayList(DisplayList displayList, Rect dirty, int flags) {
+        int status = super.drawDisplayList(displayList, dirty, flags);
+        mDisplayList.mChildDisplayLists.add(displayList);
+        return status;
     }
 
     @Override
@@ -224,18 +232,6 @@ class GLES20RecordingCanvas extends GLES20Canvas implements Poolable<GLES20Recor
     @Override
     public void drawRect(float left, float top, float right, float bottom, Paint paint) {
         super.drawRect(left, top, right, bottom, paint);
-        recordShaderBitmap(paint);
-    }
-
-    @Override
-    public void drawRect(Rect r, Paint paint) {
-        super.drawRect(r, paint);
-        recordShaderBitmap(paint);
-    }
-
-    @Override
-    public void drawRect(RectF r, Paint paint) {
-        super.drawRect(r, paint);
         recordShaderBitmap(paint);
     }
 

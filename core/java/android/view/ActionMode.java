@@ -124,6 +124,17 @@ public abstract class ActionMode {
     }
 
     /**
+     * @return true if this action mode has been given a hint to consider the
+     *         title/subtitle display to be optional.
+     *
+     * @see #setTitleOptionalHint(boolean)
+     * @see #isTitleOptional()
+     */
+    public boolean getTitleOptionalHint() {
+        return mTitleOptionalHint;
+    }
+
+    /**
      * @return true if this action mode considers the title and subtitle fields
      *         as optional. Optional titles may not be displayed to the user.
      */

@@ -98,7 +98,7 @@ public final class Choreographer {
 
     // Enable/disable vsync for animations and drawing.
     private static final boolean USE_VSYNC = SystemProperties.getBoolean(
-            "debug.choreographer.vsync", false);
+            "debug.choreographer.vsync", true);
 
     // Enable/disable using the frame time instead of returning now.
     private static final boolean USE_FRAME_TIME = SystemProperties.getBoolean(
@@ -124,6 +124,11 @@ public final class Choreographer {
 
     private final Looper mLooper;
     private final FrameHandler mHandler;
+
+    // The display event receiver can only be accessed by the looper thread to which
+    // it is attached.  We take care to ensure that we post message to the looper
+    // if appropriate when interacting with the display event receiver.
+    private final FrameDisplayEventReceiver mDisplayEventReceiver;
 
     private CallbackRecord mCallbackPool;
 
@@ -158,6 +163,7 @@ public final class Choreographer {
     private Choreographer(Looper looper) {
         mLooper = looper;
         mHandler = new FrameHandler(looper);
+        mDisplayEventReceiver = USE_VSYNC ? new FrameDisplayEventReceiver(looper) : null;
         mLastFrameTimeNanos = Long.MIN_VALUE;
 
         mFrameIntervalNanos = (long)(1000000000 / getRefreshRate());
@@ -463,6 +469,7 @@ public final class Choreographer {
                 // otherwise post a message to schedule the vsync from the UI thread
                 // as soon as possible.
                 if (isRunningOnLooperThreadLocked()) {
+                    scheduleVsyncLocked();
                 } else {
                     Message msg = mHandler.obtainMessage(MSG_DO_SCHEDULE_VSYNC);
                     msg.setAsynchronous(true);
@@ -512,6 +519,7 @@ public final class Choreographer {
                     Log.d(TAG, "Frame time appears to be going backwards.  May be due to a "
                             + "previously skipped frame.  Waiting for next vsync.");
                 }
+                scheduleVsyncLocked();
                 return;
             }
 
@@ -565,6 +573,14 @@ public final class Choreographer {
         }
     }
 
+    void doScheduleVsync() {
+        synchronized (mLock) {
+            if (mFrameScheduled) {
+                scheduleVsyncLocked();
+            }
+        }
+    }
+
     void doScheduleCallback(int callbackType) {
         synchronized (mLock) {
             if (!mFrameScheduled) {
@@ -574,6 +590,10 @@ public final class Choreographer {
                 }
             }
         }
+    }
+
+    private void scheduleVsyncLocked() {
+        mDisplayEventReceiver.scheduleVsync();
     }
 
     private boolean isRunningOnLooperThreadLocked() {
@@ -643,10 +663,76 @@ public final class Choreographer {
                 case MSG_DO_FRAME:
                     doFrame(System.nanoTime(), 0);
                     break;
+                case MSG_DO_SCHEDULE_VSYNC:
+                    doScheduleVsync();
+                    break;
                 case MSG_DO_SCHEDULE_CALLBACK:
                     doScheduleCallback(msg.arg1);
                     break;
             }
+        }
+    }
+
+    private final class FrameDisplayEventReceiver extends DisplayEventReceiver
+            implements Runnable {
+        private boolean mHavePendingVsync;
+        private long mTimestampNanos;
+        private int mFrame;
+
+        public FrameDisplayEventReceiver(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void onVsync(long timestampNanos, int builtInDisplayId, int frame) {
+            // Ignore vsync from secondary display.
+            // This can be problematic because the call to scheduleVsync() is a one-shot.
+            // We need to ensure that we will still receive the vsync from the primary
+            // display which is the one we really care about.  Ideally we should schedule
+            // vsync for a particular display.
+            // At this time Surface Flinger won't send us vsyncs for secondary displays
+            // but that could change in the future so let's log a message to help us remember
+            // that we need to fix this.
+            if (builtInDisplayId != Surface.BUILT_IN_DISPLAY_ID_MAIN) {
+                Log.d(TAG, "Received vsync from secondary display, but we don't support "
+                        + "this case yet.  Choreographer needs a way to explicitly request "
+                        + "vsync for a specific display to ensure it doesn't lose track "
+                        + "of its scheduled vsync.");
+                scheduleVsync();
+                return;
+            }
+
+            // Post the vsync event to the Handler.
+            // The idea is to prevent incoming vsync events from completely starving
+            // the message queue.  If there are no messages in the queue with timestamps
+            // earlier than the frame time, then the vsync event will be processed immediately.
+            // Otherwise, messages that predate the vsync event will be handled first.
+            long now = System.nanoTime();
+            if (timestampNanos > now) {
+                Log.w(TAG, "Frame time is " + ((timestampNanos - now) * 0.000001f)
+                        + " ms in the future!  Check that graphics HAL is generating vsync "
+                        + "timestamps using the correct timebase.");
+                timestampNanos = now;
+            }
+
+            if (mHavePendingVsync) {
+                Log.w(TAG, "Already have a pending vsync event.  There should only be "
+                        + "one at a time.");
+            } else {
+                mHavePendingVsync = true;
+            }
+
+            mTimestampNanos = timestampNanos;
+            mFrame = frame;
+            Message msg = Message.obtain(mHandler, this);
+            msg.setAsynchronous(true);
+            mHandler.sendMessageAtTime(msg, timestampNanos / NANOS_PER_MS);
+        }
+
+        @Override
+        public void run() {
+            mHavePendingVsync = false;
+            doFrame(mTimestampNanos, mFrame);
         }
     }
 

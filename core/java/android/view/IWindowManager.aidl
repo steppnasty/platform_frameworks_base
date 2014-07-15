@@ -1,16 +1,16 @@
 /*
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
@@ -23,6 +23,7 @@ import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.IRemoteCallback;
 import android.view.IApplicationToken;
@@ -58,12 +59,12 @@ interface IWindowManager
     IWindowSession openSession(in IInputMethodClient client,
             in IInputContext inputContext);
     boolean inputMethodClientHasFocus(IInputMethodClient client);
- 
+
     void setForcedDisplaySize(int displayId, int width, int height);
     void clearForcedDisplaySize(int displayId);
     void setForcedDisplayDensity(int displayId, int density);
     void clearForcedDisplayDensity(int displayId);
-   
+
     // Is the device configured to have a full system bar for larger screens?
     boolean hasSystemNavBar();
 
@@ -120,15 +121,12 @@ interface IWindowManager
     void dismissKeyguard();
 
     void closeSystemDialogs(String reason);
-    
+
     // These can only be called with the SET_ANIMATON_SCALE permission.
     float getAnimationScale(int which);
     float[] getAnimationScales();
     void setAnimationScale(int which, float scale);
     void setAnimationScales(in float[] scales);
-    
-    // These require the READ_INPUT_STATE permission.
-    InputChannel monitorInput(String inputChannelName);
 
     // For testing
     void setInTouchMode(boolean showFocus);
@@ -163,7 +161,7 @@ interface IWindowManager
      * {@link android.view.Surface}.
      */
     int getRotation();
-    
+
     /**
      * Watch the rotation of the screen.  Returns the current rotation,
      * calls back when it changes.
@@ -177,19 +175,19 @@ interface IWindowManager
      */
     int getPreferredOptionsPanelGravity();
 
-	/**
-	 * Lock the device orientation to the specified rotation, or to the
-	 * current rotation if -1.  Sensor input will be ignored until
-	 * thawRotation() is called.
-	 * @hide
-	 */
-	void freezeRotation(int rotation);
+    /**
+     * Lock the device orientation to the specified rotation, or to the
+     * current rotation if -1.  Sensor input will be ignored until
+     * thawRotation() is called.
+     * @hide
+     */
+    void freezeRotation(int rotation);
 
-	/**
-	 * Release the orientation lock imposed by freezeRotation().
-	 * @hide
-	 */
-	void thawRotation();
+    /**
+     * Release the orientation lock imposed by freezeRotation().
+     * @hide
+     */
+    void thawRotation();
 
     /**
      * Create a screenshot of the applications currently displayed.
@@ -203,6 +201,7 @@ interface IWindowManager
 
     /**
      * Block until the given window has been drawn to the screen.
+     * Returns true if really waiting, false if the window does not exist.
      */
     boolean waitForWindowDrawn(IBinder token, in IRemoteCallback callback);
 
@@ -212,7 +211,7 @@ interface IWindowManager
     boolean hasNavigationBar();
 
     /**
-     * Lock the device immediately.
+     * Lock the device immediately with the specified options (can be null).
      */
     void lockNow(in Bundle options);
 

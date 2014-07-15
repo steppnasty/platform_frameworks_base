@@ -285,7 +285,7 @@ public final class DisplayInfo implements Parcelable {
         getMetricsWithSize(outMetrics, cih, logicalWidth, logicalHeight);
     }
 
-     public int getNaturalWidth() {
+    public int getNaturalWidth() {
         return rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180 ?
                 logicalWidth : logicalHeight;
     }

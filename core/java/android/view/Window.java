@@ -16,9 +16,7 @@
 
 package android.view;
 
-import android.app.Application;
 import android.content.Context;
-import android.content.res.CompatibilityInfo;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.PixelFormat;
@@ -27,7 +25,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.SystemProperties;
-import android.util.Slog;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
@@ -75,6 +72,16 @@ public abstract class Window {
      * over how the Action Bar is displayed, such as letting application content scroll beneath
      * an Action Bar with a transparent background or otherwise displaying a transparent/translucent
      * Action Bar over application content.
+     *
+     * <p>This mode is especially useful with {@link View#SYSTEM_UI_FLAG_FULLSCREEN
+     * View.SYSTEM_UI_FLAG_FULLSCREEN}, which allows you to seamlessly hide the
+     * action bar in conjunction with other screen decorations.
+     *
+     * <p>As of {@link android.os.Build.VERSION_CODES#JELLY_BEAN}, when an
+     * ActionBar is in this mode it will adjust the insets provided to
+     * {@link View#fitSystemWindows(android.graphics.Rect) View.fitSystemWindows(Rect)}
+     * to include the content covered by the action bar, so you can do layout within
+     * that space.
      */
     public static final int FEATURE_ACTION_BAR_OVERLAY = 9;
     /**
@@ -449,11 +456,6 @@ public abstract class Window {
         return mDestroyed;
     }
 
-    static CompatibilityInfoHolder getCompatInfo(Context context) {
-        Application app = (Application)context.getApplicationContext();
-        return app != null ? app.mLoadedApk.mCompatibilityInfo : new CompatibilityInfoHolder();
-    }
-
     /**
      * Set the window manager for use by this Window to, for example,
      * display panels.  This is <em>not</em> used for displaying the
@@ -701,6 +703,7 @@ public abstract class Window {
      * per {@link #setFlags}.
      * @param flags The flag bits to be set.
      * @see #setFlags
+     * @see #clearFlags
      */
     public void addFlags(int flags) {
         setFlags(flags, flags);
@@ -711,6 +714,7 @@ public abstract class Window {
      * per {@link #setFlags}.
      * @param flags The flag bits to be cleared.
      * @see #setFlags
+     * @see #addFlags
      */
     public void clearFlags(int flags) {
         setFlags(0, flags);
@@ -732,11 +736,10 @@ public abstract class Window {
      *
      * @param flags The new window flags (see WindowManager.LayoutParams).
      * @param mask Which of the window flag bits to modify.
+     * @see #addFlags
+     * @see #clearFlags
      */
     public void setFlags(int flags, int mask) {
-        if ((flags & mask & WindowManager.LayoutParams.PREVENT_POWER_KEY) != 0){
-            mContext.enforceCallingOrSelfPermission("android.permission.PREVENT_POWER_KEY", "No permission to prevent power key");
-        }
         final WindowManager.LayoutParams attrs = getAttributes();
         attrs.flags = (attrs.flags&~mask) | (flags&mask);
         if ((mask&WindowManager.LayoutParams.FLAG_NEEDS_MENU_KEY) != 0) {
@@ -776,9 +779,6 @@ public abstract class Window {
      *          current values.
      */
     public void setAttributes(WindowManager.LayoutParams a) {
-        if ((a.flags & WindowManager.LayoutParams.PREVENT_POWER_KEY) != 0){
-            mContext.enforceCallingOrSelfPermission("android.permission.PREVENT_POWER_KEY", "No permission to prevent power key");
-        }
         mWindowAttributes.copyFrom(a);
         if (mCallback != null) {
             mCallback.onWindowAttributesChanged(mWindowAttributes);

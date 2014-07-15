@@ -41,8 +41,8 @@ public abstract class HardwareCanvas extends Canvas {
      * Invoked before any drawing operation is performed in this canvas.
      * 
      * @param dirty The dirty rectangle to update, can be null.
-     * @return {@link DisplayList#STATUS_DREW} if anything was drawn (such as a call to
-     * clear the canvas).
+     * @return {@link DisplayList#STATUS_DREW} if anything was drawn (such as a call to clear
+     * the canvas).
      */
     public abstract int onPreDraw(Rect dirty);
 
@@ -50,7 +50,7 @@ public abstract class HardwareCanvas extends Canvas {
      * Invoked after all drawing operation have been performed.
      */
     public abstract void onPostDraw();
-    
+
     /**
      * Draws the specified display list onto this canvas.
      *
@@ -90,7 +90,9 @@ public abstract class HardwareCanvas extends Canvas {
      * This function may return true if an invalidation is needed after the call.
      *
      * @param drawGLFunction A native function pointer
-     * @return true if an invalidate is needed after the call, false otherwise
+     *                       
+     * @return One of {@link DisplayList#STATUS_DONE}, {@link DisplayList#STATUS_DRAW} or
+     *         {@link DisplayList#STATUS_INVOKE}
      */
     public int callDrawGLFunction(int drawGLFunction) {
         // Noop - this is done in the display list recorder subclass
@@ -116,7 +118,7 @@ public abstract class HardwareCanvas extends Canvas {
      *
      * @see #invokeFunctors(android.graphics.Rect)
      * @see #callDrawGLFunction(int)
-     * @see #detachFunctor(int)
+     * @see #detachFunctor(int) 
      */
     abstract void detachFunctor(int functor);
 
@@ -127,7 +129,7 @@ public abstract class HardwareCanvas extends Canvas {
      *
      * @see #invokeFunctors(android.graphics.Rect)
      * @see #callDrawGLFunction(int)
-     * @see #detachFunctor(int)
+     * @see #detachFunctor(int) 
      */
     abstract void attachFunctor(int functor);
 
@@ -143,7 +145,7 @@ public abstract class HardwareCanvas extends Canvas {
     /**
      * Removes all enqueued layer updates.
      * 
-     * @see #pushLayerUpdate(HardwareLayer)
+     * @see #pushLayerUpdate(HardwareLayer) 
      */
     abstract void clearLayerUpdates();
 }

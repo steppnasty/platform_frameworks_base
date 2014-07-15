@@ -18,8 +18,8 @@ package android.view;
 
 import android.graphics.Canvas;
 import android.graphics.Matrix;
-import android.graphics.SurfaceTexture;
 import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
 
 /**
  * An OpenGL ES 2.0 implementation of {@link HardwareLayer}. This
@@ -30,9 +30,8 @@ class GLES20TextureLayer extends GLES20Layer {
     private int mTexture;
     private SurfaceTexture mSurface;
 
-    GLES20TextureLayer(boolean isOpaque, int textureName) {
+    GLES20TextureLayer(boolean isOpaque) {
         int[] layerInfo = new int[2];
-        layerInfo[0] = textureName;
         mLayer = GLES20Canvas.nCreateTextureLayer(isOpaque, layerInfo);
 
         if (mLayer != 0) {
@@ -41,10 +40,6 @@ class GLES20TextureLayer extends GLES20Layer {
         } else {
             mFinalizer = null;
         }
-    }
-
-    GLES20TextureLayer(boolean isOpaque) {
-        this(isOpaque, 0);
     }
 
     @Override
@@ -79,8 +74,11 @@ class GLES20TextureLayer extends GLES20Layer {
     }
 
     void setSurfaceTexture(SurfaceTexture surfaceTexture) {
+        if (mSurface != null) {
+            mSurface.release();
+        }
         mSurface = surfaceTexture;
-        GLES20Canvas.nSetSurfaceTexture(mSurface);
+        mSurface.attachToGLContext(mTexture);
     }
 
     @Override

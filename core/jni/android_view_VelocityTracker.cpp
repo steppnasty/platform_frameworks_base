@@ -26,6 +26,7 @@
 
 #include <ScopedUtfChars.h>
 
+
 namespace android {
 
 // Special constant to request the velocity of the active pointer.
@@ -62,7 +63,8 @@ private:
     Velocity mCalculatedVelocity[MAX_POINTERS];
 };
 
-VelocityTrackerState::VelocityTrackerState(const char* strategy) : mActivePointerId(-1) {
+VelocityTrackerState::VelocityTrackerState(const char* strategy) :
+        mVelocityTracker(strategy), mActivePointerId(-1) {
 }
 
 void VelocityTrackerState::clear() {

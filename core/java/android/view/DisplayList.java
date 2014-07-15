@@ -49,15 +49,15 @@ public abstract class DisplayList {
     /**
      * Indicates that the display list needs another drawing pass.
      * 
-     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int) 
      */
     public static final int STATUS_DRAW = 0x1;
 
     /**
      * Indicates that the display list needs to re-execute its GL functors.
      * 
-     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
-     * @see HardwareCanvas#callDrawGLFunction(int)
+     * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int) 
+     * @see HardwareCanvas#callDrawGLFunction(int) 
      */
     public static final int STATUS_INVOKE = 0x2;
 
@@ -67,6 +67,7 @@ public abstract class DisplayList {
      * @see HardwareCanvas#drawDisplayList(DisplayList, android.graphics.Rect, int)
      */
     public static final int STATUS_DREW = 0x4;
+
     /**
      * Starts recording the display list. All operations performed on the
      * returned canvas are recorded and stored in this display list.
@@ -107,7 +108,7 @@ public abstract class DisplayList {
      * 
      * @return The size of this display list in bytes
      */
-    abstract int getSize();
+    public abstract int getSize();
 
     ///////////////////////////////////////////////////////////////////////////
     // DisplayList Property Setters

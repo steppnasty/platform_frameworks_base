@@ -16,6 +16,8 @@
 
 package android.view;
 
+import android.app.Presentation;
+import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.PixelFormat;
 import android.os.IBinder;
@@ -29,6 +31,17 @@ import android.util.Log;
  * The interface that apps use to talk to the window manager.
  * <p>
  * Use <code>Context.getSystemService(Context.WINDOW_SERVICE)</code> to get one of these.
+ * </p><p>
+ * Each window manager instance is bound to a particular {@link Display}.
+ * To obtain a {@link WindowManager} for a different display, use
+ * {@link Context#createDisplayContext} to obtain a {@link Context} for that
+ * display, then use <code>Context.getSystemService(Context.WINDOW_SERVICE)</code>
+ * to get the WindowManager.
+ * </p><p>
+ * The simplest way to show a window on another display is to create a
+ * {@link Presentation}.  The presentation will automatically obtain a
+ * {@link WindowManager} and {@link Context} for that display.
+ * </p>
  *
  * @see android.content.Context#getSystemService
  * @see android.content.Context#WINDOW_SERVICE
@@ -62,12 +75,24 @@ public interface WindowManager extends ViewManager {
     }
 
     /**
-     * Use this method to get the default Display object.
-     * 
-     * @return default Display object
+     * Returns the {@link Display} upon which this {@link WindowManager} instance
+     * will create new windows.
+     * <p>
+     * Despite the name of this method, the display that is returned is not
+     * necessarily the primary display of the system (see {@link Display#DEFAULT_DISPLAY}).
+     * The returned display could instead be a secondary display that this
+     * window manager instance is managing.  Think of it as the display that
+     * this {@link WindowManager} instance uses by default.
+     * </p><p>
+     * To create windows on a different display, you need to obtain a
+     * {@link WindowManager} for that {@link Display}.  (See the {@link WindowManager}
+     * class documentation for more information.)
+     * </p>
+     *
+     * @return The display that this window manager is managing.
      */
     public Display getDefaultDisplay();
-    
+
     /**
      * Special variation of {@link #removeView} that immediately invokes
      * the given view hierarchy's {@link View#onDetachedFromWindow()
@@ -77,7 +102,7 @@ public interface WindowManager extends ViewManager {
      * @param view The view to be removed.
      */
     public void removeViewImmediate(View view);
-    
+
     public static class LayoutParams extends ViewGroup.LayoutParams
             implements Parcelable {
         /**
@@ -207,12 +232,14 @@ public interface WindowManager extends ViewManager {
          * Window type: an application window that serves as the "base" window
          * of the overall application; all other application windows will
          * appear on top of it.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_BASE_APPLICATION   = 1;
         
         /**
          * Window type: a normal application window.  The {@link #token} must be
          * an Activity token identifying who the window belongs to.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_APPLICATION        = 2;
     
@@ -221,8 +248,9 @@ public interface WindowManager extends ViewManager {
          * application is starting.  Not for use by applications themselves;
          * this is used by the system to display something until the
          * application can show its own windows.
+         * In multiuser systems shows on all users' windows.
          */
-        public static final int TYPE_APPLICATION_STARTING = 3;       
+        public static final int TYPE_APPLICATION_STARTING = 3;
     
         /**
          * End of types of application windows.
@@ -286,12 +314,14 @@ public interface WindowManager extends ViewManager {
          * Window type: the status bar.  There can be only one status bar
          * window; it is placed at the top of the screen, and all other
          * windows are shifted down so they are below it.
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_STATUS_BAR         = FIRST_SYSTEM_WINDOW;
     
         /**
          * Window type: the search bar.  There can be only one search bar
          * window; it is placed at the top of the screen.
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_SEARCH_BAR         = FIRST_SYSTEM_WINDOW+1;
     
@@ -300,22 +330,26 @@ public interface WindowManager extends ViewManager {
          * user interaction with the phone (in particular incoming calls).
          * These windows are normally placed above all applications, but behind
          * the status bar.
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_PHONE              = FIRST_SYSTEM_WINDOW+2;
     
         /**
          * Window type: system window, such as low power alert. These windows
          * are always on top of application windows.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_SYSTEM_ALERT       = FIRST_SYSTEM_WINDOW+3;
         
         /**
          * Window type: keyguard window.
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_KEYGUARD           = FIRST_SYSTEM_WINDOW+4;
         
         /**
          * Window type: transient notifications.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_TOAST              = FIRST_SYSTEM_WINDOW+5;
         
@@ -323,6 +357,7 @@ public interface WindowManager extends ViewManager {
          * Window type: system overlay windows, which need to be displayed
          * on top of everything else.  These windows must not take input
          * focus, or they will interfere with the keyguard.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_SYSTEM_OVERLAY     = FIRST_SYSTEM_WINDOW+6;
         
@@ -330,22 +365,26 @@ public interface WindowManager extends ViewManager {
          * Window type: priority phone UI, which needs to be displayed even if
          * the keyguard is active.  These windows must not take input
          * focus, or they will interfere with the keyguard.
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_PRIORITY_PHONE     = FIRST_SYSTEM_WINDOW+7;
         
         /**
          * Window type: panel that slides out from the status bar
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_SYSTEM_DIALOG      = FIRST_SYSTEM_WINDOW+8;
     
         /**
          * Window type: dialogs that the keyguard shows
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_KEYGUARD_DIALOG    = FIRST_SYSTEM_WINDOW+9;
         
         /**
          * Window type: internal system error windows, appear on top of
          * everything they can.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_SYSTEM_ERROR       = FIRST_SYSTEM_WINDOW+10;
         
@@ -353,23 +392,27 @@ public interface WindowManager extends ViewManager {
          * Window type: internal input methods windows, which appear above
          * the normal UI.  Application windows may be resized or panned to keep
          * the input focus visible while this window is displayed.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_INPUT_METHOD       = FIRST_SYSTEM_WINDOW+11;
 
         /**
          * Window type: internal input methods dialog windows, which appear above
          * the current input method window.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_INPUT_METHOD_DIALOG= FIRST_SYSTEM_WINDOW+12;
 
         /**
          * Window type: wallpaper window, placed behind any window that wants
          * to sit on top of the wallpaper.
+         * In multiuser systems shows only on the owning user's window.
          */
         public static final int TYPE_WALLPAPER          = FIRST_SYSTEM_WINDOW+13;
 
         /**
          * Window type: panel that slides out from over the status bar
+         * In multiuser systems shows on all users' windows.
          */
         public static final int TYPE_STATUS_BAR_PANEL   = FIRST_SYSTEM_WINDOW+14;
 
@@ -381,6 +424,8 @@ public interface WindowManager extends ViewManager {
          * This is exactly like {@link #TYPE_SYSTEM_OVERLAY} except that only the
          * system itself is allowed to create these overlays.  Applications cannot
          * obtain permission to create secure system overlays.
+         *
+         * In multiuser systems shows only on the owning user's window.
          * @hide
          */
         public static final int TYPE_SECURE_SYSTEM_OVERLAY = FIRST_SYSTEM_WINDOW+15;
@@ -388,24 +433,28 @@ public interface WindowManager extends ViewManager {
         /**
          * Window type: the drag-and-drop pseudowindow.  There is only one
          * drag layer (at most), and it is placed on top of all other windows.
+         * In multiuser systems shows only on the owning user's window.
          * @hide
          */
         public static final int TYPE_DRAG               = FIRST_SYSTEM_WINDOW+16;
 
         /**
          * Window type: panel that slides out from under the status bar
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_STATUS_BAR_SUB_PANEL = FIRST_SYSTEM_WINDOW+17;
 
         /**
          * Window type: (mouse) pointer
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_POINTER = FIRST_SYSTEM_WINDOW+18;
 
         /**
          * Window type: Navigation bar (when distinct from status bar)
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_NAVIGATION_BAR = FIRST_SYSTEM_WINDOW+19;
@@ -413,6 +462,7 @@ public interface WindowManager extends ViewManager {
         /**
          * Window type: The volume level overlay/dialog shown when the user
          * changes the system volume.
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_VOLUME_OVERLAY = FIRST_SYSTEM_WINDOW+20;
@@ -420,6 +470,7 @@ public interface WindowManager extends ViewManager {
         /**
          * Window type: The boot progress dialog, goes on top of everything
          * in the world.
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_BOOT_PROGRESS = FIRST_SYSTEM_WINDOW+21;
@@ -427,6 +478,7 @@ public interface WindowManager extends ViewManager {
         /**
          * Window type: Fake window to consume touch events when the navigation
          * bar is hidden.
+         * In multiuser systems shows on all users' windows.
          * @hide
          */
         public static final int TYPE_HIDDEN_NAV_CONSUMER = FIRST_SYSTEM_WINDOW+22;
@@ -571,11 +623,18 @@ public interface WindowManager extends ViewManager {
         public static final int FLAG_FORCE_NOT_FULLSCREEN   = 0x00000800;
         
         /** Window flag: turn on dithering when compositing this window to
-         *  the screen. */
+         *  the screen.
+         * @deprecated This flag is no longer used. */
+        @Deprecated
         public static final int FLAG_DITHER             = 0x00001000;
         
-        /** Window flag: don't allow screen shots while this window is
-         * displayed. Maps to Surface.SECURE. */
+        /** Window flag: Treat the content of the window as secure, preventing
+         * it from appearing in screenshots or from being viewed on non-secure
+         * displays.
+         *
+         * <p>See {@link android.view.Display#FLAG_SECURE} for more details about
+         * secure surfaces and secure displays.
+         */
         public static final int FLAG_SECURE             = 0x00002000;
         
         /** Window flag: a special mode where the layout parameters are used
@@ -732,13 +791,6 @@ public interface WindowManager extends ViewManager {
          */
         public static final int FLAG_NEEDS_MENU_KEY = 0x08000000;
 
-        /** Window flag: *sigh* The lock screen wants to continue running its
-         * animation while it is fading.  A kind-of hack to allow this.  Maybe
-         * in the future we just make this the default behavior.
-         *
-         * {@hide} */
-        public static final int FLAG_KEEP_SURFACE_WHILE_ANIMATING = 0x10000000;
-        
         /** Window flag: special flag to limit the size of the window to be
          * original size ([320x480] x density). Used to create window for applications
          * running under compatibility mode.
@@ -751,10 +803,6 @@ public interface WindowManager extends ViewManager {
          * it is created.
          * {@hide} */
         public static final int FLAG_SYSTEM_ERROR = 0x40000000;
-
-        /** Window flag: Overrides default power key behavior
-         * {@hide} */
-        public static final int PREVENT_POWER_KEY = 0x80000000;
 
         /**
          * Various behavioral options/flags.  Default is none.
@@ -770,7 +818,6 @@ public interface WindowManager extends ViewManager {
          * @see #FLAG_LAYOUT_NO_LIMITS
          * @see #FLAG_FULLSCREEN
          * @see #FLAG_FORCE_NOT_FULLSCREEN
-         * @see #FLAG_DITHER
          * @see #FLAG_SECURE
          * @see #FLAG_SCALED
          * @see #FLAG_IGNORE_CHEEK_PRESSES
@@ -871,7 +918,7 @@ public interface WindowManager extends ViewManager {
 
         /**
          * By default, wallpapers are sent new offsets when the wallpaper is scrolled. Wallpapers
-         * may elect to skip these notifications if they are no doing anything productive with
+         * may elect to skip these notifications if they are not doing anything productive with
          * them (they do not affect the wallpaper scrolling operation) by calling
          * {@link
          * android.service.wallpaper.WallpaperService.Engine#setOffsetNotificationsEnabled(boolean)}.

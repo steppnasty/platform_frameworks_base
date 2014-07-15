@@ -215,7 +215,6 @@ static void android_view_InputChannel_nativeReadFromParcel(JNIEnv* env, jobject 
             android_view_InputChannel_setNativeInputChannel(env, obj, nativeInputChannel);
         }
     }
-
 }
 
 static void android_view_InputChannel_nativeWriteToParcel(JNIEnv* env, jobject obj,

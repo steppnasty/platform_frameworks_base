@@ -29,7 +29,6 @@ import android.os.SystemProperties;
 import android.util.AndroidRuntimeException;
 import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
-import android.view.Display;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -114,7 +113,6 @@ public final class WindowManagerGlobal {
     private boolean mNeedsEglTerminate;
 
     private Runnable mSystemPropertyUpdater;
-    Display mDisplay;
 
     private WindowManagerGlobal() {
     }

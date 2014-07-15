@@ -17,7 +17,6 @@
 package android.view;
 
 import android.content.res.CompatibilityInfo;
-import android.util.Log;
 
 /** @hide */
 public class CompatibilityInfoHolder {
