@@ -4,7 +4,6 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS += -DHAVE_CONFIG_H -DKHTML_NO_EXCEPTIONS -DGKWQ_NO_JAVA
 LOCAL_CFLAGS += -DNO_SUPPORT_JS_BINDING -DQT_NO_WHEELEVENT -DKHTML_NO_XBL
 LOCAL_CFLAGS += -U__APPLE__
-LOCAL_CFLAGS += -fno-strict-aliasing
 
 ifeq ($(TARGET_ARCH), arm)
 	LOCAL_CFLAGS += -DPACKED="__attribute__ ((packed))"
@@ -27,14 +26,13 @@ endif
 LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
 
 LOCAL_SRC_FILES:= \
-	ActivityManager.cpp \
 	AndroidRuntime.cpp \
 	Time.cpp \
 	com_android_internal_content_NativeLibraryHelper.cpp \
 	com_google_android_gles_jni_EGLImpl.cpp \
 	com_google_android_gles_jni_GLImpl.cpp.arm \
 	android_app_NativeActivity.cpp \
-        android_opengl_EGL14.cpp \
+	android_opengl_EGL14.cpp \
 	android_opengl_GLES10.cpp \
 	android_opengl_GLES10Ext.cpp \
 	android_opengl_GLES11.cpp \
@@ -46,16 +44,17 @@ LOCAL_SRC_FILES:= \
 	android_database_SQLiteGlobal.cpp \
 	android_database_SQLiteDebug.cpp \
 	android_emoji_EmojiFactory.cpp \
+	android_view_DisplayEventReceiver.cpp \
 	android_view_Surface.cpp \
-        android_view_SurfaceSession.cpp \
+	android_view_SurfaceSession.cpp \
 	android_view_TextureView.cpp \
 	android_view_InputChannel.cpp \
-        android_view_InputDevice.cpp  \
-        android_view_InputEventReceiver.cpp \
+	android_view_InputDevice.cpp \
+	android_view_InputEventReceiver.cpp \
 	android_view_KeyEvent.cpp \
-	android_view_KeyCharacterMap.cpp   \
-	android_view_HardwareRenderer.cpp  \
-        android_view_GLES20DisplayList.cpp \
+	android_view_KeyCharacterMap.cpp \
+	android_view_HardwareRenderer.cpp \
+	android_view_GLES20DisplayList.cpp \
 	android_view_GLES20Canvas.cpp \
 	android_view_MotionEvent.cpp \
 	android_view_PointerIcon.cpp \
@@ -67,12 +66,11 @@ LOCAL_SRC_FILES:= \
 	android_os_MemoryFile.cpp \
 	android_os_MessageQueue.cpp \
 	android_os_ParcelFileDescriptor.cpp \
-        android_os_Parcel.cpp               \
-	android_os_Power.cpp \
+	android_os_Parcel.cpp \
 	android_os_SELinux.cpp \
 	android_os_SystemClock.cpp \
 	android_os_SystemProperties.cpp \
-        android_os_Trace.cpp \
+	android_os_Trace.cpp \
 	android_os_UEventObserver.cpp \
 	android_net_LocalSocketImpl.cpp \
 	android_net_NetUtils.cpp \
@@ -149,7 +147,7 @@ LOCAL_SRC_FILES:= \
 	android_app_backup_FullBackup.cpp \
 	android_content_res_ObbScanner.cpp \
 	android_content_res_Configuration.cpp \
-        android_animation_PropertyValuesHolder.cpp
+	android_animation_PropertyValuesHolder.cpp
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
         LOCAL_CFLAGS += -DQCOM_HARDWARE

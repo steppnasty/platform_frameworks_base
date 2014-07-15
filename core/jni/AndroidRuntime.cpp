@@ -115,6 +115,7 @@ extern int register_android_graphics_Region(JNIEnv* env);
 extern int register_android_graphics_SurfaceTexture(JNIEnv* env);
 extern int register_android_graphics_Xfermode(JNIEnv* env);
 extern int register_android_graphics_PixelFormat(JNIEnv* env);
+extern int register_android_view_DisplayEventReceiver(JNIEnv* env);
 extern int register_android_view_GLES20DisplayList(JNIEnv* env);
 extern int register_android_view_GLES20Canvas(JNIEnv* env);
 extern int register_android_view_HardwareRenderer(JNIEnv* env);
@@ -132,7 +133,6 @@ extern int register_android_os_Debug(JNIEnv* env);
 extern int register_android_os_MessageQueue(JNIEnv* env);
 extern int register_android_os_Parcel(JNIEnv* env);
 extern int register_android_os_ParcelFileDescriptor(JNIEnv *env);
-extern int register_android_os_Power(JNIEnv *env);
 extern int register_android_os_SELinux(JNIEnv* env);
 extern int register_android_os_SystemProperties(JNIEnv *env);
 extern int register_android_os_SystemClock(JNIEnv* env);
@@ -472,6 +472,9 @@ int AndroidRuntime::startVm(JavaVM** pJavaVM, JNIEnv** pEnv)
     char heapstartsizeOptsBuf[sizeof("-Xms")-1 + PROPERTY_VALUE_MAX];
     char heapsizeOptsBuf[sizeof("-Xmx")-1 + PROPERTY_VALUE_MAX];
     char heapgrowthlimitOptsBuf[sizeof("-XX:HeapGrowthLimit=")-1 + PROPERTY_VALUE_MAX];
+    char heapminfreeOptsBuf[sizeof("-XX:HeapMinFree=")-1 + PROPERTY_VALUE_MAX];
+    char heapmaxfreeOptsBuf[sizeof("-XX:HeapMaxFree=")-1 + PROPERTY_VALUE_MAX];
+    char heaptargetutilizationOptsBuf[sizeof("-XX:HeapTargetUtilization=")-1 + PROPERTY_VALUE_MAX];
     char extraOptsBuf[PROPERTY_VALUE_MAX];
     char* stackTraceFile = NULL;
     bool checkJni = false;
@@ -563,10 +566,35 @@ int AndroidRuntime::startVm(JavaVM** pJavaVM, JNIEnv** pEnv)
     opt.optionString = heapsizeOptsBuf;
     mOptions.add(opt);
 
+    // Increase the main thread's interpreter stack size for bug 6315322.
+    opt.optionString = "-XX:mainThreadStackSize=24K";
+    mOptions.add(opt); 
+
     strcpy(heapgrowthlimitOptsBuf, "-XX:HeapGrowthLimit=");
     property_get("dalvik.vm.heapgrowthlimit", heapgrowthlimitOptsBuf+20, "");
     if (heapgrowthlimitOptsBuf[20] != '\0') {
         opt.optionString = heapgrowthlimitOptsBuf;
+        mOptions.add(opt);
+    }
+
+    strcpy(heapminfreeOptsBuf, "-XX:HeapMinFree=");
+    property_get("dalvik.vm.heapminfree", heapminfreeOptsBuf+16, "");
+    if (heapminfreeOptsBuf[16] != '\0') {
+        opt.optionString = heapminfreeOptsBuf;
+        mOptions.add(opt);
+    }
+
+    strcpy(heapmaxfreeOptsBuf, "-XX:HeapMaxFree=");
+    property_get("dalvik.vm.heapmaxfree", heapmaxfreeOptsBuf+16, "");
+    if (heapmaxfreeOptsBuf[16] != '\0') {
+        opt.optionString = heapmaxfreeOptsBuf;
+        mOptions.add(opt);
+    }
+
+    strcpy(heaptargetutilizationOptsBuf, "-XX:HeapTargetUtilization=");
+    property_get("dalvik.vm.heaptargetutilization", heaptargetutilizationOptsBuf+26, "");
+    if (heaptargetutilizationOptsBuf[26] != '\0') {
+        opt.optionString = heaptargetutilizationOptsBuf;
         mOptions.add(opt);
     }
 
@@ -1098,6 +1126,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_os_Binder),
     REG_JNI(register_android_os_Parcel),
     REG_JNI(register_android_os_SELinux),
+    REG_JNI(register_android_view_DisplayEventReceiver),
     REG_JNI(register_android_nio_utils),
     REG_JNI(register_android_graphics_PixelFormat),
     REG_JNI(register_android_graphics_Graphics),
@@ -1152,7 +1181,6 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_os_FileUtils),
     REG_JNI(register_android_os_MessageQueue),
     REG_JNI(register_android_os_ParcelFileDescriptor),
-    REG_JNI(register_android_os_Power),
     REG_JNI(register_android_os_Trace),
     REG_JNI(register_android_os_UEventObserver),
     REG_JNI(register_android_net_LocalSocketImpl),
