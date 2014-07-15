@@ -19,93 +19,44 @@ import android.content.Context;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.ConditionVariable;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
+import android.speech.tts.TextToSpeechService.UtteranceProgressDispatcher;
 import android.util.Log;
 
-/**
- * A media player that allows blocking to wait for it to finish.
- */
-class BlockingMediaPlayer {
-
-    private static final String TAG = "BlockMediaPlayer";
-
-    private static final String MEDIA_PLAYER_THREAD_NAME = "TTS-MediaPlayer";
+class AudioPlaybackQueueItem extends PlaybackQueueItem {
+    private static final String TAG = "TTS.AudioQueueItem";
 
     private final Context mContext;
     private final Uri mUri;
     private final int mStreamType;
+
     private final ConditionVariable mDone;
-    // Only accessed on the Handler thread
     private MediaPlayer mPlayer;
     private volatile boolean mFinished;
 
-    /**
-     * Creates a new blocking media player.
-     * Creating a blocking media player is a cheap operation.
-     *
-     * @param context
-     * @param uri
-     * @param streamType
-     */
-    public BlockingMediaPlayer(Context context, Uri uri, int streamType) {
+    AudioPlaybackQueueItem(UtteranceProgressDispatcher dispatcher,
+            Object callerIdentity,
+            Context context, Uri uri, int streamType) {
+        super(dispatcher, callerIdentity);
+
         mContext = context;
         mUri = uri;
         mStreamType = streamType;
+
         mDone = new ConditionVariable();
-
-    }
-
-    /**
-     * Starts playback and waits for it to finish.
-     * Can be called from any thread.
-     *
-     * @return {@code true} if the playback finished normally, {@code false} if the playback
-     *         failed or {@link #stop} was called before the playback finished.
-     */
-    public boolean startAndWait() {
-        HandlerThread thread = new HandlerThread(MEDIA_PLAYER_THREAD_NAME);
-        thread.start();
-        Handler handler = new Handler(thread.getLooper());
+        mPlayer = null;
         mFinished = false;
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                startPlaying();
-            }
-        });
-        mDone.block();
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                finish();
-                // No new messages should get posted to the handler thread after this
-                Looper.myLooper().quit();
-            }
-        });
-        return mFinished;
     }
+    @Override
+    public void run() {
+        final UtteranceProgressDispatcher dispatcher = getDispatcher();
 
-    /**
-     * Stops playback. Can be called multiple times.
-     * Can be called from any thread.
-     */
-    public void stop() {
-        mDone.open();
-    }
-
-    /**
-     * Starts playback.
-     * Called on the handler thread.
-     */
-    private void startPlaying() {
+        dispatcher.dispatchOnStart();
         mPlayer = MediaPlayer.create(mContext, mUri);
         if (mPlayer == null) {
-            Log.w(TAG, "Failed to play " + mUri);
-            mDone.open();
+            dispatcher.dispatchOnError();
             return;
         }
+
         try {
             mPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override
@@ -124,16 +75,20 @@ class BlockingMediaPlayer {
             });
             mPlayer.setAudioStreamType(mStreamType);
             mPlayer.start();
+            mDone.block();
+            finish();
         } catch (IllegalArgumentException ex) {
             Log.w(TAG, "MediaPlayer failed", ex);
             mDone.open();
         }
+
+        if (mFinished) {
+            dispatcher.dispatchOnDone();
+        } else {
+            dispatcher.dispatchOnError();
+        }
     }
 
-    /**
-     * Stops playback and release the media player.
-     * Called on the handler thread.
-     */
     private void finish() {
         try {
             mPlayer.stop();
@@ -143,4 +98,8 @@ class BlockingMediaPlayer {
         mPlayer.release();
     }
 
+    @Override
+    void stop(boolean isError) {
+        mDone.open();
+    }
 }
