@@ -145,7 +145,6 @@ class ServerThread extends Thread {
         LightsService lights = null;
         PowerManagerService power = null;
         DisplayManagerService display = null;
-        DynamicMemoryManagerService dmm = null;
         DeviceHandlerService device = null;
         BatteryService battery = null;
         VibratorService vibrator = null;
@@ -359,16 +358,6 @@ class ServerThread extends Thread {
                 ServiceManager.addService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE, bluetooth);
             }
 
-            if (SystemProperties.QCOM_HARDWARE) {
-                Slog.i(TAG, "DynamicMemoryManager Service");
-                dmm = new DynamicMemoryManagerService(context);
-
-                cpuGovernorManager = new CpuGovernorService(context);
-
-                if (cpuGovernorManager == null) {
-                    Slog.e(TAG, "CpuGovernorService failed to start");
-                }
-            }
         } catch (RuntimeException e) {
             Slog.e("System", "******************************************");
             Slog.e("System", "************ Failure starting core service", e);

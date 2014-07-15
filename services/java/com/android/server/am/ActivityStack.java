@@ -22,7 +22,6 @@ import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import com.android.internal.app.HeavyWeightSwitcherActivity;
 import com.android.internal.os.BatteryStatsImpl;
 import com.android.server.am.ActivityManagerService.PendingActivityLaunch;
-import com.android.server.power.PowerManagerService;
 
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -54,16 +53,13 @@ import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
 import android.os.RemoteException;
-import android.os.ServiceManager;
 import android.os.SystemClock;
-import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
 import android.view.Display;
 import android.view.WindowManagerPolicy;
-import com.android.internal.app.ActivityTrigger;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -310,18 +306,6 @@ final class ActivityStack {
         }
     }
 
-    private static final ActivityTrigger mActivityTrigger;
-
-    private final PowerManagerService mPm;
-
-    static {
-        if (SystemProperties.QCOM_HARDWARE) {
-            mActivityTrigger = new ActivityTrigger();
-        } else {
-            mActivityTrigger = null;
-        }
-    }
-
     final Handler mHandler = new Handler() {
         //public Handler() {
         //    if (localLOGV) Slog.v(TAG, "Handler started!");
@@ -434,7 +418,6 @@ final class ActivityStack {
             (PowerManager)context.getSystemService(Context.POWER_SERVICE);
         mGoingToSleep = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ActivityManager-Sleep");
         mLaunchingActivity = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ActivityManager-Launch");
-        mPm = (PowerManagerService) ServiceManager.getService("power");
         mLaunchingActivity.setReferenceCounted(false);
     }
 
@@ -1421,9 +1404,6 @@ final class ActivityStack {
     }
 
     final boolean resumeTopActivityLocked(ActivityRecord prev, Bundle options) {
-
-        mPm.cpuBoost(1500000);
-
         // Find the first activity that is not finishing.
         ActivityRecord next = topRunningActivityLocked(null);
 
@@ -1487,10 +1467,6 @@ final class ActivityStack {
         next.updateOptionsLocked(options);
 
         if (DEBUG_SWITCH) Slog.v(TAG, "Resuming " + next);
-
-        if (mActivityTrigger != null) {
-            mActivityTrigger.activityResumeTrigger(next.intent);
-        }
 
         // If we are currently pausing an activity, then don't do anything
         // until that is done.
@@ -2484,8 +2460,6 @@ final class ActivityStack {
 
         int err = ActivityManager.START_SUCCESS;
 
-        mPm.cpuBoost(1500000);
-
         ProcessRecord callerApp = null;
         if (caller != null) {
             callerApp = mService.getRecordForAppLocked(caller);
@@ -2504,9 +2478,6 @@ final class ActivityStack {
             final int userId = aInfo != null ? UserHandle.getUserId(aInfo.applicationInfo.uid) : 0;
             Slog.i(TAG, "START u" + userId + " {" + intent.toShortString(true, true, true, false)
                     + "} from pid " + (callerApp != null ? callerApp.pid : callingPid));
-            if (mActivityTrigger != null) {
-                mActivityTrigger.activityStartTrigger(intent);
-            }
         }
 
         ActivityRecord sourceRecord = null;
