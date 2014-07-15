@@ -232,7 +232,8 @@ public class ThrottleServiceTest extends AndroidTestCase {
         final INetworkManagementService nmService = INetworkManagementService.Stub.asInterface(b);
 
         // test is currently no-op, just exercises stats apis
-        Log.d(TAG, nmService.getNetworkStatsSummary().toString());
+        Log.d(TAG, nmService.getNetworkStatsSummaryDev().toString());
+        Log.d(TAG, nmService.getNetworkStatsSummaryXt().toString());
         Log.d(TAG, nmService.getNetworkStatsDetail().toString());
     }
 
@@ -241,9 +242,9 @@ public class ThrottleServiceTest extends AndroidTestCase {
      */
     public void setThrottlePolicy(long thresholdBytes, int valueKbitps, int resetDay) {
         final ContentResolver resolver = getContext().getContentResolver();
-        Settings.Secure.putLong(resolver, Settings.Secure.THROTTLE_THRESHOLD_BYTES, thresholdBytes);
-        Settings.Secure.putInt(resolver, Settings.Secure.THROTTLE_VALUE_KBITSPS, valueKbitps);
-        Settings.Secure.putInt(resolver, Settings.Secure.THROTTLE_RESET_DAY, resetDay);
+        Settings.Global.putLong(resolver, Settings.Global.THROTTLE_THRESHOLD_BYTES, thresholdBytes);
+        Settings.Global.putInt(resolver, Settings.Global.THROTTLE_VALUE_KBITSPS, valueKbitps);
+        Settings.Global.putInt(resolver, Settings.Global.THROTTLE_RESET_DAY, resetDay);
     }
 
     /**
@@ -251,9 +252,9 @@ public class ThrottleServiceTest extends AndroidTestCase {
      */
     public void clearThrottlePolicy() {
         final ContentResolver resolver = getContext().getContentResolver();
-        Settings.Secure.putString(resolver, Settings.Secure.THROTTLE_THRESHOLD_BYTES, null);
-        Settings.Secure.putString(resolver, Settings.Secure.THROTTLE_VALUE_KBITSPS, null);
-        Settings.Secure.putString(resolver, Settings.Secure.THROTTLE_RESET_DAY, null);
+        Settings.Global.putString(resolver, Settings.Global.THROTTLE_THRESHOLD_BYTES, null);
+        Settings.Global.putString(resolver, Settings.Global.THROTTLE_VALUE_KBITSPS, null);
+        Settings.Global.putString(resolver, Settings.Global.THROTTLE_RESET_DAY, null);
     }
 
     /**
@@ -286,7 +287,7 @@ public class ThrottleServiceTest extends AndroidTestCase {
     }
 
     /**
-     * Expect {@link NetworkManagementService#getNetworkStatsSummary()} mock
+     * Expect {@link NetworkManagementService#getNetworkStatsSummaryDev()} mock
      * calls, responding with the given counter values.
      */
     public void expectGetInterfaceCounter(long rx, long tx) throws Exception {
@@ -294,7 +295,7 @@ public class ThrottleServiceTest extends AndroidTestCase {
         final NetworkStats stats = new NetworkStats(SystemClock.elapsedRealtime(), 1);
         stats.addValues(TEST_IFACE, UID_ALL, SET_DEFAULT, TAG_NONE, rx, 0L, tx, 0L, 0);
 
-        expect(mMockNMService.getNetworkStatsSummary()).andReturn(stats).atLeastOnce();
+        expect(mMockNMService.getNetworkStatsSummaryDev()).andReturn(stats).atLeastOnce();
     }
 
     /**
