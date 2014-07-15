@@ -16,12 +16,8 @@
 
 package android.app;
 
-import coretestutils.http.MockResponse;
-import coretestutils.http.MockWebServer;
-
 import android.app.DownloadManager.Query;
 import android.app.DownloadManager.Request;
-import android.app.DownloadManagerBaseTest.DataType;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -33,16 +29,21 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.os.UserHandle;
 import android.os.ParcelFileDescriptor.AutoCloseInputStream;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
 
+import com.google.mockwebserver.MockResponse;
+import com.google.mockwebserver.MockWebServer;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
@@ -53,13 +54,15 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
+import libcore.io.Streams;
+
 /**
  * Base class for Instrumented tests for the Download Manager.
  */
 public class DownloadManagerBaseTest extends InstrumentationTestCase {
     private static final String TAG = "DownloadManagerBaseTest";
     protected DownloadManager mDownloadManager = null;
-    protected MockWebServer mServer = null;
+    private MockWebServer mServer = null;
     protected String mFileType = "text/plain";
     protected Context mContext = null;
     protected MultipleDownloadsCompletedReceiver mReceiver = null;
@@ -237,63 +240,57 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
         mContext = getInstrumentation().getContext();
         mDownloadManager = (DownloadManager)mContext.getSystemService(Context.DOWNLOAD_SERVICE);
         mServer = new MockWebServer();
+        mServer.play();
         mReceiver = registerNewMultipleDownloadsReceiver();
         // Note: callers overriding this should call mServer.play() with the desired port #
     }
 
     /**
-     * Helper to enqueue a response from the MockWebServer with no body.
+     * Helper to build a response from the MockWebServer with no body.
      *
      * @param status The HTTP status code to return for this response
      * @return Returns the mock web server response that was queued (which can be modified)
      */
-    protected MockResponse enqueueResponse(int status) {
-        return doEnqueueResponse(status);
-
+    protected MockResponse buildResponse(int status) {
+        MockResponse response = new MockResponse().setResponseCode(status);
+        response.setHeader("Content-type", mFileType);
+        return response;
     }
 
     /**
-     * Helper to enqueue a response from the MockWebServer.
+     * Helper to build a response from the MockWebServer.
      *
      * @param status The HTTP status code to return for this response
      * @param body The body to return in this response
      * @return Returns the mock web server response that was queued (which can be modified)
      */
-    protected MockResponse enqueueResponse(int status, byte[] body) {
-        return doEnqueueResponse(status).setBody(body);
-
+    protected MockResponse buildResponse(int status, byte[] body) {
+        return buildResponse(status).setBody(body);
     }
 
     /**
-     * Helper to enqueue a response from the MockWebServer.
+     * Helper to build a response from the MockWebServer.
      *
      * @param status The HTTP status code to return for this response
      * @param bodyFile The body to return in this response
      * @return Returns the mock web server response that was queued (which can be modified)
      */
-    protected MockResponse enqueueResponse(int status, File bodyFile) {
-        return doEnqueueResponse(status).setBody(bodyFile);
+    protected MockResponse buildResponse(int status, File bodyFile)
+            throws FileNotFoundException, IOException {
+        final byte[] body = Streams.readFully(new FileInputStream(bodyFile));
+        return buildResponse(status).setBody(body);
     }
 
-    /**
-     * Helper for enqueue'ing a response from the MockWebServer.
-     *
-     * @param status The HTTP status code to return for this response
-     * @return Returns the mock web server response that was queued (which can be modified)
-     */
-    protected MockResponse doEnqueueResponse(int status) {
-        MockResponse response = new MockResponse().setResponseCode(status);
-        response.addHeader("Content-type", mFileType);
-        mServer.enqueue(response);
-        return response;
+    protected void enqueueResponse(MockResponse resp) {
+        mServer.enqueue(resp);
     }
 
     /**
      * Helper to generate a random blob of bytes.
      *
      * @param size The size of the data to generate
-     * @param type The type of data to generate: currently, one of {@link DataType.TEXT} or
-     *         {@link DataType.BINARY}.
+     * @param type The type of data to generate: currently, one of {@link DataType#TEXT} or
+     *         {@link DataType#BINARY}.
      * @return The random data that is generated.
      */
     protected byte[] generateData(int size, DataType type) {
@@ -304,8 +301,8 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
      * Helper to generate a random blob of bytes using a given RNG.
      *
      * @param size The size of the data to generate
-     * @param type The type of data to generate: currently, one of {@link DataType.TEXT} or
-     *         {@link DataType.BINARY}.
+     * @param type The type of data to generate: currently, one of {@link DataType#TEXT} or
+     *         {@link DataType#BINARY}.
      * @param rng (optional) The RNG to use; pass null to use
      * @return The random data that is generated.
      */
@@ -492,8 +489,6 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
             assertEquals(1, cursor.getCount());
             assertTrue(cursor.moveToFirst());
 
-            mServer.checkForExceptions();
-
             verifyFileSize(pfd, fileSize);
             verifyFileContents(pfd, fileData);
         } finally {
@@ -559,7 +554,7 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
         int state = enable ? 1 : 0;
 
         // Change the system setting
-        Settings.System.putInt(mContext.getContentResolver(), Settings.System.AIRPLANE_MODE_ON,
+        Settings.Global.putInt(mContext.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON,
                 state);
 
         String timeoutMessage = "Timed out waiting for airplane mode to be " +
@@ -567,8 +562,8 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
 
         // wait for airplane mode to change state
         int currentWaitTime = 0;
-        while (Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.AIRPLANE_MODE_ON, -1) != state) {
+        while (Settings.Global.getInt(mContext.getContentResolver(),
+                Settings.Global.AIRPLANE_MODE_ON, -1) != state) {
             timeoutWait(currentWaitTime, DEFAULT_WAIT_POLL_TIME, DEFAULT_MAX_WAIT_TIME,
                     timeoutMessage);
         }
@@ -576,7 +571,7 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
         // Post the intent
         Intent intent = new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED);
         intent.putExtra("state", true);
-        mContext.sendBroadcast(intent);
+        mContext.sendBroadcastAsUser(intent, UserHandle.ALL);
     }
 
     /**
@@ -928,7 +923,7 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
 
     protected long enqueueDownloadRequest(byte[] body, int location) throws Exception {
         // Prepare the mock server with a standard response
-        enqueueResponse(HTTP_OK, body);
+        mServer.enqueue(buildResponse(HTTP_OK, body));
         return doEnqueue(location);
     }
 
@@ -943,7 +938,7 @@ public class DownloadManagerBaseTest extends InstrumentationTestCase {
 
     protected long enqueueDownloadRequest(File body, int location) throws Exception {
         // Prepare the mock server with a standard response
-        enqueueResponse(HTTP_OK, body);
+        mServer.enqueue(buildResponse(HTTP_OK, body));
         return doEnqueue(location);
     }
 

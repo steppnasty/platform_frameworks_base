@@ -16,10 +16,6 @@
 
 package com.android.connectivitymanagertest.stress;
 
-import com.android.connectivitymanagertest.ConnectivityManagerStressTestRunner;
-import com.android.connectivitymanagertest.ConnectivityManagerTestActivity;
-import com.android.connectivitymanagertest.UtilHelper;
-
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo.State;
@@ -31,14 +27,14 @@ import android.net.wifi.WifiConfiguration.ProxySettings;
 import android.net.wifi.WifiManager;
 import android.os.Environment;
 import android.os.PowerManager;
-import android.os.IPowerManager;
-import android.os.SystemClock;
-import android.os.ServiceManager;
 import android.provider.Settings;
+import android.view.KeyEvent;
 import android.test.ActivityInstrumentationTestCase2;
 import android.test.suitebuilder.annotation.LargeTest;
-
 import android.util.Log;
+
+import com.android.connectivitymanagertest.ConnectivityManagerStressTestRunner;
+import com.android.connectivitymanagertest.ConnectivityManagerTestActivity;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -79,6 +75,7 @@ public class WifiStressTest
     private String mPassword;
     private ConnectivityManagerStressTestRunner mRunner;
     private BufferedWriter mOutputWriter = null;
+    private boolean mWifiOnlyFlag;
 
     public WifiStressTest() {
         super(ConnectivityManagerTestActivity.class);
@@ -87,6 +84,7 @@ public class WifiStressTest
     @Override
     public void setUp() throws Exception {
         super.setUp();
+
         mAct = getActivity();
         mRunner = (ConnectivityManagerStressTestRunner) getInstrumentation();
         mReconnectIterations = mRunner.mReconnectIterations;
@@ -94,6 +92,7 @@ public class WifiStressTest
         mPassword = mRunner.mReconnectPassword;
         mScanIterations = mRunner.mScanIterations;
         mWifiSleepTime = mRunner.mSleepTime;
+        mWifiOnlyFlag = mRunner.mWifiOnlyFlag;
         log(String.format("mReconnectIterations(%d), mSsid(%s), mPassword(%s),"
             + "mScanIterations(%d), mWifiSleepTime(%d)", mReconnectIterations, mSsid,
             mPassword, mScanIterations, mWifiSleepTime));
@@ -221,15 +220,16 @@ public class WifiStressTest
     // Stress Wifi reconnection to secure net after sleep
     @LargeTest
     public void testWifiReconnectionAfterSleep() {
-        int value = Settings.System.getInt(mRunner.getContext().getContentResolver(),
-                Settings.System.WIFI_SLEEP_POLICY, -1);
-        if (value < 0) {
-            Settings.System.putInt(mRunner.getContext().getContentResolver(),
-                    Settings.System.WIFI_SLEEP_POLICY, Settings.System.WIFI_SLEEP_POLICY_DEFAULT);
+        int value = Settings.Global.getInt(mRunner.getContext().getContentResolver(),
+                Settings.Global.WIFI_SLEEP_POLICY, -1);
+        log("wifi sleep policy is: " + value);
+        if (value != Settings.Global.WIFI_SLEEP_POLICY_DEFAULT) {
+            Settings.Global.putInt(mRunner.getContext().getContentResolver(),
+                    Settings.Global.WIFI_SLEEP_POLICY, Settings.Global.WIFI_SLEEP_POLICY_DEFAULT);
             log("set wifi sleep policy to default value");
         }
-        Settings.Secure.putLong(mRunner.getContext().getContentResolver(),
-                Settings.Secure.WIFI_IDLE_MS, WIFI_IDLE_MS);
+        Settings.Global.putLong(mRunner.getContext().getContentResolver(),
+                Settings.Global.WIFI_IDLE_MS, WIFI_IDLE_MS);
 
         // Connect to a Wi-Fi network
         WifiConfiguration config = new WifiConfiguration();
@@ -248,7 +248,7 @@ public class WifiStressTest
         assertTrue(mAct.waitForWifiState(WifiManager.WIFI_STATE_ENABLED,
                 ConnectivityManagerTestActivity.SHORT_TIMEOUT));
         assertTrue(mAct.waitForNetworkState(ConnectivityManager.TYPE_WIFI, State.CONNECTED,
-                ConnectivityManagerTestActivity.LONG_TIMEOUT));
+                ConnectivityManagerTestActivity.WIFI_CONNECTION_TIMEOUT));
         // Run ping test to verify the data connection
         assertTrue("Wi-Fi is connected, but no data connection.", mAct.pingTest(null));
 
@@ -271,7 +271,7 @@ public class WifiStressTest
             assertTrue("Wait for Wi-Fi to idle timeout",
                     mAct.waitForNetworkState(ConnectivityManager.TYPE_WIFI, State.DISCONNECTED,
                     6 * ConnectivityManagerTestActivity.SHORT_TIMEOUT));
-            if (!UtilHelper.isWifiOnly()) {
+            if (!mWifiOnlyFlag) {
                 // use long timeout as the pppd startup may take several retries.
                 assertTrue("Wait for cellular connection timeout",
                         mAct.waitForNetworkState(ConnectivityManager.TYPE_MOBILE, State.CONNECTED,
@@ -282,7 +282,7 @@ public class WifiStressTest
             assertEquals("Wi-Fi is reconnected", State.DISCONNECTED,
                     mAct.mCM.getNetworkInfo(ConnectivityManager.TYPE_WIFI).getState());
 
-            if (!UtilHelper.isWifiOnly()) {
+            if (!mWifiOnlyFlag) {
                 assertEquals("Cellular connection is down", State.CONNECTED,
                              mAct.mCM.getNetworkInfo(ConnectivityManager.TYPE_MOBILE).getState());
                 assertTrue("Mobile is connected, but no data connection.", mAct.pingTest(null));
@@ -290,6 +290,11 @@ public class WifiStressTest
 
             // Turn screen on again
             mAct.turnScreenOn();
+            // Wait for 2 seconds for the lock screen
+            sleep(2 * 1000, "wait 2 seconds for lock screen");
+            // Disable lock screen by inject menu key event
+            mRunner.sendKeyDownUpSync(KeyEvent.KEYCODE_MENU);
+
             // Measure the time for Wi-Fi to get connected
             long startTime = System.currentTimeMillis();
             assertTrue("Wait for Wi-Fi enable timeout after wake up",
@@ -297,7 +302,7 @@ public class WifiStressTest
                     ConnectivityManagerTestActivity.SHORT_TIMEOUT));
             assertTrue("Wait for Wi-Fi connection timeout after wake up",
                     mAct.waitForNetworkState(ConnectivityManager.TYPE_WIFI, State.CONNECTED,
-                    6 * ConnectivityManagerTestActivity.LONG_TIMEOUT));
+                    ConnectivityManagerTestActivity.WIFI_CONNECTION_TIMEOUT));
             long connectionTime = System.currentTimeMillis() - startTime;
             sum += connectionTime;
             log("average reconnection time is: " + sum/(i+1));

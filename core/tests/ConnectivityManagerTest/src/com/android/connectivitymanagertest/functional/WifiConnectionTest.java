@@ -76,7 +76,7 @@ public class WifiConnectionTest
         mWifiManager = (WifiManager) mRunner.getContext().getSystemService(Context.WIFI_SERVICE);
 
         mAct = getActivity();
-        mWifiManager.asyncConnect(mAct, new WifiServiceHandler());
+
         networks = mAct.loadNetworkConfigurations();
         if (DEBUG) {
             printNetworkConfigurations();
@@ -89,24 +89,6 @@ public class WifiConnectionTest
         WifiInfo mConnection = mAct.mWifiManager.getConnectionInfo();
         assertNotNull(mConnection);
         assertTrue("wpa_supplicant is not started ", mAct.mWifiManager.pingSupplicant());
-    }
-
-    private class WifiServiceHandler extends Handler {
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-                case AsyncChannel.CMD_CHANNEL_HALF_CONNECTED:
-                    if (msg.arg1 == AsyncChannel.STATUS_SUCCESSFUL) {
-                        //AsyncChannel in msg.obj
-                    } else {
-                        log("Failed to establish AsyncChannel connection");
-                    }
-                    break;
-                default:
-                    //Ignore
-                    break;
-            }
-        }
     }
 
     private void printNetworkConfigurations() {
@@ -136,7 +118,7 @@ public class WifiConnectionTest
 
         // step 2: verify Wifi state and network state;
         assertTrue(mAct.waitForNetworkState(ConnectivityManager.TYPE_WIFI,
-                State.CONNECTED, 6 * ConnectivityManagerTestActivity.LONG_TIMEOUT));
+                State.CONNECTED, ConnectivityManagerTestActivity.WIFI_CONNECTION_TIMEOUT));
 
         // step 3: verify the current connected network is the given SSID
         assertNotNull("Wifi connection returns null", mAct.mWifiManager.getConnectionInfo());

@@ -114,7 +114,6 @@ public class ConnectionUtil {
 
         // Get an instance of WifiManager
         mWifiManager =(WifiManager)mContext.getSystemService(Context.WIFI_SERVICE);
-        mWifiManager.asyncConnect(mContext, new WifiServiceHandler());
 
         mDownloadManager = (DownloadManager)mContext.getSystemService(Context.DOWNLOAD_SERVICE);
 
@@ -573,7 +572,14 @@ public class ConnectionUtil {
                         Log.v(LOG_TAG, "Found " + ssid + " in the scan result list.");
                         Log.v(LOG_TAG, "Retry: " + retry);
                         foundApInScanResults = true;
-                        mWifiManager.connectNetwork(config);
+                        mWifiManager.connect(config, new WifiManager.ActionListener() {
+                                public void onSuccess() {
+                                }
+                                public void onFailure(int reason) {
+                                    Log.e(LOG_TAG, "connect failed " + reason);
+                                }
+                            });
+
                         break;
                     }
                 }
@@ -620,7 +626,13 @@ public class ConnectionUtil {
         for (WifiConfiguration wifiConfig: wifiConfigList) {
             Log.v(LOG_TAG, "Remove wifi configuration: " + wifiConfig.networkId);
             int netId = wifiConfig.networkId;
-            mWifiManager.forgetNetwork(netId);
+            mWifiManager.forget(netId, new WifiManager.ActionListener() {
+                    public void onSuccess() {
+                    }
+                    public void onFailure(int reason) {
+                        Log.e(LOG_TAG, "forget failed " + reason);
+                    }
+                });
         }
         return true;
     }
