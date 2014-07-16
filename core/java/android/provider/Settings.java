@@ -1063,7 +1063,7 @@ public final class Settings {
          *
          * @return The setting's current value.
          */
-        public static int getInt(ContentResolver cr, String name) 
+        public static int getInt(ContentResolver cr, String name)
                 throws SettingNotFoundException {
             return getIntForUser(cr, name, UserHandle.myUserId());
         }
@@ -1331,12 +1331,35 @@ public final class Settings {
             return (changes&ActivityInfo.CONFIG_FONT_SCALE) != 0;
         }
 
+        /** @deprecated - Do not use */
+        @Deprecated
         public static boolean getShowGTalkServiceStatus(ContentResolver cr) {
-            return getInt(cr, SHOW_GTALK_SERVICE_STATUS, 0) != 0;
+            return getShowGTalkServiceStatusForUser(cr, UserHandle.myUserId());
         }
 
+        /**
+         * @hide
+         * @deprecated - Do not use
+         */
+        public static boolean getShowGTalkServiceStatusForUser(ContentResolver cr,
+                int userHandle) {
+            return getIntForUser(cr, SHOW_GTALK_SERVICE_STATUS, 0, userHandle) != 0;
+        }
+
+        /** @deprecated - Do not use */
+        @Deprecated
         public static void setShowGTalkServiceStatus(ContentResolver cr, boolean flag) {
-            putInt(cr, SHOW_GTALK_SERVICE_STATUS, flag ? 1 : 0);
+            setShowGTalkServiceStatusForUser(cr, flag, UserHandle.myUserId());
+        }
+
+        /**
+         * @hide
+         * @deprecated - Do not use
+         */
+        @Deprecated
+        public static void setShowGTalkServiceStatusForUser(ContentResolver cr, boolean flag,
+                int userHandle) {
+            putIntForUser(cr, SHOW_GTALK_SERVICE_STATUS, flag ? 1 : 0, userHandle);
         }
 
         /**
