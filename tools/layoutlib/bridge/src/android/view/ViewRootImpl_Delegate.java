@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,21 @@
  * limitations under the License.
  */
 
-package android.content.res;
+package android.view;
 
 import com.android.tools.layoutlib.annotations.LayoutlibDelegate;
 
-import android.util.TypedValue;
-
-public class TypedArray_Delegate {
+/**
+ * Delegate used to provide new implementation of a select few methods of {@link ViewRootImpl}
+ *
+ * Through the layoutlib_create tool, the original  methods of ViewRootImpl have been replaced
+ * by calls to methods of the same name in this delegate class.
+ *
+ */
+public class ViewRootImpl_Delegate {
 
     @LayoutlibDelegate
-    public static boolean getValueAt(TypedArray theTypedArray, int index, TypedValue outValue) {
-        // pass
-        return false;
+    /*package*/ static boolean isInTouchMode() {
+        return false; // this allows displaying selection.
     }
 }
