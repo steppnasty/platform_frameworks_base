@@ -50,6 +50,7 @@ import android.os.RemoteException;
 import android.os.FileObserver;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteCallbackList;
+import android.os.SELinux;
 import android.os.ServiceManager;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -636,12 +637,6 @@ class WallpaperManagerService extends IWallpaperManager.Stub {
             }
             if (width <= 0 || height <= 0) {
                 throw new IllegalArgumentException("width and height must be > 0");
-            }
-
-            int maxWidth = mContext.getResources().getInteger(
-                    com.android.internal.R.integer.config_wallpaperMaxWidth);
-            if (maxWidth != -1 && width > maxWidth) {
-                  width = maxWidth;
             }
 
             if (width != wallpaper.width || height != wallpaper.height) {
