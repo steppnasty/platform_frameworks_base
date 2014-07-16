@@ -48,6 +48,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
@@ -64,9 +65,10 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
-import android.os.WorkSource;
-import android.os.storage.IMountService;
 import android.os.UserHandle;
+import android.os.WorkSource;
+import android.os.Environment.UserEnvironment;
+import android.os.storage.IMountService;
 import android.provider.Settings;
 import android.util.EventLog;
 import android.util.Log;
@@ -131,7 +133,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 class BackupManagerService extends IBackupManager.Stub {
     private static final String TAG = "BackupManagerService";
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
     private static final boolean MORE_DEBUG = false;
 
     // Name and current contents version of the full-backup manifest file
@@ -140,6 +142,8 @@ class BackupManagerService extends IBackupManager.Stub {
     static final String BACKUP_FILE_HEADER_MAGIC = "ANDROID BACKUP\n";
     static final int BACKUP_FILE_VERSION = 1;
     static final boolean COMPRESS_FULL_BACKUPS = true; // should be true in production
+
+    static final String SHARED_BACKUP_AGENT_PACKAGE = "com.android.sharedstoragebackup";
 
     // How often we perform a backup pass.  Privileged external callers can
     // trigger an immediate pass.
@@ -200,9 +204,9 @@ class BackupManagerService extends IBackupManager.Stub {
     BackupHandler mBackupHandler;
     PendingIntent mRunBackupIntent, mRunInitIntent;
     BroadcastReceiver mRunBackupReceiver, mRunInitReceiver;
-    // map UIDs to the set of backup client services within that UID's app set
-    final SparseArray<HashSet<ApplicationInfo>> mBackupParticipants
-        = new SparseArray<HashSet<ApplicationInfo>>();
+    // map UIDs to the set of participating packages under that UID
+    final SparseArray<HashSet<String>> mBackupParticipants
+            = new SparseArray<HashSet<String>>();
     // set of backup services that have pending changes
     class BackupRequest {
         public String packageName;
@@ -236,6 +240,10 @@ class BackupManagerService extends IBackupManager.Stub {
     volatile long mLastBackupPass;
     volatile long mNextBackupPass;
 
+    // For debugging, we maintain a progress trace of operations during backup
+    static final boolean DEBUG_BACKUP_TRACE = true;
+    final List<String> mBackupTrace = new ArrayList<String>();
+
     // A similar synchronization mechanism around clearing apps' data for restore
     final Object mClearDataLock = new Object();
     volatile boolean mClearingData;
@@ -246,6 +254,34 @@ class BackupManagerService extends IBackupManager.Stub {
     String mCurrentTransport;
     IBackupTransport mLocalTransport, mGoogleTransport;
     ActiveRestoreSession mActiveRestoreSession;
+
+    // Watch the device provisioning operation during setup
+    ContentObserver mProvisionedObserver;
+
+    class ProvisionedObserver extends ContentObserver {
+        public ProvisionedObserver(Handler handler) {
+            super(handler);
+        }
+
+        public void onChange(boolean selfChange) {
+            final boolean wasProvisioned = mProvisioned;
+            final boolean isProvisioned = deviceIsProvisioned();
+            // latch: never unprovision
+            mProvisioned = wasProvisioned || isProvisioned;
+            if (MORE_DEBUG) {
+                Slog.d(TAG, "Provisioning change: was=" + wasProvisioned
+                        + " is=" + isProvisioned + " now=" + mProvisioned);
+            }
+
+            synchronized (mQueueLock) {
+                if (mProvisioned && !wasProvisioned && mEnabled) {
+                    // we're now good to go, so start the backup alarms
+                    if (MORE_DEBUG) Slog.d(TAG, "Now provisioned, so starting backups");
+                    startBackupAlarmsLocked(FIRST_BACKUP_INTERVAL);
+                }
+            }
+        }
+    }
 
     class RestoreGetSetsParams {
         public IBackupTransport transport;
@@ -653,6 +689,23 @@ class BackupManagerService extends IBackupManager.Stub {
         }
     }
 
+    // ----- Debug-only backup operation trace -----
+    void addBackupTrace(String s) {
+        if (DEBUG_BACKUP_TRACE) {
+            synchronized (mBackupTrace) {
+                mBackupTrace.add(s);
+            }
+        }
+    }
+
+    void clearBackupTrace() {
+        if (DEBUG_BACKUP_TRACE) {
+            synchronized (mBackupTrace) {
+                mBackupTrace.clear();
+            }
+        }
+    }
+
     // ----- Main service implementation -----
 
     public BackupManagerService(Context context) {
@@ -673,12 +726,19 @@ class BackupManagerService extends IBackupManager.Stub {
         mBackupHandler = new BackupHandler(mHandlerThread.getLooper());
 
         // Set up our bookkeeping
-        boolean areEnabled = Settings.Secure.getInt(context.getContentResolver(),
+        final ContentResolver resolver = context.getContentResolver();
+        boolean areEnabled = Settings.Secure.getInt(resolver,
                 Settings.Secure.BACKUP_ENABLED, 0) != 0;
-        mProvisioned = Settings.Secure.getInt(context.getContentResolver(),
-                Settings.Secure.BACKUP_PROVISIONED, 0) != 0;
-        mAutoRestore = Settings.Secure.getInt(context.getContentResolver(),
+        mProvisioned = Settings.Global.getInt(resolver,
+                Settings.Global.DEVICE_PROVISIONED, 0) != 0;
+        mAutoRestore = Settings.Secure.getInt(resolver,
                 Settings.Secure.BACKUP_AUTO_RESTORE, 1) != 0;
+
+        mProvisionedObserver = new ProvisionedObserver(mBackupHandler);
+        resolver.registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.DEVICE_PROVISIONED),
+                false, mProvisionedObserver);
+
         // If Encrypted file systems is enabled or disabled, this call will return the
         // correct directory.
         mBaseStateDir = new File(Environment.getSecureDataDirectory(), "backup");
@@ -939,7 +999,6 @@ class BackupManagerService extends IBackupManager.Stub {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_PACKAGE_ADDED);
         filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
-        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
         filter.addDataScheme("package");
         mContext.registerReceiver(mBroadcastReceiver, filter);
         // Register for events related to sdcard installation.
@@ -1218,12 +1277,13 @@ class BackupManagerService extends IBackupManager.Stub {
 
         // Enqueue a new backup of every participant
         synchronized (mBackupParticipants) {
-            int N = mBackupParticipants.size();
+            final int N = mBackupParticipants.size();
             for (int i=0; i<N; i++) {
-                int uid = mBackupParticipants.keyAt(i);
-                HashSet<ApplicationInfo> participants = mBackupParticipants.valueAt(i);
-                for (ApplicationInfo app: participants) {
-                    dataChangedImpl(app.packageName);
+                HashSet<String> participants = mBackupParticipants.valueAt(i);
+                if (participants != null) {
+                    for (String packageName : participants) {
+                        dataChangedImpl(packageName);
+                    }
                 }
             }
         }
@@ -1281,8 +1341,7 @@ class BackupManagerService extends IBackupManager.Stub {
             Bundle extras = intent.getExtras();
             String pkgList[] = null;
             if (Intent.ACTION_PACKAGE_ADDED.equals(action) ||
-                    Intent.ACTION_PACKAGE_REMOVED.equals(action) ||
-                    Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+                    Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
                 Uri uri = intent.getData();
                 if (uri == null) {
                     return;
@@ -1291,14 +1350,8 @@ class BackupManagerService extends IBackupManager.Stub {
                 if (pkgName != null) {
                     pkgList = new String[] { pkgName };
                 }
-                if (Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
-                    // use the existing "add with replacement" logic
-                    if (MORE_DEBUG) Slog.d(TAG, "PACKAGE_REPLACED, updating package " + pkgName);
-                    added = replacing = true;
-                } else {
-                    added = Intent.ACTION_PACKAGE_ADDED.equals(action);
-                    replacing = extras.getBoolean(Intent.EXTRA_REPLACING, false);
-                }
+                added = Intent.ACTION_PACKAGE_ADDED.equals(action);
+                replacing = extras.getBoolean(Intent.EXTRA_REPLACING, false);
             } else if (Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE.equals(action)) {
                 added = true;
                 pkgList = intent.getStringArrayExtra(Intent.EXTRA_CHANGED_PACKAGE_LIST);
@@ -1310,20 +1363,23 @@ class BackupManagerService extends IBackupManager.Stub {
             if (pkgList == null || pkgList.length == 0) {
                 return;
             }
+
+            final int uid = extras.getInt(Intent.EXTRA_UID);
             if (added) {
                 synchronized (mBackupParticipants) {
                     if (replacing) {
-                        updatePackageParticipantsLocked(pkgList);
-                    } else {
-                        addPackageParticipantsLocked(pkgList);
+                        // This is the package-replaced case; we just remove the entry
+                        // under the old uid and fall through to re-add.
+                        removePackageParticipantsLocked(pkgList, uid);
                     }
+                    addPackageParticipantsLocked(pkgList);
                 }
             } else {
                 if (replacing) {
                     // The package is being updated.  We'll receive a PACKAGE_ADDED shortly.
                 } else {
                     synchronized (mBackupParticipants) {
-                        removePackageParticipantsLocked(pkgList);
+                        removePackageParticipantsLocked(pkgList, uid);
                     }
                 }
             }
@@ -1370,82 +1426,55 @@ class BackupManagerService extends IBackupManager.Stub {
         for (PackageInfo pkg : targetPkgs) {
             if (packageName == null || pkg.packageName.equals(packageName)) {
                 int uid = pkg.applicationInfo.uid;
-                HashSet<ApplicationInfo> set = mBackupParticipants.get(uid);
+                HashSet<String> set = mBackupParticipants.get(uid);
                 if (set == null) {
-                    set = new HashSet<ApplicationInfo>();
+                    set = new HashSet<String>();
                     mBackupParticipants.put(uid, set);
                 }
-                set.add(pkg.applicationInfo);
+                set.add(pkg.packageName);
                 if (MORE_DEBUG) Slog.v(TAG, "Agent found; added");
 
-                // If we've never seen this app before, schedule a backup for it
-                if (!mEverStoredApps.contains(pkg.packageName)) {
-                    if (DEBUG) Slog.i(TAG, "New app " + pkg.packageName
-                            + " never backed up; scheduling");
-                    dataChangedImpl(pkg.packageName);
-                }
+                // Schedule a backup for it on general principles
+                if (DEBUG) Slog.i(TAG, "Scheduling backup for new app " + pkg.packageName);
+                dataChangedImpl(pkg.packageName);
             }
         }
     }
 
     // Remove the given packages' entries from our known active set.
-    void removePackageParticipantsLocked(String[] packageNames) {
+    void removePackageParticipantsLocked(String[] packageNames, int oldUid) {
         if (packageNames == null) {
             Slog.w(TAG, "removePackageParticipants with null list");
             return;
         }
 
-        if (DEBUG) Slog.v(TAG, "removePackageParticipantsLocked: #" + packageNames.length);
-        List<PackageInfo> knownPackages = allAgentPackages();
+        if (DEBUG) Slog.v(TAG, "removePackageParticipantsLocked: uid=" + oldUid
+                + " #" + packageNames.length);
         for (String pkg : packageNames) {
-            removePackageParticipantsLockedInner(pkg, knownPackages);
+            // Known previous UID, so we know which package set to check
+            HashSet<String> set = mBackupParticipants.get(oldUid);
+            if (set != null && set.contains(pkg)) {
+                removePackageFromSetLocked(set, pkg);
+                if (set.isEmpty()) {
+                    if (MORE_DEBUG) Slog.v(TAG, "  last one of this uid; purging set");
+                    mBackupParticipants.remove(oldUid);
+                }
+            }
         }
     }
 
-    private void removePackageParticipantsLockedInner(String packageName,
-            List<PackageInfo> allPackages) {
-        if (MORE_DEBUG) {
-            Slog.v(TAG, "removePackageParticipantsLockedInner (" + packageName
-                    + ") removing from " + allPackages.size() + " entries");
-            for (PackageInfo p : allPackages) {
-                Slog.v(TAG, "    - " + p.packageName);
-            }
-        }
-        for (PackageInfo pkg : allPackages) {
-            if (packageName == null || pkg.packageName.equals(packageName)) {
-                /*
-                int uid = -1;
-                try {
-                    PackageInfo info = mPackageManager.getPackageInfo(packageName, 0);
-                    uid = info.applicationInfo.uid;
-                } catch (NameNotFoundException e) {
-                    // we don't know this package name, so just skip it for now
-                    continue;
-                }
-                */
-                final int uid = pkg.applicationInfo.uid;
-                if (MORE_DEBUG) Slog.i(TAG, "   found pkg " + packageName + " uid=" + uid);
-
-                HashSet<ApplicationInfo> set = mBackupParticipants.get(uid);
-                if (set != null) {
-                    // Find the existing entry with the same package name, and remove it.
-                    // We can't just remove(app) because the instances are different.
-                    for (ApplicationInfo entry: set) {
-                        if (MORE_DEBUG) Slog.i(TAG, "      checking against " + entry.packageName);
-                        if (entry.packageName.equals(pkg)) {
-                            if (MORE_DEBUG) Slog.v(TAG, "  removing participant " + pkg);
-                            set.remove(entry);
-                            removeEverBackedUp(pkg.packageName);
-                            break;
-                        }
-                    }
-                    if (set.size() == 0) {
-                        mBackupParticipants.delete(uid);
-                    }
-                } else {
-                    if (MORE_DEBUG) Slog.i(TAG, "   ... not found in uid mapping");
-                }
-            }
+    private void removePackageFromSetLocked(final HashSet<String> set,
+            final String packageName) {
+        if (set.contains(packageName)) {
+            // Found it.  Remove this one package from the bookkeeping, and
+            // if it's the last participating app under this uid we drop the
+            // (now-empty) set as well.
+            // Note that we deliberately leave it 'known' in the "ever backed up"
+            // bookkeeping so that its current-dataset data will be retrieved
+            // if the app is subsequently reinstalled
+            if (MORE_DEBUG) Slog.v(TAG, "  removing participant " + packageName);
+            set.remove(packageName);
+            mPendingBackups.remove(packageName);
         }
     }
 
@@ -1474,24 +1503,6 @@ class BackupManagerService extends IBackupManager.Stub {
             }
         }
         return packages;
-    }
-
-    // Reset the given package's known backup participants.  Unlike add/remove, the update
-    // action cannot be passed a null package name.
-    void updatePackageParticipantsLocked(String[] packageNames) {
-        if (packageNames == null) {
-            Slog.e(TAG, "updatePackageParticipants called with null package list");
-            return;
-        }
-        if (DEBUG) Slog.v(TAG, "updatePackageParticipantsLocked: #" + packageNames.length);
-
-        if (packageNames.length > 0) {
-            List<PackageInfo> allApps = allAgentPackages();
-            for (String packageName : packageNames) {
-                removePackageParticipantsLockedInner(packageName, allApps);
-                addPackageParticipantsLockedInner(packageName, allApps);
-            }
-        }
     }
 
     // Called from the backup task: record that the given app has been successfully
@@ -1614,6 +1625,8 @@ class BackupManagerService extends IBackupManager.Stub {
                             mAgentConnectLock.wait(5000);
                         } catch (InterruptedException e) {
                             // just bail
+                            if (DEBUG) Slog.w(TAG, "Interrupted: " + e);
+                            mActivityManager.clearPendingBackup();
                             return null;
                         }
                     }
@@ -1621,8 +1634,10 @@ class BackupManagerService extends IBackupManager.Stub {
                     // if we timed out with no connect, abort and move on
                     if (mConnecting == true) {
                         Slog.w(TAG, "Timeout waiting for agent " + app);
+                        mActivityManager.clearPendingBackup();
                         return null;
                     }
+                    if (DEBUG) Slog.i(TAG, "got agent " + mConnectedAgent);
                     agent = mConnectedAgent;
                 }
             } catch (RemoteException e) {
@@ -1816,6 +1831,8 @@ class BackupManagerService extends IBackupManager.Stub {
 
             mCurrentState = BackupState.INITIAL;
             mFinished = false;
+
+            addBackupTrace("STATE => INITIAL");
         }
 
         // Main entry point: perform one chunk of work, updating the state as appropriate
@@ -1844,11 +1861,25 @@ class BackupManagerService extends IBackupManager.Stub {
         // We're starting a backup pass.  Initialize the transport and send
         // the PM metadata blob if we haven't already.
         void beginBackup() {
+            if (DEBUG_BACKUP_TRACE) {
+                clearBackupTrace();
+                StringBuilder b = new StringBuilder(256);
+                b.append("beginBackup: [");
+                for (BackupRequest req : mOriginalQueue) {
+                    b.append(' ');
+                    b.append(req.packageName);
+                }
+                b.append(" ]");
+                addBackupTrace(b.toString());
+            }
+
             mStatus = BackupConstants.TRANSPORT_OK;
 
             // Sanity check: if the queue is empty we have no work to do.
             if (mOriginalQueue.isEmpty()) {
                 Slog.w(TAG, "Backup begun with an empty queue - nothing to do.");
+                addBackupTrace("queue empty at begin");
+                executeNextState(BackupState.FINAL);
                 return;
             }
 
@@ -1861,13 +1892,17 @@ class BackupManagerService extends IBackupManager.Stub {
 
             File pmState = new File(mStateDir, PACKAGE_MANAGER_SENTINEL);
             try {
-                EventLog.writeEvent(EventLogTags.BACKUP_START, mTransport.transportDirName());
+                final String transportName = mTransport.transportDirName();
+                EventLog.writeEvent(EventLogTags.BACKUP_START, transportName);
 
                 // If we haven't stored package manager metadata yet, we must init the transport.
                 if (mStatus == BackupConstants.TRANSPORT_OK && pmState.length() <= 0) {
                     Slog.i(TAG, "Initializing (wiping) backup state and transport storage");
+                    addBackupTrace("initializing transport " + transportName);
                     resetBackupState(mStateDir);  // Just to make sure.
                     mStatus = mTransport.initializeDevice();
+
+                    addBackupTrace("transport.initializeDevice() == " + mStatus);
                     if (mStatus == BackupConstants.TRANSPORT_OK) {
                         EventLog.writeEvent(EventLogTags.BACKUP_INITIALIZE);
                     } else {
@@ -1886,6 +1921,7 @@ class BackupManagerService extends IBackupManager.Stub {
                             mPackageManager, allAgentPackages());
                     mStatus = invokeAgentForBackup(PACKAGE_MANAGER_SENTINEL,
                             IBackupAgent.Stub.asInterface(pmAgent.onBind()), mTransport);
+                    addBackupTrace("PMBA invoke: " + mStatus);
                 }
 
                 if (mStatus == BackupConstants.TRANSPORT_NOT_INITIALIZED) {
@@ -1896,11 +1932,13 @@ class BackupManagerService extends IBackupManager.Stub {
                 }
             } catch (Exception e) {
                 Slog.e(TAG, "Error in backup thread", e);
+                addBackupTrace("Exception in backup thread: " + e);
                 mStatus = BackupConstants.TRANSPORT_ERROR;
             } finally {
                 // If we've succeeded so far, invokeAgentForBackup() will have run the PM
                 // metadata and its completion/timeout callback will continue the state
                 // machine chain.  If it failed that won't happen; we handle that now.
+                addBackupTrace("exiting prelim: " + mStatus);
                 if (mStatus != BackupConstants.TRANSPORT_OK) {
                     // if things went wrong at this point, we need to
                     // restage everything and try again later.
@@ -1914,11 +1952,12 @@ class BackupManagerService extends IBackupManager.Stub {
         // if that was warranted.  Now we process the single next thing in the queue.
         void invokeNextAgent() {
             mStatus = BackupConstants.TRANSPORT_OK;
+            addBackupTrace("invoke q=" + mQueue.size());
 
             // Sanity check that we have work to do.  If not, skip to the end where
             // we reestablish the wakelock invariants etc.
             if (mQueue.isEmpty()) {
-                Slog.e(TAG, "Running queue but it's empty!");
+                if (DEBUG) Slog.i(TAG, "queue now empty");
                 executeNextState(BackupState.FINAL);
                 return;
             }
@@ -1928,6 +1967,7 @@ class BackupManagerService extends IBackupManager.Stub {
             mQueue.remove(0);
 
             Slog.d(TAG, "starting agent for backup of " + request);
+            addBackupTrace("launch agent for " + request.packageName);
 
             // Verify that the requested app exists; it might be something that
             // requested a backup but was then uninstalled.  The request was
@@ -1937,12 +1977,23 @@ class BackupManagerService extends IBackupManager.Stub {
             try {
                 mCurrentPackage = mPackageManager.getPackageInfo(request.packageName,
                         PackageManager.GET_SIGNATURES);
+                if (mCurrentPackage.applicationInfo.backupAgentName == null) {
+                    // The manifest has changed but we had a stale backup request pending.
+                    // This won't happen again because the app won't be requesting further
+                    // backups.
+                    Slog.i(TAG, "Package " + request.packageName
+                            + " no longer supports backup; skipping");
+                    addBackupTrace("skipping - no agent, completion is noop");
+                    executeNextState(BackupState.RUNNING_QUEUE);
+                    return;
+                }
 
                 IBackupAgent agent = null;
                 try {
                     mWakelock.setWorkSource(new WorkSource(mCurrentPackage.applicationInfo.uid));
                     agent = bindToAgentSynchronous(mCurrentPackage.applicationInfo,
                             IApplicationThread.BACKUP_MODE_INCREMENTAL);
+                    addBackupTrace("agent bound; a? = " + (agent != null));
                     if (agent != null) {
                         mStatus = invokeAgentForBackup(request.packageName, agent, mTransport);
                         // at this point we'll either get a completion callback from the
@@ -1956,14 +2007,17 @@ class BackupManagerService extends IBackupManager.Stub {
                     // Try for the next one.
                     Slog.d(TAG, "error in bind/backup", ex);
                     mStatus = BackupConstants.AGENT_ERROR;
+                            addBackupTrace("agent SE");
                 }
             } catch (NameNotFoundException e) {
                 Slog.d(TAG, "Package does not exist; skipping");
+                addBackupTrace("no such package");
+                mStatus = BackupConstants.AGENT_UNKNOWN;
             } finally {
                 mWakelock.setWorkSource(null);
 
                 // If there was an agent error, no timeout/completion handling will occur.
-                // That means we need to deal with the next state ourselves.
+                // That means we need to direct to the next state ourselves.
                 if (mStatus != BackupConstants.TRANSPORT_OK) {
                     BackupState nextState = BackupState.RUNNING_QUEUE;
 
@@ -1975,18 +2029,26 @@ class BackupManagerService extends IBackupManager.Stub {
                         dataChangedImpl(request.packageName);
                         mStatus = BackupConstants.TRANSPORT_OK;
                         if (mQueue.isEmpty()) nextState = BackupState.FINAL;
-                    } else if (mStatus != BackupConstants.TRANSPORT_OK) {
+                    } else if (mStatus == BackupConstants.AGENT_UNKNOWN) {
+                        // Failed lookup of the app, so we couldn't bring up an agent, but
+                        // we're otherwise fine.  Just drop it and go on to the next as usual.
+                        mStatus = BackupConstants.TRANSPORT_OK;
+                    } else {
                         // Transport-level failure means we reenqueue everything
                         revertAndEndBackup();
                         nextState = BackupState.FINAL;
                     }
 
                     executeNextState(nextState);
+                } else {
+                    addBackupTrace("expecting completion/timeout callback");
                 }
             }
         }
 
         void finalizeBackup() {
+            addBackupTrace("finishing");
+
             // Either backup was successful, in which case we of course do not need
             // this pass's journal any more; or it failed, in which case we just
             // re-enqueued all of these packages in the current active journal.
@@ -1999,6 +2061,7 @@ class BackupManagerService extends IBackupManager.Stub {
             // done a backup, we can now record what the current backup dataset token
             // is.
             if ((mCurrentToken == 0) && (mStatus == BackupConstants.TRANSPORT_OK)) {
+                addBackupTrace("success; recording token");
                 try {
                     mCurrentToken = mTransport.getCurrentRestoreSet();
                 } catch (RemoteException e) {} // can't happen
@@ -2014,11 +2077,13 @@ class BackupManagerService extends IBackupManager.Stub {
                     // Make sure we back up everything and perform the one-time init
                     clearMetadata();
                     if (DEBUG) Slog.d(TAG, "Server requires init; rerunning");
+                    addBackupTrace("init required; rerunning");
                     backupNow();
                 }
             }
 
             // Only once we're entirely finished do we release the wakelock
+            clearBackupTrace();
             Slog.i(TAG, "Backup pass finished.");
             mWakelock.release();
         }
@@ -2033,7 +2098,8 @@ class BackupManagerService extends IBackupManager.Stub {
         // handler in case it doesn't get back to us.
         int invokeAgentForBackup(String packageName, IBackupAgent agent,
                 IBackupTransport transport) {
-            if (DEBUG) Slog.d(TAG, "processOneBackup doBackup() on " + packageName);
+            if (DEBUG) Slog.d(TAG, "invokeAgentForBackup on " + packageName);
+            addBackupTrace("invoking " + packageName);
 
             mSavedStateName = new File(mStateDir, packageName);
             mBackupDataName = new File(mDataDir, packageName + ".data");
@@ -2073,10 +2139,13 @@ class BackupManagerService extends IBackupManager.Stub {
                         ParcelFileDescriptor.MODE_TRUNCATE);
 
                 // Initiate the target's backup pass
+                addBackupTrace("setting timeout");
                 prepareOperationTimeout(token, TIMEOUT_BACKUP_INTERVAL, this);
+                addBackupTrace("calling agent doBackup()");
                 agent.doBackup(mSavedState, mBackupData, mNewState, token, mBackupManagerBinder);
             } catch (Exception e) {
                 Slog.e(TAG, "Error invoking for backup on " + packageName);
+                addBackupTrace("exception: " + e);
                 EventLog.writeEvent(EventLogTags.BACKUP_AGENT_FAILURE, packageName,
                         e.toString());
                 agentErrorCleanup();
@@ -2087,6 +2156,7 @@ class BackupManagerService extends IBackupManager.Stub {
             // either be a callback from the agent, at which point we'll process its data
             // for transport, or a timeout.  Either way the next phase will happen in
             // response to the TimeoutHandler interface callbacks.
+            addBackupTrace("invoke success");
             return BackupConstants.TRANSPORT_OK;
         }
 
@@ -2098,6 +2168,7 @@ class BackupManagerService extends IBackupManager.Stub {
                     + mCurrentPackage.packageName);
             mBackupHandler.removeMessages(MSG_TIMEOUT);
             clearAgentState();
+            addBackupTrace("operation complete");
 
             ParcelFileDescriptor backupData = null;
             mStatus = BackupConstants.TRANSPORT_OK;
@@ -2107,6 +2178,7 @@ class BackupManagerService extends IBackupManager.Stub {
                     if (mStatus == BackupConstants.TRANSPORT_OK) {
                         backupData = ParcelFileDescriptor.open(mBackupDataName,
                                 ParcelFileDescriptor.MODE_READ_ONLY);
+                        addBackupTrace("sending data to transport");
                         mStatus = mTransport.performBackup(mCurrentPackage, backupData);
                     }
 
@@ -2115,11 +2187,15 @@ class BackupManagerService extends IBackupManager.Stub {
                     // hold off on finishBackup() until the end, which implies holding off on
                     // renaming *all* the output state files (see below) until that happens.
 
+                    addBackupTrace("data delivered: " + mStatus);
                     if (mStatus == BackupConstants.TRANSPORT_OK) {
+                        addBackupTrace("finishing op on transport");
                         mStatus = mTransport.finishBackup();
+                        addBackupTrace("finished: " + mStatus);
                     }
                 } else {
                     if (DEBUG) Slog.i(TAG, "no backup data written; not calling transport");
+                    addBackupTrace("no data to send");
                 }
 
                 // After successful transport, delete the now-stale data
@@ -2167,12 +2243,14 @@ class BackupManagerService extends IBackupManager.Stub {
             Slog.e(TAG, "Timeout backing up " + mCurrentPackage.packageName);
             EventLog.writeEvent(EventLogTags.BACKUP_AGENT_FAILURE, mCurrentPackage.packageName,
                     "timeout");
+            addBackupTrace("timeout of " + mCurrentPackage.packageName);
             agentErrorCleanup();
             dataChangedImpl(mCurrentPackage.packageName);
         }
 
         void revertAndEndBackup() {
             if (MORE_DEBUG) Slog.i(TAG, "Reverting backup queue - restaging everything");
+            addBackupTrace("transport error; reverting");
             for (BackupRequest request : mOriginalQueue) {
                 dataChangedImpl(request.packageName);
             }
@@ -2201,6 +2279,7 @@ class BackupManagerService extends IBackupManager.Stub {
 
             // If this was a pseudopackage there's no associated Activity Manager state
             if (mCurrentPackage.applicationInfo != null) {
+                addBackupTrace("unbinding " + mCurrentPackage.packageName);
                 try {  // unbind even on timeout, just in case
                     mActivityManager.unbindBackupAgent(mCurrentPackage.applicationInfo);
                 } catch (RemoteException e) {}
@@ -2208,6 +2287,7 @@ class BackupManagerService extends IBackupManager.Stub {
         }
 
         void restartBackupAlarm() {
+            addBackupTrace("setting backup trigger");
             synchronized (mQueueLock) {
                 try {
                     startBackupAlarmsLocked(mTransport.requestBackupTime());
@@ -2218,6 +2298,7 @@ class BackupManagerService extends IBackupManager.Stub {
         void executeNextState(BackupState nextState) {
             if (MORE_DEBUG) Slog.i(TAG, " => executing next step on "
                     + this + " nextState=" + nextState);
+            addBackupTrace("executeNextState => " + nextState);
             mCurrentState = nextState;
             Message msg = mBackupHandler.obtainMessage(MSG_BACKUP_RESTORE_STEP, this);
             mBackupHandler.sendMessage(msg);
@@ -2248,14 +2329,16 @@ class BackupManagerService extends IBackupManager.Stub {
             ParcelFileDescriptor mPipe;
             int mToken;
             boolean mSendApk;
+            boolean mWriteManifest;
 
             FullBackupRunner(PackageInfo pack, IBackupAgent agent, ParcelFileDescriptor pipe,
-                    int token, boolean sendApk)  throws IOException {
+                    int token, boolean sendApk, boolean writeManifest)  throws IOException {
                 mPackage = pack;
                 mAgent = agent;
                 mPipe = ParcelFileDescriptor.dup(pipe.getFileDescriptor());
                 mToken = token;
                 mSendApk = sendApk;
+                mWriteManifest = writeManifest;
             }
 
             @Override
@@ -2264,12 +2347,14 @@ class BackupManagerService extends IBackupManager.Stub {
                     BackupDataOutput output = new BackupDataOutput(
                             mPipe.getFileDescriptor());
 
-                    if (MORE_DEBUG) Slog.d(TAG, "Writing manifest for " + mPackage.packageName);
-                    writeAppManifest(mPackage, mManifestFile, mSendApk);
-                    FullBackup.backupToTar(mPackage.packageName, null, null,
-                            mFilesDir.getAbsolutePath(),
-                            mManifestFile.getAbsolutePath(),
-                            output);
+                    if (mWriteManifest) {
+                        if (MORE_DEBUG) Slog.d(TAG, "Writing manifest for " + mPackage.packageName);
+                        writeAppManifest(mPackage, mManifestFile, mSendApk);
+                        FullBackup.backupToTar(mPackage.packageName, null, null,
+                                mFilesDir.getAbsolutePath(),
+                                mManifestFile.getAbsolutePath(),
+                                output);
+                    }
 
                     if (mSendApk) {
                         writeApkToBackup(mPackage, output);
@@ -2356,10 +2441,28 @@ class BackupManagerService extends IBackupManager.Stub {
                 }
             }
 
-            // Cull any packages that have indicated that backups are not permitted.
+            // Cull any packages that have indicated that backups are not permitted, as well
+            // as any explicit mention of the 'special' shared-storage agent package (we
+            // handle that one at the end).
             for (int i = 0; i < packagesToBackup.size(); ) {
                 PackageInfo pkg = packagesToBackup.get(i);
-                if ((pkg.applicationInfo.flags & ApplicationInfo.FLAG_ALLOW_BACKUP) == 0) {
+                if ((pkg.applicationInfo.flags & ApplicationInfo.FLAG_ALLOW_BACKUP) == 0
+                        || pkg.packageName.equals(SHARED_BACKUP_AGENT_PACKAGE)) {
+                    packagesToBackup.remove(i);
+                } else {
+                    i++;
+                }
+            }
+
+            // Cull any packages that run as system-domain uids but do not define their
+            // own backup agents
+            for (int i = 0; i < packagesToBackup.size(); ) {
+                PackageInfo pkg = packagesToBackup.get(i);
+                if ((pkg.applicationInfo.uid < Process.FIRST_APPLICATION_UID)
+                        && (pkg.applicationInfo.backupAgentName == null)) {
+                    if (MORE_DEBUG) {
+                        Slog.i(TAG, "... ignoring non-agent system package " + pkg.packageName);
+                    }
                     packagesToBackup.remove(i);
                 } else {
                     i++;
@@ -2439,6 +2542,16 @@ class BackupManagerService extends IBackupManager.Stub {
                     return;
                 }
 
+                // Shared storage if requested
+                if (mIncludeShared) {
+                    try {
+                        pkg = mPackageManager.getPackageInfo(SHARED_BACKUP_AGENT_PACKAGE, 0);
+                        packagesToBackup.add(pkg);
+                    } catch (NameNotFoundException e) {
+                        Slog.e(TAG, "Unable to find shared-storage backup handler");
+                    }
+                }
+
                 // Now back up the app data via the agent mechanism
                 int N = packagesToBackup.size();
                 for (int i = 0; i < N; i++) {
@@ -2446,15 +2559,12 @@ class BackupManagerService extends IBackupManager.Stub {
                     backupOnePackage(pkg, out);
                 }
 
-                // Shared storage if requested
-                if (mIncludeShared) {
-                    backupSharedStorage();
-                }
-
                 // Done!
                 finalizeBackup(out);
             } catch (RemoteException e) {
                 Slog.e(TAG, "App died during full backup");
+            } catch (Exception e) {
+                Slog.e(TAG, "Internal exception during full backup", e);
             } finally {
                 tearDown(pkg);
                 try {
@@ -2556,19 +2666,21 @@ class BackupManagerService extends IBackupManager.Stub {
             if (agent != null) {
                 ParcelFileDescriptor[] pipes = null;
                 try {
-                     pipes = ParcelFileDescriptor.createPipe();
+                    pipes = ParcelFileDescriptor.createPipe();
 
                     ApplicationInfo app = pkg.applicationInfo;
+                    final boolean isSharedStorage = pkg.packageName.equals(SHARED_BACKUP_AGENT_PACKAGE);
                     final boolean sendApk = mIncludeApks
+                            && !isSharedStorage
                             && ((app.flags & ApplicationInfo.FLAG_FORWARD_LOCK) == 0)
                             && ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0 ||
                                 (app.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0);
 
-                    sendOnBackupPackage(pkg.packageName);
+                    sendOnBackupPackage(isSharedStorage ? "Shared storage" : pkg.packageName);
 
                     final int token = generateToken();
                     FullBackupRunner runner = new FullBackupRunner(pkg, agent, pipes[1],
-                            token, sendApk);
+                            token, sendApk, !isSharedStorage);
                     pipes[1].close();   // the runner has dup'd it
                     pipes[1] = null;
                     Thread t = new Thread(runner);
@@ -2627,9 +2739,13 @@ class BackupManagerService extends IBackupManager.Stub {
             FullBackup.backupToTar(pkg.packageName, FullBackup.APK_TREE_TOKEN, null,
                     apkDir, appSourceDir, output);
 
+            // TODO: migrate this to SharedStorageBackup, since AID_SYSTEM
+            // doesn't have access to external storage.
+
             // Save associated .obb content if it exists and we did save the apk
             // check for .obb and save those too
-            final File obbDir = Environment.getExternalStorageAppObbDirectory(pkg.packageName);
+            final UserEnvironment userEnv = new UserEnvironment(UserHandle.USER_OWNER);
+            final File obbDir = userEnv.getExternalStorageAppObbDirectory(pkg.packageName);
             if (obbDir != null) {
                 if (MORE_DEBUG) Log.i(TAG, "obb dir: " + obbDir.getAbsolutePath());
                 File[] obbFiles = obbDir.listFiles();
@@ -2640,33 +2756,6 @@ class BackupManagerService extends IBackupManager.Stub {
                                 obbDirName, obb.getAbsolutePath(), output);
                     }
                 }
-            }
-        }
-
-        private void backupSharedStorage() throws RemoteException {
-            PackageInfo pkg = null;
-            try {
-                pkg = mPackageManager.getPackageInfo("com.android.sharedstoragebackup", 0);
-                IBackupAgent agent = bindToAgentSynchronous(pkg.applicationInfo,
-                        IApplicationThread.BACKUP_MODE_FULL);
-                if (agent != null) {
-                    sendOnBackupPackage("Shared storage");
-
-                    final int token = generateToken();
-                    prepareOperationTimeout(token, TIMEOUT_SHARED_BACKUP_INTERVAL, null);
-                    agent.doFullBackup(mOutputFile, token, mBackupManagerBinder);
-                    if (!waitUntilOperationComplete(token)) {
-                        Slog.e(TAG, "Full backup failed on shared storage");
-                    } else {
-                        if (DEBUG) Slog.d(TAG, "Full shared storage backup success");
-                    }
-                } else {
-                    Slog.e(TAG, "Could not bind to shared storage backup agent");
-                }
-            } catch (NameNotFoundException e) {
-                Slog.e(TAG, "Shared storage backup package not found");
-            } finally {
-                tearDown(pkg);
             }
         }
 
@@ -2895,7 +2984,7 @@ class BackupManagerService extends IBackupManager.Stub {
 
             // Are we able to restore shared-storage data?
             if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-                mPackagePolicies.put("com.android.sharedstoragebackup", RestorePolicy.ACCEPT);
+                mPackagePolicies.put(SHARED_BACKUP_AGENT_PACKAGE, RestorePolicy.ACCEPT);
             }
 
             FileInputStream rawInStream = null;
@@ -3598,29 +3687,37 @@ class BackupManagerService extends IBackupManager.Stub {
                                 // Fall through to IGNORE if the app explicitly disallows backup
                                 final int flags = pkgInfo.applicationInfo.flags;
                                 if ((flags & ApplicationInfo.FLAG_ALLOW_BACKUP) != 0) {
-                                    // Verify signatures against any installed version; if they
-                                    // don't match, then we fall though and ignore the data.  The
-                                    // signatureMatch() method explicitly ignores the signature
-                                    // check for packages installed on the system partition, because
-                                    // such packages are signed with the platform cert instead of
-                                    // the app developer's cert, so they're different on every
-                                    // device.
-                                    if (signaturesMatch(sigs, pkgInfo)) {
-                                        if (pkgInfo.versionCode >= version) {
-                                            Slog.i(TAG, "Sig + version match; taking data");
-                                            policy = RestorePolicy.ACCEPT;
+                                    // Restore system-uid-space packages only if they have
+                                    // defined a custom backup agent
+                                    if ((pkgInfo.applicationInfo.uid >= Process.FIRST_APPLICATION_UID)
+                                            || (pkgInfo.applicationInfo.backupAgentName != null)) {
+                                        // Verify signatures against any installed version; if they
+                                        // don't match, then we fall though and ignore the data.  The
+                                        // signatureMatch() method explicitly ignores the signature
+                                        // check for packages installed on the system partition, because
+                                        // such packages are signed with the platform cert instead of
+                                        // the app developer's cert, so they're different on every
+                                        // device.
+                                        if (signaturesMatch(sigs, pkgInfo)) {
+                                            if (pkgInfo.versionCode >= version) {
+                                                Slog.i(TAG, "Sig + version match; taking data");
+                                                policy = RestorePolicy.ACCEPT;
+                                            } else {
+                                                // The data is from a newer version of the app than
+                                                // is presently installed.  That means we can only
+                                                // use it if the matching apk is also supplied.
+                                                Slog.d(TAG, "Data version " + version
+                                                        + " is newer than installed version "
+                                                        + pkgInfo.versionCode + " - requiring apk");
+                                                policy = RestorePolicy.ACCEPT_IF_APK;
+                                            }
                                         } else {
-                                            // The data is from a newer version of the app than
-                                            // is presently installed.  That means we can only
-                                            // use it if the matching apk is also supplied.
-                                            Slog.d(TAG, "Data version " + version
-                                                    + " is newer than installed version "
-                                                    + pkgInfo.versionCode + " - requiring apk");
-                                            policy = RestorePolicy.ACCEPT_IF_APK;
+                                            Slog.w(TAG, "Restore manifest signatures do not match "
+                                                    + "installed application for " + info.packageName);
                                         }
                                     } else {
-                                        Slog.w(TAG, "Restore manifest signatures do not match "
-                                                + "installed application for " + info.packageName);
+                                        Slog.w(TAG, "Package " + info.packageName
+                                                + " is system level with no agent");
                                     }
                                 } else {
                                     if (DEBUG) Slog.i(TAG, "Restore manifest from "
@@ -3773,7 +3870,7 @@ class BackupManagerService extends IBackupManager.Stub {
                             info.path, 0, FullBackup.SHARED_PREFIX.length())) {
                         // File in shared storage.  !!! TODO: implement this.
                         info.path = info.path.substring(FullBackup.SHARED_PREFIX.length());
-                        info.packageName = "com.android.sharedstoragebackup";
+                        info.packageName = SHARED_BACKUP_AGENT_PACKAGE;
                         info.domain = FullBackup.SHARED_STORAGE_TOKEN;
                         if (DEBUG) Slog.i(TAG, "File in shared storage: " + info.path);
                     } else if (FullBackup.APPS_PREFIX.regionMatches(0,
@@ -4335,6 +4432,18 @@ class BackupManagerService extends IBackupManager.Stub {
                     return;
                 }
 
+                if (packageInfo.applicationInfo.backupAgentName == null
+                        || "".equals(packageInfo.applicationInfo.backupAgentName)) {
+                    if (DEBUG) {
+                        Slog.i(TAG, "Data exists for package " + packageName
+                                + " but app has no agent; skipping");
+                    }
+                    EventLog.writeEvent(EventLogTags.RESTORE_AGENT_FAILURE, packageName,
+                            "Package has no agent");
+                    executeNextState(RestoreState.RUNNING_QUEUE);
+                    return;
+                }
+
                 if (metaInfo.versionCode > packageInfo.versionCode) {
                     // Data is from a "newer" version of the app than we have currently
                     // installed.  If the app has not declared that it is prepared to
@@ -4614,6 +4723,8 @@ class BackupManagerService extends IBackupManager.Stub {
                 mTransport.clearBackupData(mPackage);
             } catch (RemoteException e) {
                 // can't happen; the transport is local
+            } catch (Exception e) {
+                Slog.e(TAG, "Transport threw attempting to clear data for " + mPackage);
             } finally {
                 try {
                     // TODO - need to handle failures
@@ -4691,11 +4802,11 @@ class BackupManagerService extends IBackupManager.Stub {
     }
 
     private void dataChangedImpl(String packageName) {
-        HashSet<ApplicationInfo> targets = dataChangedTargets(packageName);
+        HashSet<String> targets = dataChangedTargets(packageName);
         dataChangedImpl(packageName, targets);
     }
 
-    private void dataChangedImpl(String packageName, HashSet<ApplicationInfo> targets) {
+    private void dataChangedImpl(String packageName, HashSet<String> targets) {
         // Record that we need a backup pass for the caller.  Since multiple callers
         // may share a uid, we need to note all candidates within that uid and schedule
         // a backup pass for each of them.
@@ -4709,25 +4820,23 @@ class BackupManagerService extends IBackupManager.Stub {
 
         synchronized (mQueueLock) {
             // Note that this client has made data changes that need to be backed up
-            for (ApplicationInfo app : targets) {
-                // validate the caller-supplied package name against the known set of
-                // packages associated with this uid
-                if (app.packageName.equals(packageName)) {
-                    // Add the caller to the set of pending backups.  If there is
-                    // one already there, then overwrite it, but no harm done.
-                    BackupRequest req = new BackupRequest(packageName);
-                    if (mPendingBackups.put(app.packageName, req) == null) {
-                        // Journal this request in case of crash.  The put()
-                        // operation returned null when this package was not already
-                        // in the set; we want to avoid touching the disk redundantly.
-                        writeToJournalLocked(packageName);
+            if (targets.contains(packageName)) {
+                // Add the caller to the set of pending backups.  If there is
+                // one already there, then overwrite it, but no harm done.
+                BackupRequest req = new BackupRequest(packageName);
+                if (mPendingBackups.put(packageName, req) == null) {
+                    if (DEBUG) Slog.d(TAG, "Now staging backup of " + packageName);
 
-                        if (MORE_DEBUG) {
-                            int numKeys = mPendingBackups.size();
-                            Slog.d(TAG, "Now awaiting backup for " + numKeys + " participants:");
-                            for (BackupRequest b : mPendingBackups.values()) {
-                                Slog.d(TAG, "    + " + b);
-                            }
+                    // Journal this request in case of crash.  The put()
+                    // operation returned null when this package was not already
+                    // in the set; we want to avoid touching the disk redundantly.
+                    writeToJournalLocked(packageName);
+
+                    if (MORE_DEBUG) {
+                        int numKeys = mPendingBackups.size();
+                        Slog.d(TAG, "Now awaiting backup for " + numKeys + " participants:");
+                        for (BackupRequest b : mPendingBackups.values()) {
+                            Slog.d(TAG, "    + " + b);
                         }
                     }
                 }
@@ -4736,7 +4845,7 @@ class BackupManagerService extends IBackupManager.Stub {
     }
 
     // Note: packageName is currently unused, but may be in the future
-    private HashSet<ApplicationInfo> dataChangedTargets(String packageName) {
+    private HashSet<String> dataChangedTargets(String packageName) {
         // If the caller does not hold the BACKUP permission, it can only request a
         // backup of its own data.
         if ((mContext.checkPermission(android.Manifest.permission.BACKUP, Binder.getCallingPid(),
@@ -4748,11 +4857,11 @@ class BackupManagerService extends IBackupManager.Stub {
 
         // a caller with full permission can ask to back up any participating app
         // !!! TODO: allow backup of ANY app?
-        HashSet<ApplicationInfo> targets = new HashSet<ApplicationInfo>();
+        HashSet<String> targets = new HashSet<String>();
         synchronized (mBackupParticipants) {
             int N = mBackupParticipants.size();
             for (int i = 0; i < N; i++) {
-                HashSet<ApplicationInfo> s = mBackupParticipants.valueAt(i);
+                HashSet<String> s = mBackupParticipants.valueAt(i);
                 if (s != null) {
                     targets.addAll(s);
                 }
@@ -4779,7 +4888,19 @@ class BackupManagerService extends IBackupManager.Stub {
     // ----- IBackupManager binder interface -----
 
     public void dataChanged(final String packageName) {
-        final HashSet<ApplicationInfo> targets = dataChangedTargets(packageName);
+        final int callingUserHandle = UserHandle.getCallingUserId();
+        if (callingUserHandle != UserHandle.USER_OWNER) {
+            // App is running under a non-owner user profile.  For now, we do not back
+            // up data from secondary user profiles.
+            // TODO: backups for all user profiles.
+            if (MORE_DEBUG) {
+                Slog.v(TAG, "dataChanged(" + packageName + ") ignored because it's user "
+                        + callingUserHandle);
+            }
+            return;
+        }
+
+        final HashSet<String> targets = dataChangedTargets(packageName);
         if (targets == null) {
             Slog.w(TAG, "dataChanged but no participant pkg='" + packageName + "'"
                    + " uid=" + Binder.getCallingUid());
@@ -4806,7 +4927,7 @@ class BackupManagerService extends IBackupManager.Stub {
 
         // If the caller does not hold the BACKUP permission, it can only request a
         // wipe of its own backed-up data.
-        HashSet<ApplicationInfo> apps;
+        HashSet<String> apps;
         if ((mContext.checkPermission(android.Manifest.permission.BACKUP, Binder.getCallingPid(),
                 Binder.getCallingUid())) == PackageManager.PERMISSION_DENIED) {
             apps = mBackupParticipants.get(Binder.getCallingUid());
@@ -4814,30 +4935,27 @@ class BackupManagerService extends IBackupManager.Stub {
             // a caller with full permission can ask to back up any participating app
             // !!! TODO: allow data-clear of ANY app?
             if (DEBUG) Slog.v(TAG, "Privileged caller, allowing clear of other apps");
-            apps = new HashSet<ApplicationInfo>();
+            apps = new HashSet<String>();
             int N = mBackupParticipants.size();
             for (int i = 0; i < N; i++) {
-                HashSet<ApplicationInfo> s = mBackupParticipants.valueAt(i);
+                HashSet<String> s = mBackupParticipants.valueAt(i);
                 if (s != null) {
                     apps.addAll(s);
                 }
             }
         }
 
-        // now find the given package in the set of candidate apps
-        for (ApplicationInfo app : apps) {
-            if (app.packageName.equals(packageName)) {
-                if (DEBUG) Slog.v(TAG, "Found the app - running clear process");
-                // found it; fire off the clear request
-                synchronized (mQueueLock) {
-                    long oldId = Binder.clearCallingIdentity();
-                    mWakelock.acquire();
-                    Message msg = mBackupHandler.obtainMessage(MSG_RUN_CLEAR,
-                            new ClearParams(getTransport(mCurrentTransport), info));
-                    mBackupHandler.sendMessage(msg);
-                    Binder.restoreCallingIdentity(oldId);
-                }
-                break;
+        // Is the given app an available participant?
+        if (apps.contains(packageName)) {
+            if (DEBUG) Slog.v(TAG, "Found the app - running clear process");
+            // found it; fire off the clear request
+            synchronized (mQueueLock) {
+                long oldId = Binder.clearCallingIdentity();
+                mWakelock.acquire();
+                Message msg = mBackupHandler.obtainMessage(MSG_RUN_CLEAR,
+                        new ClearParams(getTransport(mCurrentTransport), info));
+                mBackupHandler.sendMessage(msg);
+                Binder.restoreCallingIdentity(oldId);
             }
         }
     }
@@ -4873,6 +4991,11 @@ class BackupManagerService extends IBackupManager.Stub {
     public void fullBackup(ParcelFileDescriptor fd, boolean includeApks, boolean includeShared,
             boolean doAllApps, boolean includeSystem, String[] pkgList) {
         mContext.enforceCallingPermission(android.Manifest.permission.BACKUP, "fullBackup");
+
+        final int callingUserHandle = UserHandle.getCallingUserId();
+        if (callingUserHandle != UserHandle.USER_OWNER) {
+            throw new IllegalStateException("Backup supported only for the device owner");
+        }
 
         // Validate
         if (!doAllApps) {
@@ -4937,6 +5060,11 @@ class BackupManagerService extends IBackupManager.Stub {
 
     public void fullRestore(ParcelFileDescriptor fd) {
         mContext.enforceCallingPermission(android.Manifest.permission.BACKUP, "fullRestore");
+
+        final int callingUserHandle = UserHandle.getCallingUserId();
+        if (callingUserHandle != UserHandle.USER_OWNER) {
+            throw new IllegalStateException("Restore supported only for the device owner");
+        }
 
         long oldId = Binder.clearCallingIdentity();
 
@@ -5145,24 +5273,9 @@ class BackupManagerService extends IBackupManager.Stub {
     public void setBackupProvisioned(boolean available) {
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.BACKUP,
                 "setBackupProvisioned");
-
-        boolean wasProvisioned = mProvisioned;
-        synchronized (this) {
-            Settings.Secure.putInt(mContext.getContentResolver(),
-                    Settings.Secure.BACKUP_PROVISIONED, available ? 1 : 0);
-            mProvisioned = available;
-        }
-
-        synchronized (mQueueLock) {
-            if (available && !wasProvisioned && mEnabled) {
-                // we're now good to go, so start the backup alarms
-                startBackupAlarmsLocked(FIRST_BACKUP_INTERVAL);
-            } else if (!available) {
-                // No longer enabled, so stop running backups
-                Slog.w(TAG, "Backup service no longer provisioned");
-                mAlarmManager.cancel(mRunBackupIntent);
-            }
-        }
+        /*
+         * This is now a no-op; provisioning is simply the device's own setup state.
+         */
     }
 
     private void startBackupAlarmsLocked(long delayBeforeFirstBackup) {
@@ -5327,7 +5440,8 @@ class BackupManagerService extends IBackupManager.Stub {
 
         long restoreSet = getAvailableRestoreToken(packageName);
         if (DEBUG) Slog.v(TAG, "restoreAtInstall pkg=" + packageName
-                + " token=" + Integer.toHexString(token));
+                + " token=" + Integer.toHexString(token)
+                + " restoreSet=" + Long.toHexString(restoreSet));
 
         if (mAutoRestore && mProvisioned && restoreSet != 0) {
             // okay, we're going to attempt a restore of this package from this restore set.
@@ -5687,6 +5801,8 @@ class BackupManagerService extends IBackupManager.Stub {
 
     @Override
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+        mContext.enforceCallingOrSelfPermission(android.Manifest.permission.DUMP, TAG);
+
         long identityToken = Binder.clearCallingIdentity();
         try {
             dumpInternal(pw);
@@ -5696,16 +5812,6 @@ class BackupManagerService extends IBackupManager.Stub {
     }
 
     private void dumpInternal(PrintWriter pw) {
-        if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
-                != PackageManager.PERMISSION_GRANTED) {
-            pw.println("Permission Denial: can't dump Backup Manager service from from pid="
-                    + Binder.getCallingPid()
-                    + ", uid=" + Binder.getCallingUid()
-                    + " without permission "
-                    + android.Manifest.permission.DUMP);
-            return;
-        }
-
         synchronized (mQueueLock) {
             pw.println("Backup Manager is " + (mEnabled ? "enabled" : "disabled")
                     + " / " + (!mProvisioned ? "not " : "") + "provisioned / "
@@ -5738,15 +5844,26 @@ class BackupManagerService extends IBackupManager.Stub {
                 pw.println("    " + s);
             }
 
+            if (DEBUG_BACKUP_TRACE) {
+                synchronized (mBackupTrace) {
+                    if (!mBackupTrace.isEmpty()) {
+                        pw.println("Most recent backup trace:");
+                        for (String s : mBackupTrace) {
+                            pw.println("   " + s);
+                        }
+                    }
+                }
+            }
+
             int N = mBackupParticipants.size();
             pw.println("Participants:");
             for (int i=0; i<N; i++) {
                 int uid = mBackupParticipants.keyAt(i);
                 pw.print("  uid: ");
                 pw.println(uid);
-                HashSet<ApplicationInfo> participants = mBackupParticipants.valueAt(i);
-                for (ApplicationInfo app: participants) {
-                    pw.println("    " + app.packageName);
+                HashSet<String> participants = mBackupParticipants.valueAt(i);
+                for (String app: participants) {
+                    pw.println("    " + app);
                 }
             }
 
