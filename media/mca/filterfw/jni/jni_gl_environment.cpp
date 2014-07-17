@@ -201,7 +201,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceTexture(JNIEnv* en
     return -1;
   } else if (gl_env) {
     // Get the ANativeWindow
-    ANativeWindow* window = ANativeWindow_fromSurfaceTexture(env, surfaceTexture);
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surfaceTexture);
     if (!window) {
       LOGE("GLEnvironment: Error creating window!");
       return -1;
