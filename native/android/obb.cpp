@@ -18,8 +18,8 @@
 
 #include <android/obb.h>
 
-#include <utils/Log.h>
 #include <androidfw/ObbFile.h>
+#include <utils/Log.h>
 
 using namespace android;
 

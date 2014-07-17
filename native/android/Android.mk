@@ -17,12 +17,12 @@ LOCAL_SRC_FILES:= \
     storage_manager.cpp
 
 LOCAL_SHARED_LIBRARIES := \
-    libandroidfw          \
-    libcutils             \
-    libutils              \
-    libbinder             \
-    libui                 \
-    libgui                \
+    libcutils \
+    libandroidfw \
+    libutils \
+    libbinder \
+    libui \
+    libgui \
     libandroid_runtime
 
 LOCAL_STATIC_LIBRARIES := \
@@ -30,8 +30,7 @@ LOCAL_STATIC_LIBRARIES := \
 
 LOCAL_C_INCLUDES += \
     frameworks/base/native/include \
-    frameworks/base/core/jni/android \
-    dalvik/libnativehelper/include/nativehelper
+    frameworks/base/core/jni/android
 
 LOCAL_MODULE:= libandroid
 

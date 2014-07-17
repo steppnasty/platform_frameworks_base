@@ -32,14 +32,6 @@ ANativeWindow* ANativeWindow_fromSurface(JNIEnv* env, jobject surface) {
     return win.get();
 }
 
-ANativeWindow* ANativeWindow_fromSurfaceTexture(JNIEnv* env, jobject surfaceTexture) {
-    sp<ANativeWindow> win = android_SurfaceTexture_getNativeWindow(env, surfaceTexture);
-    if (win != NULL) {
-        win->incStrong((void*)ANativeWindow_acquire);
-    }
-    return win.get();
-}
-
 void ANativeWindow_acquire(ANativeWindow* window) {
     window->incStrong((void*)ANativeWindow_acquire);
 }
@@ -68,13 +60,16 @@ int32_t ANativeWindow_getFormat(ANativeWindow* window) {
 
 int32_t ANativeWindow_setBuffersGeometry(ANativeWindow* window, int32_t width,
         int32_t height, int32_t format) {
-    int32_t err = native_window_set_buffers_geometry(window, width, height, format);
+    int32_t err = native_window_set_buffers_format(window, format);
     if (!err) {
-        int mode = NATIVE_WINDOW_SCALING_MODE_FREEZE;
-        if (width && height) {
-            mode = NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW;
-        }
-        err = native_window_set_scaling_mode(window, mode);
+        err = native_window_set_buffers_user_dimensions(window, width, height);
+        if (!err) {
+            int mode = NATIVE_WINDOW_SCALING_MODE_FREEZE;
+            if (width && height) {
+                mode = NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW;
+            }
+            err = native_window_set_scaling_mode(window, mode);
+         }
     }
     return err;
 }
