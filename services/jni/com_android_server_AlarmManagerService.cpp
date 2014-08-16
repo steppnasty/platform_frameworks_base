@@ -62,7 +62,7 @@ static jint android_server_AlarmManagerService_init(JNIEnv* env, jobject obj)
 
 static void android_server_AlarmManagerService_close(JNIEnv* env, jobject obj, jint fd)
 {
-	close(fd);
+    close(fd);
 }
 
 static void android_server_AlarmManagerService_set(JNIEnv* env, jobject obj, jint fd, jint type, jlong seconds, jlong nanoseconds)
@@ -71,24 +71,22 @@ static void android_server_AlarmManagerService_set(JNIEnv* env, jobject obj, jin
     ts.tv_sec = seconds;
     ts.tv_nsec = nanoseconds;
 
-	int result = ioctl(fd, ANDROID_ALARM_SET(type), &ts);
-	if (result < 0)
-	{
-        ALOGE("Unable to set alarm to %lld.%09lld: %s\n", seconds, nanoseconds, strerror(errno));
+    int result = ioctl(fd, ANDROID_ALARM_SET(type), &ts);
+    if (result < 0) {
+        ALOGE("Unable to set alarm to %lld.%09lld: %s\n",
+                seconds, nanoseconds, strerror(errno));
     }
 }
 
 static jint android_server_AlarmManagerService_waitForAlarm(JNIEnv* env, jobject obj, jint fd)
 {
-	int result = 0;
+    int result = 0;
 
-	do
-	{
-		result = ioctl(fd, ANDROID_ALARM_WAIT);
-	} while (result < 0 && errno == EINTR);
+    do {
+        result = ioctl(fd, ANDROID_ALARM_WAIT);
+    } while (result < 0 && errno == EINTR);
 
-	if (result < 0)
-	{
+    if (result < 0) {
         ALOGE("Unable to wait on alarm: %s\n", strerror(errno));
         return 0;
     }
@@ -97,12 +95,17 @@ static jint android_server_AlarmManagerService_waitForAlarm(JNIEnv* env, jobject
 }
 
 static JNINativeMethod sMethods[] = {
-     /* name, signature, funcPtr */
-	{"init", "()I", (void*)android_server_AlarmManagerService_init},
-	{"close", "(I)V", (void*)android_server_AlarmManagerService_close},
-	{"set", "(IIJJ)V", (void*)android_server_AlarmManagerService_set},
-    {"waitForAlarm", "(I)I", (void*)android_server_AlarmManagerService_waitForAlarm},
-    {"setKernelTimezone", "(II)I", (void*)android_server_AlarmManagerService_setKernelTimezone},
+    /* name, signature, funcPtr */
+    {"init", "()I",
+            (void*)android_server_AlarmManagerService_init},
+    {"close", "(I)V",
+            (void*)android_server_AlarmManagerService_close},
+    {"set", "(IIJJ)V",
+            (void*)android_server_AlarmManagerService_set},
+    {"waitForAlarm", "(I)I",
+            (void*)android_server_AlarmManagerService_waitForAlarm},
+    {"setKernelTimezone", "(II)I",
+            (void*)android_server_AlarmManagerService_setKernelTimezone},
 };
 
 int register_android_server_AlarmManagerService(JNIEnv* env)
