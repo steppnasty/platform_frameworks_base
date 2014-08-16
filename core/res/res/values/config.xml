@@ -256,7 +256,7 @@
     <integer-array translatable="false" name="config_tether_upstream_types">
         <item>0</item>
         <item>1</item>
-	<item>5</item>
+        <item>5</item>
         <item>7</item>
         <item>9</item>
     </integer-array>
@@ -473,6 +473,9 @@
     <!-- Display low battery warning when battery level dips to this value.
          Also, the battery stats are flushed to disk when we hit this level.  -->
     <integer name="config_criticalBatteryWarningLevel">4</integer>
+
+    <!-- Shutdown if the battery temperature exceeds (this value * 0.1) Celsius. -->
+    <integer name="config_shutdownBatteryTemperature">680</integer>
 
     <!-- Display low battery warning when battery level dips to this value -->
     <!-- Display low battery warning when battery level dips to this value -->

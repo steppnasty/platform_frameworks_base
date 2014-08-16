@@ -42,6 +42,7 @@ struct FieldIds {
     // members
     jfieldID mAcOnline;
     jfieldID mUsbOnline;
+    jfieldID mWirelessOnline;
     jfieldID mBatteryStatus;
     jfieldID mBatteryHealth;
     jfieldID mBatteryPresent;
@@ -71,6 +72,7 @@ static BatteryManagerConstants gConstants;
 struct PowerSupplyPaths {
     char* acOnlinePath;
     char* usbOnlinePath;
+    char* wirelessOnlinePath;
     char* batteryStatusPath;
     char* batteryHealthPath;
     char* batteryPresentPath;
@@ -88,8 +90,8 @@ static jint getBatteryStatus(const char* status)
     switch (status[0]) {
         case 'C': return gConstants.statusCharging;         // Charging
         case 'D': return gConstants.statusDischarging;      // Discharging
-        case 'F': return gConstants.statusFull;             // Not charging
-        case 'N': return gConstants.statusNotCharging;      // Full
+        case 'F': return gConstants.statusFull;             // Full
+        case 'N': return gConstants.statusNotCharging;      // Not charging
         case 'U': return gConstants.statusUnknown;          // Unknown
             
         default: {
@@ -198,6 +200,7 @@ static void android_server_BatteryService_update(JNIEnv* env, jobject obj)
 {
     setBooleanField(env, obj, gPaths.acOnlinePath, gFieldIds.mAcOnline);
     setBooleanField(env, obj, gPaths.usbOnlinePath, gFieldIds.mUsbOnline);
+    setBooleanField(env, obj, gPaths.wirelessOnlinePath, gFieldIds.mWirelessOnline);
     setBooleanField(env, obj, gPaths.batteryPresentPath, gFieldIds.mBatteryPresent);
     
     setIntField(env, obj, gPaths.batteryCapacityPath, gFieldIds.mBatteryLevel);
@@ -233,80 +236,87 @@ int register_android_server_BatteryService(JNIEnv* env)
     DIR* dir = opendir(POWER_SUPPLY_PATH);
     if (dir == NULL) {
         ALOGE("Could not open %s\n", POWER_SUPPLY_PATH);
-        return -1;
-    }
-    while ((entry = readdir(dir))) {
-        const char* name = entry->d_name;
+    } else {
+        while ((entry = readdir(dir))) {
+            const char* name = entry->d_name;
 
-        // ignore "." and ".."
-        if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) {
-            continue;
-        }
-
-        char buf[20];
-        // Look for "type" file in each subdirectory
-        snprintf(path, sizeof(path), "%s/%s/type", POWER_SUPPLY_PATH, name);
-        int length = readFromFile(path, buf, sizeof(buf));
-        if (length > 0) {
-            if (buf[length - 1] == '\n')
-                buf[length - 1] = 0;
-
-            if (strcmp(buf, "Mains") == 0) {
-                snprintf(path, sizeof(path), "%s/%s/online", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.acOnlinePath = strdup(path);
+            // ignore "." and ".."
+            if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) {
+                continue;
             }
-            else if (strcmp(buf, "USB") == 0) {
-                snprintf(path, sizeof(path), "%s/%s/online", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.usbOnlinePath = strdup(path);
-            }
-            else if (strcmp(buf, "Battery") == 0) {
-                snprintf(path, sizeof(path), "%s/%s/status", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.batteryStatusPath = strdup(path);
-                snprintf(path, sizeof(path), "%s/%s/health", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.batteryHealthPath = strdup(path);
-                snprintf(path, sizeof(path), "%s/%s/present", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.batteryPresentPath = strdup(path);
-                snprintf(path, sizeof(path), "%s/%s/capacity", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.batteryCapacityPath = strdup(path);
 
-                snprintf(path, sizeof(path), "%s/%s/voltage_now", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0) {
-                    gPaths.batteryVoltagePath = strdup(path);
-                    // voltage_now is in microvolts, not millivolts
-                    gVoltageDivisor = 1000;
-                } else {
-                    snprintf(path, sizeof(path), "%s/%s/batt_vol", POWER_SUPPLY_PATH, name);
+            char buf[20];
+            // Look for "type" file in each subdirectory
+            snprintf(path, sizeof(path), "%s/%s/type", POWER_SUPPLY_PATH, name);
+            int length = readFromFile(path, buf, sizeof(buf));
+            if (length > 0) {
+                if (buf[length - 1] == '\n')
+                    buf[length - 1] = 0;
+
+                if (strcmp(buf, "Mains") == 0) {
+                    snprintf(path, sizeof(path), "%s/%s/online", POWER_SUPPLY_PATH, name);
                     if (access(path, R_OK) == 0)
+                        gPaths.acOnlinePath = strdup(path);
+                }
+                else if (strcmp(buf, "USB") == 0) {
+                    snprintf(path, sizeof(path), "%s/%s/online", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.usbOnlinePath = strdup(path);
+                }
+                else if (strcmp(buf, "Wireless") == 0) {
+                    snprintf(path, sizeof(path), "%s/%s/online", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.wirelessOnlinePath = strdup(path);
+                }
+                else if (strcmp(buf, "Battery") == 0) {
+                    snprintf(path, sizeof(path), "%s/%s/status", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.batteryStatusPath = strdup(path);
+                    snprintf(path, sizeof(path), "%s/%s/health", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.batteryHealthPath = strdup(path);
+                    snprintf(path, sizeof(path), "%s/%s/present", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.batteryPresentPath = strdup(path);
+                    snprintf(path, sizeof(path), "%s/%s/capacity", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.batteryCapacityPath = strdup(path);
+
+                    snprintf(path, sizeof(path), "%s/%s/voltage_now", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0) {
                         gPaths.batteryVoltagePath = strdup(path);
-                }
+                        // voltage_now is in microvolts, not millivolts
+                        gVoltageDivisor = 1000;
+                    } else {
+                        snprintf(path, sizeof(path), "%s/%s/batt_vol", POWER_SUPPLY_PATH, name);
+                        if (access(path, R_OK) == 0)
+                            gPaths.batteryVoltagePath = strdup(path);
+                    }
 
-                snprintf(path, sizeof(path), "%s/%s/temp", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0) {
-                    gPaths.batteryTemperaturePath = strdup(path);
-                } else {
-                    snprintf(path, sizeof(path), "%s/%s/batt_temp", POWER_SUPPLY_PATH, name);
-                    if (access(path, R_OK) == 0)
+                    snprintf(path, sizeof(path), "%s/%s/temp", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0) {
                         gPaths.batteryTemperaturePath = strdup(path);
-                }
+                    } else {
+                        snprintf(path, sizeof(path), "%s/%s/batt_temp", POWER_SUPPLY_PATH, name);
+                        if (access(path, R_OK) == 0)
+                            gPaths.batteryTemperaturePath = strdup(path);
+                    }
 
-                snprintf(path, sizeof(path), "%s/%s/technology", POWER_SUPPLY_PATH, name);
-                if (access(path, R_OK) == 0)
-                    gPaths.batteryTechnologyPath = strdup(path);
+                    snprintf(path, sizeof(path), "%s/%s/technology", POWER_SUPPLY_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        gPaths.batteryTechnologyPath = strdup(path);
+                }
             }
         }
+        closedir(dir);
     }
-    closedir(dir);
 
     if (!gPaths.acOnlinePath)
         ALOGE("acOnlinePath not found");
     if (!gPaths.usbOnlinePath)
         ALOGE("usbOnlinePath not found");
+    if (!gPaths.wirelessOnlinePath)
+        ALOGE("wirelessOnlinePath not found");
     if (!gPaths.batteryStatusPath)
         ALOGE("batteryStatusPath not found");
     if (!gPaths.batteryHealthPath)
@@ -331,6 +341,7 @@ int register_android_server_BatteryService(JNIEnv* env)
     
     gFieldIds.mAcOnline = env->GetFieldID(clazz, "mAcOnline", "Z");
     gFieldIds.mUsbOnline = env->GetFieldID(clazz, "mUsbOnline", "Z");
+    gFieldIds.mWirelessOnline = env->GetFieldID(clazz, "mWirelessOnline", "Z");
     gFieldIds.mBatteryStatus = env->GetFieldID(clazz, "mBatteryStatus", "I");
     gFieldIds.mBatteryHealth = env->GetFieldID(clazz, "mBatteryHealth", "I");
     gFieldIds.mBatteryPresent = env->GetFieldID(clazz, "mBatteryPresent", "Z");
@@ -341,6 +352,7 @@ int register_android_server_BatteryService(JNIEnv* env)
 
     LOG_FATAL_IF(gFieldIds.mAcOnline == NULL, "Unable to find BatteryService.AC_ONLINE_PATH");
     LOG_FATAL_IF(gFieldIds.mUsbOnline == NULL, "Unable to find BatteryService.USB_ONLINE_PATH");
+    LOG_FATAL_IF(gFieldIds.mWirelessOnline == NULL, "Unable to find BatteryService.WIRELESS_ONLINE_PATH");
     LOG_FATAL_IF(gFieldIds.mBatteryStatus == NULL, "Unable to find BatteryService.BATTERY_STATUS_PATH");
     LOG_FATAL_IF(gFieldIds.mBatteryHealth == NULL, "Unable to find BatteryService.BATTERY_HEALTH_PATH");
     LOG_FATAL_IF(gFieldIds.mBatteryPresent == NULL, "Unable to find BatteryService.BATTERY_PRESENT_PATH");
