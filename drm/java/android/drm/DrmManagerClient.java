@@ -29,6 +29,9 @@ import android.os.Message;
 import android.provider.MediaStore;
 import android.util.Log;
 
+import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -242,6 +245,7 @@ public class DrmManagerClient {
     public DrmManagerClient(Context context) {
         mContext = context;
         mReleased = false;
+        createEventThreads();
 
         // save the unique id
         mUniqueId = _initialize();
@@ -282,21 +286,6 @@ public class DrmManagerClient {
         mOnErrorListener = null;
         _release(mUniqueId);
     }
-
-
-    private void createListeners() {
-        if (mEventHandler == null && mInfoHandler == null) {
-            mInfoThread = new HandlerThread("DrmManagerClient.InfoHandler");
-            mInfoThread.start();
-            mInfoHandler = new InfoHandler(mInfoThread.getLooper());
-
-            mEventThread = new HandlerThread("DrmManagerClient.EventHandler");
-            mEventThread.start();
-            mEventHandler = new EventHandler(mEventThread.getLooper());
-            _setListeners(mUniqueId, new WeakReference<DrmManagerClient>(this));
-        }
-    }
-
 
     /**
      * Registers an {@link DrmManagerClient.OnInfoListener} callback, which is invoked when the 
@@ -363,6 +352,7 @@ public class DrmManagerClient {
      *
      * @return A {@link android.content.ContentValues} instance that contains
      * key-value pairs representing the constraints. Null in case of failure.
+     * The keys are defined in {@link DrmStore.ConstraintsColumns}.
      */
     public ContentValues getConstraints(String path, int action) {
         if (null == path || path.equals("") || !DrmStore.Action.isValid(action)) {
@@ -595,7 +585,28 @@ public class DrmManagerClient {
         if (null == path || path.equals("")) {
             throw new IllegalArgumentException("Given path should be non null");
         }
-        return _getOriginalMimeType(mUniqueId, path);
+
+        String mime = null;
+
+        FileInputStream is = null;
+        try {
+            FileDescriptor fd = null;
+            File file = new File(path);
+            if (file.exists()) {
+                is = new FileInputStream(file);
+                fd = is.getFD();
+            }
+            mime = _getOriginalMimeType(mUniqueId, path, fd);
+        } catch (IOException ioe) {
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch(IOException e) {}
+            }
+        }
+
+        return mime;
     }
 
     /**
@@ -861,7 +872,7 @@ public class DrmManagerClient {
 
     private native int _getDrmObjectType(int uniqueId, String path, String mimeType);
 
-    private native String _getOriginalMimeType(int uniqueId, String path);
+    private native String _getOriginalMimeType(int uniqueId, String path, FileDescriptor fd);
 
     private native int _checkRightsStatus(int uniqueId, String path, int action);
 
@@ -877,5 +888,21 @@ public class DrmManagerClient {
     private native DrmConvertedStatus _closeConvertSession(int uniqueId, int convertId);
 
     private native DrmSupportInfo[] _getAllSupportInfo(int uniqueId);
+
+    private void createEventThreads() {
+        if (mEventHandler == null && mInfoHandler == null) {
+            mInfoThread = new HandlerThread("DrmManagerClient.InfoHandler");
+            mInfoThread.start();
+            mInfoHandler = new InfoHandler(mInfoThread.getLooper());
+
+            mEventThread = new HandlerThread("DrmManagerClient.EventHandler");
+            mEventThread.start();
+            mEventHandler = new EventHandler(mEventThread.getLooper());
+        }
+    }
+
+    private void createListeners() {
+        _setListeners(mUniqueId, new WeakReference<DrmManagerClient>(this));
+    }
 }
 
