@@ -51,7 +51,7 @@ LOCAL_C_INCLUDES += \
     frameworks/av/media/libstagefright/codecs/amrnb/enc/src \
     frameworks/av/media/libstagefright/codecs/amrnb/common \
     frameworks/av/media/libstagefright/codecs/amrnb/common/include \
-    frameworks/base/media/mtp \
+    frameworks/av/media/mtp \
     $(PV_INCLUDES) \
     $(JNI_H_INCLUDE) \
     $(call include-path-for, corecg graphics)
