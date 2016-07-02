@@ -73,38 +73,28 @@ static jboolean isLoggable(const char* tag, jint level) {
 
 static jboolean android_util_Log_isLoggable(JNIEnv* env, jobject clazz, jstring tag, jint level)
 {
-    int len;
-    char key[PROPERTY_KEY_MAX];
-    char buf[PROPERTY_VALUE_MAX];
-
     if (tag == NULL) {
         return false;
     }
 
-    jboolean result = false;
-
     const char* chars = env->GetStringUTFChars(tag, NULL);
+    if (!chars) {
+        return false;
+    }
 
+    jboolean result = false;
     if ((strlen(chars)+sizeof(LOG_NAMESPACE)) > PROPERTY_KEY_MAX) {
         char buf2[200];
         snprintf(buf2, sizeof(buf2), "Log tag \"%s\" exceeds limit of %d characters\n",
                 chars, PROPERTY_KEY_MAX - sizeof(LOG_NAMESPACE));
 
-        // release the chars!
-        env->ReleaseStringUTFChars(tag, chars);
-
         jniThrowException(env, "java/lang/IllegalArgumentException", buf2);
-        return false;
     } else {
-        strncpy(key, LOG_NAMESPACE, sizeof(LOG_NAMESPACE)-1);
-        strcpy(key + sizeof(LOG_NAMESPACE) - 1, chars);
+        result = isLoggable(chars, level);
     }
 
     env->ReleaseStringUTFChars(tag, chars);
-
-    len = property_get(key, buf, "");
-    int logLevel = toLevel(buf);
-    return (logLevel >= 0 && level >= logLevel) ? true : false;
+    return result;
 }
 
 bool android_util_Log_isVerboseLogEnabled(const char* tag) {

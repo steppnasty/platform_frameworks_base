@@ -89,11 +89,10 @@ public class UT_primitives extends UnitTest {
 
     public void run() {
         RenderScript pRS = RenderScript.create(mCtx);
-        ScriptC_primitives s = new ScriptC_primitives(pRS, mRes, R.raw.primitives);
+        ScriptC_primitives s = new ScriptC_primitives(pRS);
         pRS.setMessageHandler(mRsMessage);
         if (!initializeGlobals(s)) {
-            // initializeGlobals failed
-            result = -1;
+            failTest();
         } else {
             s.invoke_primitives_test(0, 0);
             pRS.finish();

@@ -304,10 +304,10 @@ public class UT_vector extends UnitTest {
 
     public void run() {
         RenderScript pRS = RenderScript.create(mCtx);
-        ScriptC_vector s = new ScriptC_vector(pRS, mRes, R.raw.vector);
+        ScriptC_vector s = new ScriptC_vector(pRS);
         pRS.setMessageHandler(mRsMessage);
         if (!initializeGlobals(s)) {
-            result = -1;
+            failTest();
         } else {
             s.invoke_vector_test();
             pRS.finish();

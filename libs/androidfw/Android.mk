@@ -1,4 +1,4 @@
-# Copyright (C) 2012 The Android Open Source Project
+# Copyright (C) 2010 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ commonUiSources:= \
 
 commonSources:= \
 	$(commonUtilsSources) \
-        $(commonUiSources)
+	$(commonUiSources)
 
 # For the host
 # =====================================================
@@ -56,9 +56,10 @@ LOCAL_MODULE:= libandroidfw
 LOCAL_MODULE_TAGS := optional
 
 LOCAL_C_INCLUDES := \
-        external/zlib
+	external/zlib
 
 include $(BUILD_HOST_STATIC_LIBRARY)
+
 
 # For the device
 # =====================================================
@@ -66,24 +67,24 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
-        $(commonSources) \
-        BackupData.cpp \
-        BackupHelpers.cpp \
-        CursorWindow.cpp \
-        InputTransport.cpp
+	$(commonSources) \
+	BackupData.cpp \
+	BackupHelpers.cpp \
+    CursorWindow.cpp \
+	InputTransport.cpp
 
 LOCAL_SHARED_LIBRARIES := \
-        liblog \
-        libcutils \
-        libutils \
-        libbinder \
-        libskia \
-        libz
+	liblog \
+	libcutils \
+	libutils \
+	libbinder \
+	libskia \
+	libz
 
 LOCAL_C_INCLUDES := \
     external/skia/include/core \
     external/icu4c/common \
-        external/zlib
+	external/zlib
 
 LOCAL_MODULE:= libandroidfw
 
@@ -95,15 +96,16 @@ include $(BUILD_SHARED_LIBRARY)
 ifeq ($(TARGET_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_C_INCLUDES += \
-        external/skia/include/core \
-        external/zlib \
-        external/icu4c/common \
-        bionic/libc/private
+	external/skia/include/core \
+	external/zlib \
+	external/icu4c/common \
+	bionic/libc/private
 LOCAL_LDLIBS := -lrt -ldl -lpthread
 LOCAL_MODULE := libandroidfw
 LOCAL_SRC_FILES := $(commonUtilsSources) BackupData.cpp BackupHelpers.cpp
 include $(BUILD_STATIC_LIBRARY)
 endif
+
 
 # Include subdirectory makefiles
 # ============================================================

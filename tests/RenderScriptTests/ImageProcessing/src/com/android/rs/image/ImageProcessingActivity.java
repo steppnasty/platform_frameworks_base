@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,132 +21,123 @@ import android.os.Bundle;
 import android.graphics.BitmapFactory;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.renderscript.ScriptC;
-import android.renderscript.RenderScript;
-import android.renderscript.Type;
-import android.renderscript.Allocation;
-import android.renderscript.Element;
-import android.renderscript.Script;
 import android.view.SurfaceView;
-import android.view.SurfaceHolder;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.ImageView;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.view.View;
 import android.util.Log;
-import java.lang.Math;
+
+import android.os.Environment;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 public class ImageProcessingActivity extends Activity
-                                       implements SurfaceHolder.Callback,
-                                       SeekBar.OnSeekBarChangeListener {
+                                       implements SeekBar.OnSeekBarChangeListener {
     private final String TAG = "Img";
-    private Bitmap mBitmapIn;
-    private Bitmap mBitmapOut;
-    private ScriptC_threshold mScript;
-    private ScriptC_vertical_blur mScriptVBlur;
-    private ScriptC_horizontal_blur mScriptHBlur;
-    private int mRadius = 0;
-    private SeekBar mRadiusSeekBar;
+    public final String RESULT_FILE = "image_processing_result.csv";
 
-    private float mInBlack = 0.0f;
-    private SeekBar mInBlackSeekBar;
-    private float mOutBlack = 0.0f;
-    private SeekBar mOutBlackSeekBar;
-    private float mInWhite = 255.0f;
-    private SeekBar mInWhiteSeekBar;
-    private float mOutWhite = 255.0f;
-    private SeekBar mOutWhiteSeekBar;
-    private float mGamma = 1.0f;
-    private SeekBar mGammaSeekBar;
+    /**
+     * Define enum type for test names
+     */
+    public enum TestName {
+        LEVELS_VEC3_RELAXED ("Levels Vec3 Relaxed"),
+        LEVELS_VEC4_RELAXED ("Levels Vec4 Relaxed"),
+        LEVELS_VEC3_FULL ("Levels Vec3 Full"),
+        LEVELS_VEC4_FULL ("Levels Vec4 Full"),
+        BLUR_RADIUS_25 ("Blur radius 25"),
+        INTRINSIC_BLUE_RADIUS_25 ("Intrinsic Blur radius 25"),
+        GREYSCALE ("Greyscale"),
+        GRAIN ("Grain"),
+        FISHEYE_FULL ("Fisheye Full"),
+        FISHEYE_RELAXED ("Fisheye Relaxed"),
+        FISHEYE_APPROXIMATE_FULL ("Fisheye Approximate Full"),
+        FISHEYE_APPROXIMATE_RELAXED ("Fisheye Approximate Relaxed"),
+        VIGNETTE_FULL ("Vignette Full"),
+        VIGNETTE_RELAXED ("Vignette Relaxed"),
+        VIGNETTE_APPROXIMATE_FULL ("Vignette Approximate Full"),
+        VIGNETTE_APPROXIMATE_RELAXED ("Vignette Approximate Relaxed"),
+        GROUP_TEST_EMULATED ("Group Test (emulated)"),
+        GROUP_TEST_NATIVE ("Group Test (native)"),
+        CONVOLVE_3X3 ("Convolve 3x3"),
+        INTRINSICS_CONVOLVE_3X3 ("Intrinsics Convolve 3x3"),
+        COLOR_MATRIX ("ColorMatrix"),
+        INTRINSICS_COLOR_MATRIX ("Intrinsics ColorMatrix"),
+        INTRINSICS_COLOR_MATRIX_GREY ("Intrinsics ColorMatrix Grey"),
+        COPY ("Copy"),
+        CROSS_PROCESS_USING_LUT ("CrossProcess (using LUT)"),
+        CONVOLVE_5X5 ("Convolve 5x5"),
+        INTRINSICS_CONVOLVE_5X5 ("Intrinsics Convolve 5x5"),
+        MANDELBROT ("Mandelbrot"),
+        INTRINSICS_BLEND ("Intrinsics Blend");
+
+        private final String name;
+
+        private TestName(String s) {
+            name = s;
+        }
+
+        // return quoted string as displayed test name
+        public String toString() {
+            return name;
+        }
+    }
+
+    Bitmap mBitmapIn;
+    Bitmap mBitmapIn2;
+    Bitmap mBitmapOut;
+
+    private Spinner mSpinner;
+    private SeekBar mBar1;
+    private SeekBar mBar2;
+    private SeekBar mBar3;
+    private SeekBar mBar4;
+    private SeekBar mBar5;
+    private TextView mText1;
+    private TextView mText2;
+    private TextView mText3;
+    private TextView mText4;
+    private TextView mText5;
 
     private float mSaturation = 1.0f;
-    private SeekBar mSaturationSeekBar;
 
     private TextView mBenchmarkResult;
-
-    @SuppressWarnings({"FieldCanBeLocal"})
-    private RenderScript mRS;
-    @SuppressWarnings({"FieldCanBeLocal"})
-    private Type mPixelType;
-    @SuppressWarnings({"FieldCanBeLocal"})
-    private Allocation mInPixelsAllocation;
-    @SuppressWarnings({"FieldCanBeLocal"})
-    private Allocation mOutPixelsAllocation;
-    @SuppressWarnings({"FieldCanBeLocal"})
-    private Allocation mScratchPixelsAllocation1;
-    private Allocation mScratchPixelsAllocation2;
+    private Spinner mTestSpinner;
 
     private SurfaceView mSurfaceView;
     private ImageView mDisplayView;
 
-    private boolean mIsProcessing;
+    private boolean mDoingBenchmark;
 
-    class FilterCallback extends RenderScript.RSMessageHandler {
-        private Runnable mAction = new Runnable() {
-            public void run() {
+    private TestBase mTest;
 
-                synchronized (mDisplayView) {
-                    mIsProcessing = false;
-                }
-
-                mOutPixelsAllocation.copyTo(mBitmapOut);
-                mDisplayView.invalidate();
-            }
-        };
-
-        @Override
-        public void run() {
-            mSurfaceView.removeCallbacks(mAction);
-            mSurfaceView.post(mAction);
-        }
+    public void updateDisplay() {
+            mTest.updateBitmap(mBitmapOut);
+            mDisplayView.invalidate();
     }
-
-    int in[];
-    int interm[];
-    int out[];
-    int MAX_RADIUS = 25;
-    // Store our coefficients here
-    float gaussian[];
 
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
         if (fromUser) {
 
-            if (seekBar == mRadiusSeekBar) {
-                float fRadius = progress / 100.0f;
-                fRadius *= (float)(MAX_RADIUS);
-                mRadius = (int)fRadius;
-
-                mScript.set_radius(mRadius);
-            } else if (seekBar == mInBlackSeekBar) {
-                mInBlack = (float)progress;
-                mScriptVBlur.invoke_setLevels(mInBlack, mOutBlack, mInWhite, mOutWhite);
-            } else if (seekBar == mOutBlackSeekBar) {
-                mOutBlack = (float)progress;
-                mScriptVBlur.invoke_setLevels(mInBlack, mOutBlack, mInWhite, mOutWhite);
-            } else if (seekBar == mInWhiteSeekBar) {
-                mInWhite = (float)progress + 127.0f;
-                mScriptVBlur.invoke_setLevels(mInBlack, mOutBlack, mInWhite, mOutWhite);
-            } else if (seekBar == mOutWhiteSeekBar) {
-                mOutWhite = (float)progress + 127.0f;
-                mScriptVBlur.invoke_setLevels(mInBlack, mOutBlack, mInWhite, mOutWhite);
-            } else if (seekBar == mGammaSeekBar) {
-                mGamma = (float)progress/100.0f;
-                mGamma = Math.max(mGamma, 0.1f);
-                mGamma = 1.0f / mGamma;
-                mScriptVBlur.invoke_setGamma(mGamma);
-            } else if (seekBar == mSaturationSeekBar) {
-                mSaturation = (float)progress / 50.0f;
-                mScriptVBlur.invoke_setSaturation(mSaturation);
+            if (seekBar == mBar1) {
+                mTest.onBar1Changed(progress);
+            } else if (seekBar == mBar2) {
+                mTest.onBar2Changed(progress);
+            } else if (seekBar == mBar3) {
+                mTest.onBar3Changed(progress);
+            } else if (seekBar == mBar4) {
+                mTest.onBar4Changed(progress);
+            } else if (seekBar == mBar5) {
+                mTest.onBar5Changed(progress);
             }
 
-            synchronized (mDisplayView) {
-                if (mIsProcessing) {
-                    return;
-                }
-                mIsProcessing = true;
-            }
-
-            mScript.invoke_filter();
+            mTest.runTest();
+            updateDisplay();
         }
     }
 
@@ -156,103 +147,194 @@ public class ImageProcessingActivity extends Activity
     public void onStopTrackingTouch(SeekBar seekBar) {
     }
 
+    void setupBars() {
+        mSpinner.setVisibility(View.VISIBLE);
+        mTest.onSpinner1Setup(mSpinner);
+
+        mBar1.setVisibility(View.VISIBLE);
+        mText1.setVisibility(View.VISIBLE);
+        mTest.onBar1Setup(mBar1, mText1);
+
+        mBar2.setVisibility(View.VISIBLE);
+        mText2.setVisibility(View.VISIBLE);
+        mTest.onBar2Setup(mBar2, mText2);
+
+        mBar3.setVisibility(View.VISIBLE);
+        mText3.setVisibility(View.VISIBLE);
+        mTest.onBar3Setup(mBar3, mText3);
+
+        mBar4.setVisibility(View.VISIBLE);
+        mText4.setVisibility(View.VISIBLE);
+        mTest.onBar4Setup(mBar4, mText4);
+
+        mBar5.setVisibility(View.VISIBLE);
+        mText5.setVisibility(View.VISIBLE);
+        mTest.onBar5Setup(mBar5, mText5);
+    }
+
+
+    void changeTest(TestName testName) {
+        if (mTest != null) {
+            mTest.destroy();
+        }
+        switch(testName) {
+        case LEVELS_VEC3_RELAXED:
+            mTest = new LevelsV4(false, false);
+            break;
+        case LEVELS_VEC4_RELAXED:
+            mTest = new LevelsV4(false, true);
+            break;
+        case LEVELS_VEC3_FULL:
+            mTest = new LevelsV4(true, false);
+            break;
+        case LEVELS_VEC4_FULL:
+            mTest = new LevelsV4(true, true);
+            break;
+        case BLUR_RADIUS_25:
+            mTest = new Blur25(false);
+            break;
+        case INTRINSIC_BLUE_RADIUS_25:
+            mTest = new Blur25(true);
+            break;
+        case GREYSCALE:
+            mTest = new Greyscale();
+            break;
+        case GRAIN:
+            mTest = new Grain();
+            break;
+        case FISHEYE_FULL:
+            mTest = new Fisheye(false, false);
+            break;
+        case FISHEYE_RELAXED:
+            mTest = new Fisheye(false, true);
+            break;
+        case FISHEYE_APPROXIMATE_FULL:
+            mTest = new Fisheye(true, false);
+            break;
+        case FISHEYE_APPROXIMATE_RELAXED:
+            mTest = new Fisheye(true, true);
+            break;
+        case VIGNETTE_FULL:
+            mTest = new Vignette(false, false);
+            break;
+        case VIGNETTE_RELAXED:
+            mTest = new Vignette(false, true);
+            break;
+        case VIGNETTE_APPROXIMATE_FULL:
+            mTest = new Vignette(true, false);
+            break;
+        case VIGNETTE_APPROXIMATE_RELAXED:
+            mTest = new Vignette(true, true);
+            break;
+        case GROUP_TEST_EMULATED:
+            mTest = new GroupTest(false);
+            break;
+        case GROUP_TEST_NATIVE:
+            mTest = new GroupTest(true);
+            break;
+        case CONVOLVE_3X3:
+            mTest = new Convolve3x3(false);
+            break;
+        case INTRINSICS_CONVOLVE_3X3:
+            mTest = new Convolve3x3(true);
+            break;
+        case COLOR_MATRIX:
+            mTest = new ColorMatrix(false, false);
+            break;
+        case INTRINSICS_COLOR_MATRIX:
+            mTest = new ColorMatrix(true, false);
+            break;
+        case INTRINSICS_COLOR_MATRIX_GREY:
+            mTest = new ColorMatrix(true, true);
+            break;
+        case COPY:
+            mTest = new Copy();
+            break;
+        case CROSS_PROCESS_USING_LUT:
+            mTest = new CrossProcess();
+            break;
+        case CONVOLVE_5X5:
+            mTest = new Convolve5x5(false);
+            break;
+        case INTRINSICS_CONVOLVE_5X5:
+            mTest = new Convolve5x5(true);
+            break;
+        case MANDELBROT:
+            mTest = new Mandelbrot();
+            break;
+        case INTRINSICS_BLEND:
+            mTest = new Blend();
+            break;
+        }
+
+        mTest.createBaseTest(this, mBitmapIn, mBitmapIn2);
+        setupBars();
+
+        mTest.runTest();
+        updateDisplay();
+        mBenchmarkResult.setText("Result: not run");
+    }
+
+    void setupTests() {
+        mTestSpinner.setAdapter(new ArrayAdapter<TestName>(
+            this, R.layout.spinner_layout, TestName.values()));
+    }
+
+    private AdapterView.OnItemSelectedListener mTestSpinnerListener =
+            new AdapterView.OnItemSelectedListener() {
+                public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                    changeTest(TestName.values()[pos]);
+                }
+
+                public void onNothingSelected(AdapterView parent) {
+
+                }
+            };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        mBitmapIn = loadBitmap(R.drawable.city);
-        mBitmapOut = loadBitmap(R.drawable.city);
+        mBitmapIn = loadBitmap(R.drawable.img1600x1067);
+        mBitmapIn2 = loadBitmap(R.drawable.img1600x1067b);
+        mBitmapOut = loadBitmap(R.drawable.img1600x1067);
 
         mSurfaceView = (SurfaceView) findViewById(R.id.surface);
-        mSurfaceView.getHolder().addCallback(this);
 
         mDisplayView = (ImageView) findViewById(R.id.display);
         mDisplayView.setImageBitmap(mBitmapOut);
 
-        mRadiusSeekBar = (SeekBar) findViewById(R.id.radius);
-        mRadiusSeekBar.setOnSeekBarChangeListener(this);
+        mSpinner = (Spinner) findViewById(R.id.spinner1);
 
-        mInBlackSeekBar = (SeekBar)findViewById(R.id.inBlack);
-        mInBlackSeekBar.setOnSeekBarChangeListener(this);
-        mInBlackSeekBar.setMax(128);
-        mInBlackSeekBar.setProgress(0);
-        mOutBlackSeekBar = (SeekBar)findViewById(R.id.outBlack);
-        mOutBlackSeekBar.setOnSeekBarChangeListener(this);
-        mOutBlackSeekBar.setMax(128);
-        mOutBlackSeekBar.setProgress(0);
+        mBar1 = (SeekBar) findViewById(R.id.slider1);
+        mBar2 = (SeekBar) findViewById(R.id.slider2);
+        mBar3 = (SeekBar) findViewById(R.id.slider3);
+        mBar4 = (SeekBar) findViewById(R.id.slider4);
+        mBar5 = (SeekBar) findViewById(R.id.slider5);
 
-        mInWhiteSeekBar = (SeekBar)findViewById(R.id.inWhite);
-        mInWhiteSeekBar.setOnSeekBarChangeListener(this);
-        mInWhiteSeekBar.setMax(128);
-        mInWhiteSeekBar.setProgress(128);
-        mOutWhiteSeekBar = (SeekBar)findViewById(R.id.outWhite);
-        mOutWhiteSeekBar.setOnSeekBarChangeListener(this);
-        mOutWhiteSeekBar.setMax(128);
-        mOutWhiteSeekBar.setProgress(128);
+        mBar1.setOnSeekBarChangeListener(this);
+        mBar2.setOnSeekBarChangeListener(this);
+        mBar3.setOnSeekBarChangeListener(this);
+        mBar4.setOnSeekBarChangeListener(this);
+        mBar5.setOnSeekBarChangeListener(this);
 
-        mGammaSeekBar = (SeekBar)findViewById(R.id.inGamma);
-        mGammaSeekBar.setOnSeekBarChangeListener(this);
-        mGammaSeekBar.setMax(150);
-        mGammaSeekBar.setProgress(100);
+        mText1 = (TextView) findViewById(R.id.slider1Text);
+        mText2 = (TextView) findViewById(R.id.slider2Text);
+        mText3 = (TextView) findViewById(R.id.slider3Text);
+        mText4 = (TextView) findViewById(R.id.slider4Text);
+        mText5 = (TextView) findViewById(R.id.slider5Text);
 
-        mSaturationSeekBar = (SeekBar)findViewById(R.id.inSaturation);
-        mSaturationSeekBar.setOnSeekBarChangeListener(this);
-        mSaturationSeekBar.setProgress(50);
+        mTestSpinner = (Spinner) findViewById(R.id.filterselection);
+        mTestSpinner.setOnItemSelectedListener(mTestSpinnerListener);
 
         mBenchmarkResult = (TextView) findViewById(R.id.benchmarkText);
         mBenchmarkResult.setText("Result: not run");
+
+        setupTests();
+        changeTest(TestName.LEVELS_VEC3_RELAXED);
     }
 
-    public void surfaceCreated(SurfaceHolder holder) {
-        createScript();
-        mScript.invoke_filter();
-        mOutPixelsAllocation.copyTo(mBitmapOut);
-    }
-
-    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-    }
-
-    public void surfaceDestroyed(SurfaceHolder holder) {
-    }
-
-    private void createScript() {
-        mRS = RenderScript.create(this);
-        mRS.setMessageHandler(new FilterCallback());
-
-        mInPixelsAllocation = Allocation.createFromBitmap(mRS, mBitmapIn,
-                                                          Allocation.MipmapControl.MIPMAP_NONE,
-                                                          Allocation.USAGE_SCRIPT);
-        mOutPixelsAllocation = Allocation.createFromBitmap(mRS, mBitmapOut,
-                                                           Allocation.MipmapControl.MIPMAP_NONE,
-                                                           Allocation.USAGE_SCRIPT);
-
-        Type.Builder tb = new Type.Builder(mRS, Element.F32_4(mRS));
-        tb.setX(mBitmapIn.getWidth());
-        tb.setY(mBitmapIn.getHeight());
-        mScratchPixelsAllocation1 = Allocation.createTyped(mRS, tb.create());
-        mScratchPixelsAllocation2 = Allocation.createTyped(mRS, tb.create());
-
-        mScriptVBlur = new ScriptC_vertical_blur(mRS, getResources(), R.raw.vertical_blur);
-        mScriptHBlur = new ScriptC_horizontal_blur(mRS, getResources(), R.raw.horizontal_blur);
-
-        mScript = new ScriptC_threshold(mRS, getResources(), R.raw.threshold);
-        mScript.set_width(mBitmapIn.getWidth());
-        mScript.set_height(mBitmapIn.getHeight());
-        mScript.set_radius(mRadius);
-
-        mScriptVBlur.invoke_setLevels(mInBlack, mOutBlack, mInWhite, mOutWhite);
-        mScriptVBlur.invoke_setGamma(mGamma);
-        mScriptVBlur.invoke_setSaturation(mSaturation);
-
-        mScript.bind_InPixel(mInPixelsAllocation);
-        mScript.bind_OutPixel(mOutPixelsAllocation);
-        mScript.bind_ScratchPixel1(mScratchPixelsAllocation1);
-        mScript.bind_ScratchPixel2(mScratchPixelsAllocation2);
-
-        mScript.set_vBlurScript(mScriptVBlur);
-        mScript.set_hBlurScript(mScriptHBlur);
-    }
 
     private Bitmap loadBitmap(int resource) {
         final BitmapFactory.Options options = new BitmapFactory.Options();
@@ -270,31 +352,68 @@ public class ImageProcessingActivity extends Activity
 
     // button hook
     public void benchmark(View v) {
-        long t = getBenchmark();
+        float t = getBenchmark();
         //long javaTime = javaFilter();
         //mBenchmarkResult.setText("RS: " + t + " ms  Java: " + javaTime + " ms");
         mBenchmarkResult.setText("Result: " + t + " ms");
+        Log.v(TAG, "getBenchmark: Renderscript frame time core ms " + t);
+    }
+
+    public void benchmark_all(View v) {
+        // write result into a file
+        File externalStorage = Environment.getExternalStorageDirectory();
+        if (!externalStorage.canWrite()) {
+            Log.v(TAG, "sdcard is not writable");
+            return;
+        }
+        File resultFile = new File(externalStorage, RESULT_FILE);
+        resultFile.setWritable(true, false);
+        try {
+            BufferedWriter rsWriter = new BufferedWriter(new FileWriter(resultFile));
+            Log.v(TAG, "Saved results in: " + resultFile.getAbsolutePath());
+            for (TestName tn: TestName.values()) {
+                changeTest(tn);
+                float t = getBenchmark();
+                String s = new String("" + tn.toString() + ", " + t);
+                rsWriter.write(s + "\n");
+                Log.v(TAG, "Test " + s + "ms\n");
+            }
+            rsWriter.close();
+        } catch (IOException e) {
+            Log.v(TAG, "Unable to write result file " + e.getMessage());
+        }
+        changeTest(TestName.LEVELS_VEC3_RELAXED);
     }
 
     // For benchmark test
-    public long getBenchmark() {
-        Log.v(TAG, "Benchmarking");
-        int oldRadius = mRadius;
-        mRadius = MAX_RADIUS;
-        mScript.set_radius(mRadius);
+    public float getBenchmark() {
+        mDoingBenchmark = true;
 
-        long t = java.lang.System.currentTimeMillis();
+        mTest.setupBenchmark();
+        long result = 0;
 
-        mScript.invoke_filter();
-        mOutPixelsAllocation.copyTo(mBitmapOut);
+        //Log.v(TAG, "Warming");
+        long t = java.lang.System.currentTimeMillis() + 250;
+        do {
+            mTest.runTest();
+            mTest.finish();
+        } while (t > java.lang.System.currentTimeMillis());
 
+        //Log.v(TAG, "Benchmarking");
+        int ct = 0;
+        t = java.lang.System.currentTimeMillis();
+        do {
+            mTest.runTest();
+            mTest.finish();
+            ct++;
+        } while ((t+1000) > java.lang.System.currentTimeMillis());
         t = java.lang.System.currentTimeMillis() - t;
-        Log.v(TAG, "getBenchmark: Renderscript frame time core ms " + t);
-        mRadius = oldRadius;
-        mScript.set_radius(mRadius);
+        float ft = (float)t;
+        ft /= ct;
 
-        mScript.invoke_filter();
-        mOutPixelsAllocation.copyTo(mBitmapOut);
-        return t;
+        mTest.exitBenchmark();
+        mDoingBenchmark = false;
+
+        return ft;
     }
 }

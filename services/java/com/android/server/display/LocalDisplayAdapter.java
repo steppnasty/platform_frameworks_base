@@ -23,6 +23,7 @@ import android.os.Looper;
 import android.os.SystemProperties;
 import android.util.SparseArray;
 import android.view.Display;
+import android.view.DisplayEventReceiver;
 import android.view.Surface;
 import android.view.Surface.PhysicalDisplayInfo;
 
@@ -39,10 +40,12 @@ final class LocalDisplayAdapter extends DisplayAdapter {
 
     private static final int[] BUILT_IN_DISPLAY_IDS_TO_SCAN = new int[] {
             Surface.BUILT_IN_DISPLAY_ID_MAIN,
+            Surface.BUILT_IN_DISPLAY_ID_HDMI,
     };
 
     private final SparseArray<LocalDisplayDevice> mDevices =
             new SparseArray<LocalDisplayDevice>();
+    private HotplugDisplayEventReceiver mHotplugReceiver;
 
     private final PhysicalDisplayInfo mTempPhys = new PhysicalDisplayInfo();
 
@@ -56,6 +59,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
     public void registerLocked() {
         super.registerLocked();
 
+        mHotplugReceiver = new HotplugDisplayEventReceiver(getHandler().getLooper());
         scanDisplaysLocked();
     }
 
@@ -176,6 +180,19 @@ final class LocalDisplayAdapter extends DisplayAdapter {
             pw.println("mBuiltInDisplayId=" + mBuiltInDisplayId);
             pw.println("mPhys=" + mPhys);
             pw.println("mBlanked=" + mBlanked);
+        }
+    }
+
+    private final class HotplugDisplayEventReceiver extends DisplayEventReceiver {
+        public HotplugDisplayEventReceiver(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void onHotplug(long timestampNanos, int builtInDisplayId, boolean connected) {
+            synchronized (getSyncRoot()) {
+                scanDisplaysLocked();
+            }
         }
     }
 }

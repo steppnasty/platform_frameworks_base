@@ -26,7 +26,7 @@ package android.hardware;
  * @see SensorEvent
  *
  */
-public class Sensor {
+public final class Sensor {
 
     /**
      * A constant describing an accelerometer sensor type. See
@@ -57,7 +57,7 @@ public class Sensor {
     public static final int TYPE_GYROSCOPE = 4;
 
     /**
-     * A constant describing an light sensor type. See
+     * A constant describing a light sensor type. See
      * {@link android.hardware.SensorEvent#values SensorEvent.values} for more
      * details.
      */
@@ -77,7 +77,7 @@ public class Sensor {
     public static final int TYPE_TEMPERATURE = 7;
 
     /**
-     * A constant describing an proximity sensor type. See
+     * A constant describing a proximity sensor type. See
      * {@link android.hardware.SensorEvent#values SensorEvent.values} for more
      * details.
      */
@@ -131,7 +131,6 @@ public class Sensor {
     private float   mResolution;
     private float   mPower;
     private int     mMinDelay;
-    private int     mLegacyType;
 
 
     Sensor() {
@@ -204,11 +203,10 @@ public class Sensor {
         mResolution = res;
     }
 
-    void setLegacyType(int legacyType) {
-        mLegacyType = legacyType;
-    }
-
-    int getLegacyType() {
-        return mLegacyType;
+    @Override
+    public String toString() {
+        return "{Sensor name=\"" + mName + "\", vendor=\"" + mVendor + "\", version=" + mVersion
+                + ", type=" + mType + ", maxRange=" + mMaxRange + ", resolution=" + mResolution
+                + ", power=" + mPower + ", minDelay=" + mMinDelay + "}";
     }
 }

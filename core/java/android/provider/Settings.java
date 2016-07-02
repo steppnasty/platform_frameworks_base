@@ -19,6 +19,7 @@ package android.provider;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.app.SearchManager;
+import android.app.WallpaperManager;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -32,16 +33,20 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.SQLException;
+import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.DropBoxManager;
 import android.os.IBinder;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.os.Build.VERSION_CODES;
+import android.speech.tts.TextToSpeech;
 import android.text.TextUtils;
 import android.util.AndroidException;
 import android.util.Log;
@@ -381,10 +386,9 @@ public final class Settings {
 
     /**
      * Activity Action: Show settings to allow configuration of application
-     * development-related settings.
-     * <p>
-     * In some cases, a matching Activity may not exist, so ensure you safeguard
-     * against this.
+     * development-related settings.  As of
+     * {@link android.os.Build.VERSION_CODES#JELLY_BEAN_MR1} this action is
+     * a required part of the platform.
      * <p>
      * Input: Nothing.
      * <p>
@@ -589,7 +593,9 @@ public final class Settings {
         "android.settings.DEVICE_INFO_SETTINGS";
 
     /**
-     * Activity Action: Show NFC sharing settings.
+     * Activity Action: Show NFC settings.
+     * <p>
+     * This shows UI that allows NFC to be turned on or off.
      * <p>
      * In some cases, a matching Activity may not exist, so ensure you
      * safeguard against this.
@@ -597,10 +603,43 @@ public final class Settings {
      * Input: Nothing.
      * <p>
      * Output: Nothing
+     * @see android.nfc.NfcAdapter#isEnabled()
+     */
+    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
+    public static final String ACTION_NFC_SETTINGS = "android.settings.NFC_SETTINGS";
+
+    /**
+     * Activity Action: Show NFC Sharing settings.
+     * <p>
+     * This shows UI that allows NDEF Push (Android Beam) to be turned on or
+     * off.
+     * <p>
+     * In some cases, a matching Activity may not exist, so ensure you
+     * safeguard against this.
+     * <p>
+     * Input: Nothing.
+     * <p>
+     * Output: Nothing
+     * @see android.nfc.NfcAdapter#isNdefPushEnabled()
      */
     @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
     public static final String ACTION_NFCSHARING_SETTINGS =
         "android.settings.NFCSHARING_SETTINGS";
+
+    /**
+     * Activity Action: Show Daydream settings.
+     * <p>
+     * In some cases, a matching Activity may not exist, so ensure you
+     * safeguard against this.
+     * <p>
+     * Input: Nothing.
+     * <p>
+     * Output: Nothing.
+     * @see android.service.dreams.DreamService
+     * @hide
+     */
+    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
+    public static final String ACTION_DREAM_SETTINGS = "android.settings.DREAM_SETTINGS";
 
     // End of Intent actions for Settings
 
@@ -653,7 +692,7 @@ public final class Settings {
     public static final String AUTHORITY = "settings";
 
     private static final String TAG = "Settings";
-    private static final boolean LOCAL_LOGV = false || false;
+    private static final boolean LOCAL_LOGV = false;
 
     public static class SettingNotFoundException extends AndroidException {
         public SettingNotFoundException(String msg) {
@@ -709,7 +748,7 @@ public final class Settings {
         private final String mCallGetCommand;
         private final String mCallSetCommand;
 
-        public NameValueCache(String versionSystemProperty, Uri uri, 
+        public NameValueCache(String versionSystemProperty, Uri uri,
                 String getCommand, String setCommand) {
             mVersionSystemProperty = versionSystemProperty;
             mUri = uri;
@@ -846,11 +885,11 @@ public final class Settings {
         public static final Uri CONTENT_URI =
             Uri.parse("content://" + AUTHORITY + "/system");
 
-        private static NameValueCache sNameValueCache = new NameValueCache(
-            SYS_PROP_SETTING_VERSION,
-            CONTENT_URI,
-            CALL_METHOD_GET_SYSTEM,
-            CALL_METHOD_PUT_SYSTEM);
+        private static final NameValueCache sNameValueCache = new NameValueCache(
+                SYS_PROP_SETTING_VERSION,
+                CONTENT_URI,
+                CALL_METHOD_GET_SYSTEM,
+                CALL_METHOD_PUT_SYSTEM);
 
         private static final HashSet<String> MOVED_TO_SECURE;
         static {
@@ -861,8 +900,6 @@ public final class Settings {
             MOVED_TO_SECURE.add(Secure.LOCK_BIOMETRIC_WEAK_FLAGS);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_ENABLED);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_VISIBLE);
-            MOVED_TO_SECURE.add(Secure.LOCK_SHOW_ERROR_PATH);
-            MOVED_TO_SECURE.add(Secure.LOCK_DOTS_VISIBLE);
             MOVED_TO_SECURE.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
             MOVED_TO_SECURE.add(Secure.LOGGING_ID);
             MOVED_TO_SECURE.add(Secure.PARENTAL_CONTROL_ENABLED);
@@ -901,6 +938,7 @@ public final class Settings {
             MOVED_TO_SECURE_THEN_GLOBAL.add(Global.DEVICE_PROVISIONED);
             MOVED_TO_SECURE_THEN_GLOBAL.add(Global.INSTALL_NON_MARKET_APPS);
             MOVED_TO_SECURE_THEN_GLOBAL.add(Global.USB_MASS_STORAGE_ENABLED);
+            MOVED_TO_SECURE_THEN_GLOBAL.add(Global.HTTP_PROXY);
 
             // these are moving directly from system to global
             MOVED_TO_GLOBAL.add(Settings.Global.AIRPLANE_MODE_ON);
@@ -1436,9 +1474,10 @@ public final class Settings {
         public static final String RADIO_WIMAX = Global.RADIO_WIMAX;
 
         /**
-         * Constant for use in AIRPLANE_MODE_RADIOS to specify Cellular radio.
+         * @deprecated Use {@link android.provider.Settings.Global#RADIO_CELL} instead
          */
-        public static final String RADIO_CELL = "cell";
+        @Deprecated
+        public static final String RADIO_CELL = Global.RADIO_CELL;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#RADIO_NFC} instead
@@ -1468,11 +1507,10 @@ public final class Settings {
         public static final String WIFI_SLEEP_POLICY = Global.WIFI_SLEEP_POLICY;
 
         /**
-         * Value for {@link #WIFI_SLEEP_POLICY} to use the default Wi-Fi sleep
-         * policy, which is to sleep shortly after the turning off
-         * according to the {@link #STAY_ON_WHILE_PLUGGED_IN} setting.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_SLEEP_POLICY_DEFAULT} instead
          */
-        public static final int WIFI_SLEEP_POLICY_DEFAULT = 0;
+        @Deprecated
+        public static final int WIFI_SLEEP_POLICY_DEFAULT = Global.WIFI_SLEEP_POLICY_DEFAULT;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#WIFI_SLEEP_POLICY_NEVER_WHILE_PLUGGED} instead
@@ -1487,47 +1525,70 @@ public final class Settings {
         @Deprecated
         public static final int WIFI_SLEEP_POLICY_NEVER = Global.WIFI_SLEEP_POLICY_NEVER;
 
-        //TODO: deprecate static IP constants
+        /**
+         * @deprecated Use {@link android.provider.Settings.Global#MODE_RINGER} instead
+         */
+        @Deprecated
+        public static final String MODE_RINGER = Global.MODE_RINGER;
+
         /**
          * Whether to use static IP and other static network attributes.
          * <p>
          * Set to 1 for true and 0 for false.
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_USE_STATIC_IP = "wifi_use_static_ip";
 
         /**
          * The static IP address.
          * <p>
          * Example: "192.168.1.51"
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_STATIC_IP = "wifi_static_ip";
 
         /**
          * If using static IP, the gateway's IP address.
          * <p>
          * Example: "192.168.1.1"
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_STATIC_GATEWAY = "wifi_static_gateway";
 
         /**
          * If using static IP, the net mask.
          * <p>
          * Example: "255.255.255.0"
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_STATIC_NETMASK = "wifi_static_netmask";
 
         /**
          * If using static IP, the primary DNS's IP address.
          * <p>
          * Example: "192.168.1.1"
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_STATIC_DNS1 = "wifi_static_dns1";
 
         /**
          * If using static IP, the secondary DNS's IP address.
          * <p>
          * Example: "192.168.1.2"
+         *
+         * @deprecated Use {@link WifiManager} instead
          */
+        @Deprecated
         public static final String WIFI_STATIC_DNS2 = "wifi_static_dns2";
 
 
@@ -1604,7 +1665,9 @@ public final class Settings {
 
         /**
          * Whether or not to dim the screen. 0=no  1=yes
+         * @deprecated This setting is no longer used.
          */
+        @Deprecated
         public static final String DIM_SCREEN = "dim_screen";
 
         /**
@@ -1640,154 +1703,6 @@ public final class Settings {
         public static final int SCREEN_BRIGHTNESS_MODE_AUTOMATIC = 1;
 
         /**
-         * Custom automatic brightness light sensor levels.
-         * The value is a comma separated int array with length N.
-         * Example: "100,300,3000".
-         *
-         * @hide
-         */
-        public static final String AUTO_BRIGHTNESS_LUX = "auto_brightness_lux";
-
-        /**
-         * Custom automatic brightness display backlight brightness values.
-         * The value is a comma separated int array with length N+1.
-         * Example: "10,50,100,255".
-         *
-         * @hide
-         */
-        public static final String AUTO_BRIGHTNESS_BACKLIGHT = "auto_brightness_backlight";
-
-        /**
-         * Indicates that custom light sensor settings has changed.
-         * The value is random and changes reloads light settings.
-         *
-         * @hide
-         */
-        public static final String LIGHTS_CHANGED = "lights_changed";
-
-        /**
-         * Whether custom light sensor levels & values are enabled. The value is
-         * boolean (1 or 0).
-         *
-         * @hide
-         */
-        public static final String LIGHT_SENSOR_CUSTOM = "light_sensor_custom";
-
-        /**
-         * Screen dim value to use if LIGHT_SENSOR_CUSTOM is set. The value is int.
-         * Default is android.os.BRIGHTNESS_DIM.
-         *
-         * @hide
-         */
-        public static final String LIGHT_SCREEN_DIM = "light_screen_dim";
-
-        /**
-         * Custom light sensor levels. The value is a comma separated int array
-         * with length N.
-         * Example: "100,300,3000".
-         *
-         * @hide
-         */
-        public static final String LIGHT_SENSOR_LEVELS = "light_sensor_levels";
-
-        /**
-         * Custom light sensor lcd values. The value is a comma separated int array
-         * with length N+1.
-         * Example: "10,50,100,255".
-         *
-         * @hide
-         */
-        public static final String LIGHT_SENSOR_LCD_VALUES = "light_sensor_lcd_values";
-
-        /**
-         * Custom light sensor lcd values. The value is a comma separated int array
-         * with length N+1.
-         * Example: "10,50,100,255".
-         *
-         * @hide
-         */
-        public static final String LIGHT_SENSOR_BUTTON_VALUES = "light_sensor_button_values";
-
-        /**
-         * Custom light sensor lcd values. The value is a comma separated int array
-         * with length N+1.
-         * Example: "10,50,100,255".
-         *
-         * @hide
-         */
-        public static final String LIGHT_SENSOR_KEYBOARD_VALUES = "light_sensor_keyboard_values";
-
-        /**
-         * Whether light sensor is allowed to decrease when calculating automatic
-         * backlight. The value is boolean (1 or 0).
-         *
-         * @hide
-         */
-        public static final String LIGHT_DECREASE = "light_decrease";
-
-        /**
-         * Light sensor hysteresis for decreasing backlight. The value is
-         * int (0-99) representing % (0-0.99 as float). Example:
-         *
-         * Levels     Output
-         * 0 - 100    50
-         * 100 - 200  100
-         * 200 - Inf  255
-         *
-         * Current sensor value is 150 which gives light value 100. Hysteresis is 50.
-         * Current level lower bound is 100 and previous lower bound is 0.
-         * Sensor value must drop below 100-(100-0)*(50/100)=50 for output to become 50
-         * (corresponding to the 0 - 100 level).
-         * @hide
-         */
-        public static final String LIGHT_HYSTERESIS = "light_hysteresis";
-
-        /**
-         * Whether light sensor used when calculating automatic backlight should
-         * be filtered through an moving average filter.
-         * The value is boolean (1 or 0).
-         *
-         * @hide
-         */
-        public static final String LIGHT_FILTER = "light_filter";
-
-        /**
-         * Window length of filter used when calculating automatic backlight.
-         * One minute means that the average sensor value last minute is used.
-         * The value is integer (milliseconds)
-         *
-         * @hide
-         */
-        public static final String LIGHT_FILTER_WINDOW = "light_filter_window";
-
-        /**
-         * Reset threshold of filter used when calculating automatic backlight.
-         * Sudden large jumps in sensor value resets the filter. This is used
-         * to make the filter respond quickly to large enough changes in input
-         * while still filtering small changes. Example:
-         *
-         * Current filter value (average) is 100 and sensor value is changing to
-         * 10, 150, 100, 30, 50. The filter is continously taking the average of
-         * the samples. Now the user goes outside and the value jumps over 1000.
-         * The difference between current average and new sample is larger than
-         * the reset threshold and filter is reset. It begins calculating a new
-         * average on samples around 1000 (say, 800, 1200, 1000, 1100 etc.)
-         *
-         * The value is integer (lux)
-         *
-         * @hide
-         */
-        public static final String LIGHT_FILTER_RESET = "light_filter_reset";
-
-        /**
-         * Sample interval of filter used when calculating automatic backlight.
-         * The value is integer (milliseconds)
-         *
-         * @hide
-         */
-        public static final String LIGHT_FILTER_INTERVAL = "light_filter_interval";
-
-        /**
          * Control whether the process CPU usage meter should be shown.
          *
          * @deprecated Use {@link Global#SHOW_PROCESSES} instead
@@ -1804,39 +1719,6 @@ public final class Settings {
          */
         @Deprecated
         public static final String ALWAYS_FINISH_ACTIVITIES = Global.ALWAYS_FINISH_ACTIVITIES;
-
-        /**
-         * Volume Overlay Mode. This is the style of the volume overlay panel.
-         *      0 - Single
-         *      1 - Expandable (default)
-         *      2 - Expanded
-         *      3 - None
-         *
-         * @hide
-         */
-        public static final String MODE_VOLUME_OVERLAY = "mode_volume_overlay";
-
-        /** @hide */
-        public static final int VOLUME_OVERLAY_SINGLE = 0;
-        /** @hide */
-        public static final int VOLUME_OVERLAY_EXPANDABLE = 1;
-        /** @hide */
-        public static final int VOLUME_OVERLAY_EXPANDED = 2;
-        /** @hide */
-        public static final int VOLUME_OVERLAY_NONE = 3;
-
-        /**
-         * Volume Adjust Sounds Enable, This is the noise made when using volume hard buttons
-         * Defaults to 1 - sounds enabled
-         * @hide
-         */
-        public static final String VOLUME_ADJUST_SOUNDS_ENABLED = "volume_adjust_sounds_enabled";
-
-        /**
-         * @deprecated Use {@link android.provider.Settings.Global#MODE_RINGER} instead
-         */
-        @Deprecated
-        public static final String MODE_RINGER = Global.MODE_RINGER;
 
         /**
          * Determines which streams are affected by ringer mode changes. The
@@ -1928,13 +1810,15 @@ public final class Settings {
         public static final String VOLUME_MASTER_MUTE = "volume_master_mute";
 
         /**
-         * Whether the notifications should use the ring volume (value of 1) or a separate
-         * notification volume (value of 0). In most cases, users will have this enabled so the
-         * notification and ringer volumes will be the same. However, power users can disable this
-         * and use the separate notification volume control.
+         * Whether the notifications should use the ring volume (value of 1) or
+         * a separate notification volume (value of 0). In most cases, users
+         * will have this enabled so the notification and ringer volumes will be
+         * the same. However, power users can disable this and use the separate
+         * notification volume control.
          * <p>
-         * Note: This is a one-off setting that will be removed in the future when there is profile
-         * support. For this reason, it is kept hidden from the public APIs.
+         * Note: This is a one-off setting that will be removed in the future
+         * when there is profile support. For this reason, it is kept hidden
+         * from the public APIs.
          *
          * @hide
          * @deprecated
@@ -1950,6 +1834,9 @@ public final class Settings {
          * will likely be removed in a future release with support for
          * audio/vibe feedback profiles.
          *
+         * Not used anymore. On devices with vibrator, the user explicitly selects
+         * silent or vibrate mode.
+         * Kept for use by legacy database upgrade code in DatabaseHelper.
          * @hide
          */
         public static final String VIBRATE_IN_SILENT = "vibrate_in_silent";
@@ -2055,7 +1942,10 @@ public final class Settings {
 
         /**
          * Name of activity to use for wallpaper on the home screen.
+         *
+         * @deprecated Use {@link WallpaperManager} instead.
          */
+        @Deprecated
         public static final String WALLPAPER_ACTIVITY = "wallpaper_activity";
 
         /**
@@ -2133,19 +2023,6 @@ public final class Settings {
         public static final String ACCELEROMETER_ROTATION = "accelerometer_rotation";
 
         /**
-         * Control the type of rotation which can be performed using the accelerometer
-         * if ACCELEROMETER_ROTATION is enabled.
-         * Value is a bitwise combination of
-         * 1 = 0 degrees (portrait)
-         * 2 = 90 degrees (left)
-         * 4 = 180 degrees (inverted portrait)
-         * 8 = 270 degrees (right)
-         * Setting to 0 is effectively orientation lock
-         * @hide
-         */
-        public static final String ACCELEROMETER_ROTATION_ANGLES = "accelerometer_rotation_angles";
-
-        /**
          * Default screen rotation when no other policy applies.
          * When {@link #ACCELEROMETER_ROTATION} is zero and no on-screen Activity expresses a
          * preference, this rotation value will be used. Must be one of the
@@ -2217,13 +2094,6 @@ public final class Settings {
         public static final String TTY_MODE = "tty_mode";
 
         /**
-         * Whether noise suppression is enabled. The value is
-         * boolean (1 or 0).
-         * @hide
-         */
-        public static final String NOISE_SUPPRESSION = "noise_suppression";
-
-        /**
          * Whether the sounds effects (key clicks, lid open ...) are enabled. The value is
          * boolean (1 or 0).
          */
@@ -2256,14 +2126,6 @@ public final class Settings {
          * @hide
          */
         public static final String POINTER_LOCATION = "pointer_location";
-
-        /**
-         * Show icon when stylus is used?
-         * 0 = no
-         * 1 = yes
-         * @hide
-         */
-        public static final String STYLUS_ICON_ENABLED = "stylus_icon_enabled";
 
         /**
          * Show touch positions on screen?
@@ -2310,18 +2172,6 @@ public final class Settings {
          * @hide
          */
         public static final String LOCKSCREEN_DISABLED = "lockscreen.disabled";
-
-        /**
-         * Stores values for custom lockscreen targets
-         * @hide
-         */
-        public static final String LOCKSCREEN_TARGETS = "lockscreen_targets";
-
-        /**
-         * Whether to enable lockscreen vibrate
-         * @hide
-         */
-        public static final String LOCKSCREEN_VIBRATE_DISABLED = "lockscreen.vibrate_disabled";
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#LOW_BATTERY_SOUND}
@@ -2415,12 +2265,6 @@ public final class Settings {
         public static final String SIP_ASK_ME_EACH_TIME = "SIP_ASK_ME_EACH_TIME";
 
         /**
-         * Torch state (flashlight)
-         * @hide
-         */
-        public static final String TORCH_STATE = "torch_state";
-
-        /**
          * Pointer speed setting.
          * This is an integer value in a range between -7 and +7, so there are 15 possible values.
          *   -7 = slowest
@@ -2431,358 +2275,10 @@ public final class Settings {
         public static final String POINTER_SPEED = "pointer_speed";
 
         /**
-         * Quick Settings Panel Tiles to Use
-         *
-         * @hide
-         */
-        public static final String QUICK_SETTINGS_TILES = "quick_settings_tiles";
-
-        /**
-         * Quick Settings Panel Dynamic Tiles
-         *
-         * @hide
-         */
-        public static final String QS_DYNAMIC_ALARM = "qs_dyanmic_alarm";
-
-        /**
-         * Quick Settings Panel Dynamic Tiles
-         *
-         * @hide
-         */
-        public static final String QS_DYNAMIC_BUGREPORT = "qs_dyanmic_bugreport";
-
-        /**
-         * Quick Settings Panel Dynamic Tiles
-         *
-         * @hide
-         */
-        public static final String QS_DYNAMIC_IME = "qs_dyanmic_ime";
-
-        /**
-         * Quick Settings Panel Dynamic Tiles
-         *
-         * @hide
-         */
-        public static final String QS_DYNAMIC_USBTETHER = "qs_dyanmic_usbtether";
-
-        /**
-         * Quick Settings Panel Dynamic Tiles
-         *
-         * @hide
-         */
-        public static final String QS_DYNAMIC_WIFI = "qs_dyanmic_wifi";
-
-        /**
-         * Quick Settings Quick Pulldown
-         *
-         * @hide
-         */
-        public static final String QS_QUICK_PULLDOWN = "qs_quick_pulldown";
-
-        /**
-         * Quick Settings Collapse Pane
-         *
-         * @hide
-         */
-        public static final String QS_COLLAPSE_PANEL = "qs_collapse_panel";
-
-        /**
-         * Use the Notification Power Widget? (Who wouldn't!)
-         *
-         * @hide
-         */
-        public static final String EXPANDED_VIEW_WIDGET = "expanded_view_widget";
-
-        /**
-         * Whether to hide the notification screen after clicking on a widget
-         * button
-         *
-         * @hide
-         */
-        public static final String EXPANDED_HIDE_ONCHANGE = "expanded_hide_onchange";
-
-        /**
-         * Hide scroll bar in power widget
-         *
-         * @hide
-         */
-        public static final String EXPANDED_HIDE_SCROLLBAR = "expanded_hide_scrollbar";
-
-        /**
-         * Haptic feedback in power widget
-         *
-         * @hide
-         */
-        public static final String EXPANDED_HAPTIC_FEEDBACK = "expanded_haptic_feedback";
-
-        /**
-         * Widget Buttons to Use
-         *
-         * @hide
-         */
-        public static final String WIDGET_BUTTONS = "expanded_widget_buttons";
-
-        /**
-         * Navigation controls to Use
-         *
-         * @hide
-         */
-        public static final String NAV_BUTTONS = "nav_buttons";
-
-        /**
-        * Notification Power Widget - Custom Brightness Mode
-        * @hide
-        */
-        public static final String EXPANDED_BRIGHTNESS_MODE = "expanded_brightness_mode";
-
-        /**
-        * Notification Power Widget - Custom Network Mode
-        * @hide
-        */
-        public static final String EXPANDED_NETWORK_MODE = "expanded_network_mode";
-
-        /**
-        * Notification Power Widget - Custom Screen Timeout
-        * @hide
-        */
-        public static final String EXPANDED_SCREENTIMEOUT_MODE = "expanded_screentimeout_mode";
-
-        /**
-        * Notification Power Widget - Custom Ring Mode
-        * @hide
-        */
-        public static final String EXPANDED_RING_MODE = "expanded_ring_mode";
-
-        /**
-        * Notification Power Widget - Custom Torch Mode
-        * @hide
-        */
-        public static final String EXPANDED_FLASH_MODE = "expanded_flash_mode";
-
-        /**
          * Whether to wake the screen with the trackball. The value is boolean (1 or 0).
          * @hide
          */
         public static final String TRACKBALL_WAKE_SCREEN = "trackball_wake_screen";
-
-        /**
-         * Sets the lockscreen background style
-         * @hide
-         */
-        public static final String LOCKSCREEN_BACKGROUND = "lockscreen_background";
-
-        /**
-         * Action for long-pressing back button on lock screen
-         * @hide
-         */
-        public static final String LOCKSCREEN_LONG_BACK_ACTION = "lockscreen_long_back_action";
-
-        /**
-         * Action for long-pressing home button on lock screen
-         * @hide
-         */
-        public static final String LOCKSCREEN_LONG_HOME_ACTION = "lockscreen_long_home_action";
-
-        /**
-         * Action for long-pressing menu button on lock screen
-         * @hide
-         */
-        public static final String LOCKSCREEN_LONG_MENU_ACTION = "lockscreen_long_menu_action";
-
-        /**
-         * Always show the battery status on the lockscreen
-         * @hide
-         */
-        public static final String LOCKSCREEN_ALWAYS_SHOW_BATTERY = "lockscreen_always_show_battery";
-
-        /**
-         * Whether to unlock the screen with the home key.  The value is boolean (1 or 0).
-         * @hide
-         */
-        public static final String HOME_UNLOCK_SCREEN = "home_unlock_screen";
-
-        /**
-         * Whether the lockscreen vibrate should be enabled.
-         * @hide
-         */
-        public static final String LOCKSCREEN_VIBRATE_ENABLED = "lockscreen.vibrate_enabled";
-
-        /**
-         * Show the pending notification counts as overlays on the status bar
-         * Whether to enable custom rebindings of the actions performed on
-         * certain key press events.
-         * @hide
-         */
-        public static final String HARDWARE_KEY_REBINDING = "hardware_key_rebinding";
-
-        /**
-         * Action to perform when the home key is long-pressed. (Default is 2)
-         * 0 - Nothing
-         * 1 - Menu
-         * 2 - App-switch
-         * 3 - Search
-         * 4 - Voice search
-         * 5 - In-app search
-         * @hide
-         */
-        public static final String KEY_HOME_LONG_PRESS_ACTION = "key_home_long_press_action";
-        /**
-         * Action to perform when the menu key is pressed. (Default is 1)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_MENU_ACTION = "key_menu_action";
-
-        /**
-         * Action to perform when the menu key is long-pressed.
-         * (Default is 0 on devices with a search key, 3 on devices without)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_MENU_LONG_PRESS_ACTION = "key_menu_long_press_action";
-
-        /**
-         * Action to perform when the assistant (search) key is pressed. (Default is 3)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_ASSIST_ACTION = "key_assist_action";
-
-        /**
-         * Weather to minimize lockscreen challenge on screen turned on
-         * @hide
-         */
-        public static final String LOCKSCREEN_MAXIMIZE_WIDGETS = "lockscreen_maximize_widgets";
-
-        /**
-         * Action to perform when the assistant (search) key is long-pressed. (Default is 4)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_ASSIST_LONG_PRESS_ACTION = "key_assist_long_press_action";
-
-        /**
-         * Action to perform when the app switch key is pressed. (Default is 2)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_APP_SWITCH_ACTION = "key_app_switch_action";
-
-        /**
-         * Action to perform when the app switch key is long-pressed. (Default is 0)
-         * (See KEY_HOME_LONG_PRESS_ACTION for valid values)
-         * @hide
-         */
-        public static final String KEY_APP_SWITCH_LONG_PRESS_ACTION = "key_app_switch_long_press_action";
-
-        /**
-         * Display style of the status bar battery information
-         * 0: Display the stock battery information
-         * 1: Display cm battery percentage implementation / dont show stock icon
-         * 2: Display cm circle battery implementation without percentage
-         * 3: Display cm circle battery implementation with percentage
-         * 4: Hide the battery information
-         * default: 0
-         * @hide
-         */
-        public static final String STATUS_BAR_BATTERY = "status_bar_battery";
-
-        /**
-         * Whether to show the clock in status bar
-         * of the stock battery icon
-         * 0: don't show the clock
-         * 1: show the clock
-         * default: 1
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK = "status_bar_clock";
-
-        /**
-         * Whether to show the signal text or signal bars.
-         * default: 0
-         * 0: show signal bars
-         * 1: show signal text numbers
-         * 2: show signal text numbers w/small dBm appended
-         * @hide
-         */
-        public static final String STATUS_BAR_SIGNAL_TEXT = "status_bar_signal";
-
-        /**
-         * Whether to control brightness from status bar
-         *
-         * @hide
-         */
-        public static final String STATUS_BAR_BRIGHTNESS_CONTROL = "status_bar_brightness_control";
-
-        /**
-         * Whether to show the IME switcher in the status bar
-         * @hide
-         */
-        public static final String STATUS_BAR_IME_SWITCHER = "status_bar_ime_switcher";
-
-        /**
-         * Statusbar State
-         * @hide
-         */
-        public static final String EXPANDED_DESKTOP_STATE = "expanded_desktop_state";
-
-        /**
-         * Expanded desktop style (with status bar or without status bar)
-         * @hide
-         */
-        public static final String EXPANDED_DESKTOP_STYLE = "expanded_desktop_style";
-
-        /**
-         * Whether to use a separate delay for "slide to unlock" and security
-         * lock
-         * @hide
-         */
-        public static final String SCREEN_LOCK_SLIDE_DELAY_TOGGLE = "screen_lock_slide_delay_toggle";
-
-        /**
-         * How many ms to delay before enabling the "slide to unlock" screen
-         * lock when the screen goes off due to timeout
-         * @hide
-         */
-        public static final String SCREEN_LOCK_SLIDE_TIMEOUT_DELAY = "screen_lock_slide_timeout_delay";
-
-        /**
-         * How many ms to delay before enabling the "slide to unlock" screen
-         * lock when the screen is turned off by the user
-         * @hide
-         */
-        public static final String SCREEN_LOCK_SLIDE_SCREENOFF_DELAY = "screen_lock_slide_screenoff_delay";
-
-        /**
-         * Whether or not volume button music controls should be enabled to seek media tracks
-         * @hide
-         */
-        public static final String VOLBTN_MUSIC_CONTROLS = "volbtn_music_controls";
-
-        /**
-         * Show the pending notification counts as overlays on the status bar
-         * @hide
-         */
-        public static final String STATUS_BAR_NOTIF_COUNT = "status_bar_notif_count";
-
-        /**
-         * Whether to use the custom quick unlock screen control
-         * @hide
-         */
-        public static final String LOCKSCREEN_QUICK_UNLOCK_CONTROL = "lockscreen_quick_unlock_control";
-
-        /**
-         * Boolean value to link ringtone and notification volumes
-         * 
-         * @hide
-         */
-        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
-
-        /**
-         * Whether to unlock the menu key.  The value is boolean (1 or 0).
-         * @hide
-         */
-        public static final String MENU_UNLOCK_SCREEN = "menu_unlock_screen";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
@@ -2810,7 +2306,6 @@ public final class Settings {
             SCREEN_BRIGHTNESS_MODE,
             SCREEN_AUTO_BRIGHTNESS_ADJ,
             VIBRATE_INPUT_DEVICES,
-            VIBRATE_ON,
             MODE_RINGER,                // moved to global
             MODE_RINGER_STREAMS_AFFECTED,
             MUTE_STREAMS_AFFECTED,
@@ -2828,7 +2323,6 @@ public final class Settings {
             VOLUME_ALARM + APPEND_FOR_LAST_AUDIBLE,
             VOLUME_NOTIFICATION + APPEND_FOR_LAST_AUDIBLE,
             VOLUME_BLUETOOTH_SCO + APPEND_FOR_LAST_AUDIBLE,
-            VIBRATE_IN_SILENT,
             TEXT_AUTO_REPLACE,
             TEXT_AUTO_CAPS,
             TEXT_AUTO_PUNCTUATE,
@@ -2837,13 +2331,10 @@ public final class Settings {
             AUTO_TIME_ZONE,             // moved to global
             TIME_12_24,
             DATE_FORMAT,
-            ACCELEROMETER_ROTATION,
-            USER_ROTATION,
             DTMF_TONE_WHEN_DIALING,
             DTMF_TONE_TYPE_WHEN_DIALING,
             HEARING_AID,
             TTY_MODE,
-            NOISE_SUPPRESSION,
             SOUND_EFFECTS_ENABLED,
             HAPTIC_FEEDBACK_ENABLED,
             POWER_SOUNDS_ENABLED,       // moved to global
@@ -2854,6 +2345,7 @@ public final class Settings {
             SIP_CALL_OPTIONS,
             SIP_RECEIVE_CALLS,
             POINTER_SPEED,
+            VIBRATE_WHEN_RINGING
         };
 
         // Settings moved to Settings.Secure
@@ -2884,19 +2376,19 @@ public final class Settings {
         public static final String DATA_ROAMING = Global.DATA_ROAMING;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#DEVICE_PROVISIONED} instead
+         * @deprecated Use {@link android.provider.Settings.Global#DEVICE_PROVISIONED} instead
          */
         @Deprecated
         public static final String DEVICE_PROVISIONED = Global.DEVICE_PROVISIONED;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#HTTP_PROXY} instead
+         * @deprecated Use {@link android.provider.Settings.Global#HTTP_PROXY} instead
          */
         @Deprecated
-        public static final String HTTP_PROXY = Secure.HTTP_PROXY;
+        public static final String HTTP_PROXY = Global.HTTP_PROXY;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#INSTALL_NON_MARKET_APPS} instead
+         * @deprecated Use {@link android.provider.Settings.Global#INSTALL_NON_MARKET_APPS} instead
          */
         @Deprecated
         public static final String INSTALL_NON_MARKET_APPS = Global.INSTALL_NON_MARKET_APPS;
@@ -2955,10 +2447,10 @@ public final class Settings {
         public static final String USB_MASS_STORAGE_ENABLED = Global.USB_MASS_STORAGE_ENABLED;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#USE_GOOGLE_MAIL} instead
+         * @deprecated Use {@link android.provider.Settings.Global#USE_GOOGLE_MAIL} instead
          */
         @Deprecated
-        public static final String USE_GOOGLE_MAIL = Secure.USE_GOOGLE_MAIL;
+        public static final String USE_GOOGLE_MAIL = Global.USE_GOOGLE_MAIL;
 
        /**
          * @deprecated Use
@@ -2969,11 +2461,11 @@ public final class Settings {
 
         /**
          * @deprecated Use
-         * {@link android.provider.Settings.Secure#WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS} instead
+         * {@link android.provider.Settings.Global#WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS} instead
          */
         @Deprecated
         public static final String WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS =
-                Secure.WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS;
+                Global.WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS;
 
         /**
          * @deprecated Use
@@ -2981,14 +2473,22 @@ public final class Settings {
          */
         @Deprecated
         public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
-            Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
+                Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
 
         /**
-         * @deprecated Use {@link android.provider.Settings.Secure#WIFI_NUM_OPEN_NETWORKS_KEPT}
+         * @deprecated Use
+         * {@link android.provider.Settings.Global#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} instead
+         */
+        @Deprecated
+        public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
+                Global.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY;
+
+        /**
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_NUM_OPEN_NETWORKS_KEPT}
          * instead
          */
         @Deprecated
-        public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = Secure.WIFI_NUM_OPEN_NETWORKS_KEPT;
+        public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = Global.WIFI_NUM_OPEN_NETWORKS_KEPT;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#WIFI_ON} instead
@@ -3077,33 +2577,6 @@ public final class Settings {
         @Deprecated
         public static final String WIFI_WATCHDOG_PING_TIMEOUT_MS =
             Secure.WIFI_WATCHDOG_PING_TIMEOUT_MS;
-
-        /**
-         * Settings button in drop down. Boolean value. 
-         * 0 = defualt, click for settings, longpress for toggles.
-         * 1 = click for toggles, long press for settings.
-         * @hide
-         */
-        public static final String STATUSBAR_SETTINGS_BEHAVIOR = "statusbar_settings_behavior";
-
-        /**
-         * whether to auto-hide the toggles when the statusbar collapes. Boolean value.
-         * @hide
-         */
-        public static final String STATUSBAR_QUICKTOGGLES_AUTOHIDE = "statusbar_quicktoggles_autohide";
-
-        /**
-         * whether volume keys wake the screen. boolean value
-         * 
-         * @hide
-         */
-        public static final String VOLUME_WAKE_SCREEN = "volume_wake_screen";
-
-        /**
-         * Whether volume up/down can be long pressed to skip tracks
-         * @hide
-         */
-        public static final String VOLUME_MUSIC_CONTROLS = "volume_music_controls";
     }
 
     /**
@@ -3122,7 +2595,7 @@ public final class Settings {
             Uri.parse("content://" + AUTHORITY + "/secure");
 
         // Populated lazily, guarded by class object:
-        private static NameValueCache sNameValueCache = new NameValueCache(
+        private static final NameValueCache sNameValueCache = new NameValueCache(
                 SYS_PROP_SETTING_VERSION,
                 CONTENT_URI,
                 CALL_METHOD_GET_SECURE,
@@ -3137,8 +2610,6 @@ public final class Settings {
             MOVED_TO_LOCK_SETTINGS = new HashSet<String>(3);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_ENABLED);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_VISIBLE);
-            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_SHOW_ERROR_PATH);
-            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_DOTS_VISIBLE);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
 
             MOVED_TO_GLOBAL = new HashSet<String>();
@@ -3180,12 +2651,17 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.NETWORK_PREFERENCE);
             MOVED_TO_GLOBAL.add(Settings.Global.NITZ_UPDATE_DIFF);
             MOVED_TO_GLOBAL.add(Settings.Global.NITZ_UPDATE_SPACING);
+            MOVED_TO_GLOBAL.add(Settings.Global.NTP_SERVER);
+            MOVED_TO_GLOBAL.add(Settings.Global.NTP_TIMEOUT);
             MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_ERROR_POLL_COUNT);
             MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_LONG_POLL_INTERVAL_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT);
             MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_POLL_INTERVAL_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.PDP_WATCHDOG_TRIGGER_PACKET_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.SAMPLING_PROFILER_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.SETUP_PREPAID_DATA_SERVICE_URL);
+            MOVED_TO_GLOBAL.add(Settings.Global.SETUP_PREPAID_DETECTION_REDIR_HOST);
+            MOVED_TO_GLOBAL.add(Settings.Global.SETUP_PREPAID_DETECTION_TARGET_URL);
             MOVED_TO_GLOBAL.add(Settings.Global.TETHER_DUN_APN);
             MOVED_TO_GLOBAL.add(Settings.Global.TETHER_DUN_REQUIRED);
             MOVED_TO_GLOBAL.add(Settings.Global.TETHER_SUPPORTED);
@@ -3197,14 +2673,17 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_THRESHOLD_BYTES);
             MOVED_TO_GLOBAL.add(Settings.Global.THROTTLE_VALUE_KBITSPS);
             MOVED_TO_GLOBAL.add(Settings.Global.USB_MASS_STORAGE_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.USE_GOOGLE_MAIL);
             MOVED_TO_GLOBAL.add(Settings.Global.WEB_AUTOFILL_QUERY_URL);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_COUNTRY_CODE);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_FRAMEWORK_SCAN_INTERVAL_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_FREQUENCY_BAND);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_IDLE_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_MAX_DHCP_RETRY_COUNT);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIFI_NUM_OPEN_NETWORKS_KEPT);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_ON);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_P2P_DEVICE_NAME);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SAVED_STATE);
@@ -3212,6 +2691,7 @@ public final class Settings {
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_SUSPEND_OPTIMIZATIONS_ENABLED);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_WATCHDOG_ON);
             MOVED_TO_GLOBAL.add(Settings.Global.WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED);
+            MOVED_TO_GLOBAL.add(Settings.Global.WIMAX_NETWORKS_AVAILABLE_NOTIFICATION_ON);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_ENABLE);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_TIMEOUT);
             MOVED_TO_GLOBAL.add(Settings.Global.PACKAGE_VERIFIER_DEFAULT_RESPONSE);
@@ -3618,12 +3098,6 @@ public final class Settings {
         public static final String ADB_ENABLED = Global.ADB_ENABLED;
 
         /**
-         * The TCP/IP port to run ADB on, or -1 for USB
-         * @hide
-         */
-        public static final String ADB_PORT = "adb_port";
-
-        /**
          * Setting to allow mock locations and location provider status to be injected into the
          * LocationManager service for testing purposes during application development.  These
          * locations and status values  override actual location and status information generated
@@ -3706,48 +3180,16 @@ public final class Settings {
         public static final String DISABLED_SYSTEM_INPUT_METHODS = "disabled_system_input_methods";
 
         /**
-         * Host name and port for global http proxy.  Uses ':' seperator for between host and port
-         * TODO - deprecate in favor of global_http_proxy_host, etc
+         * Host name and port for global http proxy. Uses ':' seperator for
+         * between host and port.
+         *
+         * @deprecated Use {@link Global#HTTP_PROXY}
          */
-        public static final String HTTP_PROXY = "http_proxy";
+        @Deprecated
+        public static final String HTTP_PROXY = Global.HTTP_PROXY;
 
         /**
-         * Host name for global http proxy.  Set via ConnectivityManager.
-         * @hide
-         */
-        public static final String GLOBAL_HTTP_PROXY_HOST = "global_http_proxy_host";
-
-        /**
-         * Integer host port for global http proxy.  Set via ConnectivityManager.
-         * @hide
-         */
-        public static final String GLOBAL_HTTP_PROXY_PORT = "global_http_proxy_port";
-
-        /**
-         * Exclusion list for global proxy. This string contains a list of comma-separated
-         * domains where the global proxy does not apply. Domains should be listed in a comma-
-         * separated list. Example of acceptable formats: ".domain1.com,my.domain2.com"
-         * Use ConnectivityManager to set/get.
-         * @hide
-         */
-        public static final String GLOBAL_HTTP_PROXY_EXCLUSION_LIST =
-                "global_http_proxy_exclusion_list";
-
-        /**
-         * Enables the UI setting to allow the user to specify the global HTTP proxy
-         * and associated exclusion list.
-         * @hide
-         */
-        public static final String SET_GLOBAL_HTTP_PROXY = "set_global_http_proxy";
-
-        /**
-         * Setting for default DNS in case nobody suggests one
-         * @hide
-         */
-        public static final String DEFAULT_DNS_SERVER = "default_dns_server";
-
-        /**
-         * @deprecated Use {@link android.provider.Settings.Global@INSTALL_NON_MARKET_APP} instead
+         * @deprecated Use {@link android.provider.Settings.Global#INSTALL_NON_MARKET_APPS} instead
          */
         @Deprecated
         public static final String INSTALL_NON_MARKET_APPS = Global.INSTALL_NON_MARKET_APPS;
@@ -3787,26 +3229,15 @@ public final class Settings {
                 LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED = "lock_pattern_tactile_feedback_enabled";
 
         /**
-         * Whether lock pattern will show dots (0 = false, 1 = true)
-         * @hide
-         */
-        public static final String LOCK_DOTS_VISIBLE = "lock_pattern_dotsvisible";
-
-        /**
-         * Whether lockscreen error pattern is visible (0 = false, 1 = true)
-         * @hide
-         */
-        public static final String LOCK_SHOW_ERROR_PATH = "lock_pattern_show_error_path";
-
-        /**
          * This preference allows the device to be locked given time after screen goes off,
          * subject to current DeviceAdmin policy limits.
          * @hide
          */
         public static final String LOCK_SCREEN_LOCK_AFTER_TIMEOUT = "lock_screen_lock_after_timeout";
 
+
         /**
-         * This preference contains the string that shows for owner info on LockScren.
+         * This preference contains the string that shows for owner info on LockScreen.
          * @hide
          */
         public static final String LOCK_SCREEN_OWNER_INFO = "lock_screen_owner_info";
@@ -3826,26 +3257,18 @@ public final class Settings {
             "lock_screen_fallback_appwidget_id";
 
         /**
-         * This preference enables showing the owner info on LockScren.
+         * Index of the lockscreen appwidget to restore, -1 if none.
+         * @hide
+         */
+        public static final String LOCK_SCREEN_STICKY_APPWIDGET =
+            "lock_screen_sticky_appwidget";
+
+        /**
+         * This preference enables showing the owner info on LockScreen.
          * @hide
          */
         public static final String LOCK_SCREEN_OWNER_INFO_ENABLED =
             "lock_screen_owner_info_enabled";
-
-        /**
-         * Whether the unsecure widget screen will be shown before a secure
-         * lock screen
-         * @hide
-         */
-        public static final String LOCK_BEFORE_UNLOCK =
-            "lock_before_unlock";
-
-        /**
-         * Determines the width and height of the LockPatternView widget
-         * @hide
-         */
-        public static final String LOCK_PATTERN_SIZE =
-            "lock_pattern_size";
 
         /**
          * The Logging ID (a unique 64-bit value) as a hex string.
@@ -3861,12 +3284,6 @@ public final class Settings {
          */
         @Deprecated
         public static final String NETWORK_PREFERENCE = Global.NETWORK_PREFERENCE;
-
-        /** DHCP lease time for tethering in seconds {@hide} */
-        public static final String TETHER_LEASE_TIME = "tether_lease_time";
-
-        /** Default value for TETHER_LEASE_TIME {@hide} */
-        public static final int TETHER_LEASE_TIME_DEFAULT = -1;
 
         /**
          * No longer supported.
@@ -3884,15 +3301,6 @@ public final class Settings {
         public static final String PARENTAL_CONTROL_REDIRECT_URL = "parental_control_redirect_url";
 
         /**
-         * A positive value indicates how often the SamplingProfiler
-         * should take snapshots. Zero value means SamplingProfiler
-         * is disabled.
-         *
-         * @hide
-         */
-        public static final String SAMPLING_PROFILER_MS = "sampling_profiler_ms";
-
-        /**
          * Settings classname to launch when Settings is clicked from All
          * Applications.  Needed because of user testing between the old
          * and new Settings apps.
@@ -3907,10 +3315,10 @@ public final class Settings {
         public static final String USB_MASS_STORAGE_ENABLED = Global.USB_MASS_STORAGE_ENABLED;
 
         /**
-         * If this setting is set (to anything), then all references
-         * to Gmail on the device must change to Google Mail.
+         * @deprecated Use {@link android.provider.Settings.Global#USE_GOOGLE_MAIL} instead
          */
-        public static final String USE_GOOGLE_MAIL = "use_google_mail";
+        @Deprecated
+        public static final String USE_GOOGLE_MAIL = Global.USE_GOOGLE_MAIL;
 
         /**
          * If accessibility is enabled.
@@ -3943,12 +3351,12 @@ public final class Settings {
         public static final String ACCESSIBILITY_SPEAK_PASSWORD = "speak_password";
 
         /**
-         * If injection of accessibility enhancing JavaScript scripts
+         * If injection of accessibility enhancing JavaScript screen-reader
          * is enabled.
          * <p>
-         *   Note: Accessibility injecting scripts are served by the
+         *   Note: The JavaScript based screen-reader is served by the
          *   Google infrastructure and enable users with disabilities to
-         *   efficiantly navigate in and explore web content.
+         *   efficiently navigate in and explore web content.
          * </p>
          * <p>
          *   This property represents a boolean value.
@@ -4146,12 +3554,6 @@ public final class Settings {
                 Global.WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON;
 
         /**
-         * {@hide}
-         */
-        public static final String WIMAX_NETWORKS_AVAILABLE_NOTIFICATION_ON =
-                "wimax_networks_available_notification_on";
-
-        /**
          * @deprecated Use {@link android.provider.Settings.Global#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY}
          * instead.
          */
@@ -4160,10 +3562,12 @@ public final class Settings {
                 Global.WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY;
 
         /**
-         * When the number of open networks exceeds this number, the
-         * least-recently-used excess networks will be removed.
+         * @deprecated Use {@link android.provider.Settings.Global#WIFI_NUM_OPEN_NETWORKS_KEPT}
+         * instead.
          */
-        public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = "wifi_num_open_networks_kept";
+        @Deprecated
+        public static final String WIFI_NUM_OPEN_NETWORKS_KEPT =
+                Global.WIFI_NUM_OPEN_NETWORKS_KEPT;
 
         /**
          * @deprecated Use {@link android.provider.Settings.Global#WIFI_ON}
@@ -4173,29 +3577,9 @@ public final class Settings {
         public static final String WIFI_ON = Global.WIFI_ON;
 
         /**
-         * AP SSID
-         *
-         * @hide
-         */
-        public static final String WIFI_AP_SSID = "wifi_ap_ssid";
-
-        /**
-         * AP security
-         *
-         * @hide
-         */
-        public static final String WIFI_AP_SECURITY = "wifi_ap_security";
-
-        /**
-         * AP passphrase
-         *
-         * @hide
-         */
-        public static final String WIFI_AP_PASSWD = "wifi_ap_passwd";
-
-        /**
          * The acceptable packet loss percentage (range 0 - 100) before trying
          * another AP on the same network.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_ACCEPTABLE_PACKET_LOSS_PERCENTAGE =
@@ -4204,12 +3588,14 @@ public final class Settings {
         /**
          * The number of access points required for a network in order for the
          * watchdog to monitor it.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_AP_COUNT = "wifi_watchdog_ap_count";
 
         /**
          * The delay between background checks.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_BACKGROUND_CHECK_DELAY_MS =
@@ -4218,6 +3604,7 @@ public final class Settings {
         /**
          * Whether the Wi-Fi watchdog is enabled for background checking even
          * after it thinks the user has connected to a good access point.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_BACKGROUND_CHECK_ENABLED =
@@ -4225,6 +3612,7 @@ public final class Settings {
 
         /**
          * The timeout for a background ping
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_BACKGROUND_CHECK_TIMEOUT_MS =
@@ -4235,6 +3623,7 @@ public final class Settings {
          * fail. Again, if these fail, they will *not* be used in packet loss
          * calculation. For example, one network always seemed to time out for
          * the first couple pings, so this is set to 3 by default.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_INITIAL_IGNORED_PING_COUNT =
@@ -4245,6 +3634,7 @@ public final class Settings {
          * If this number is reached, the watchdog will no longer monitor the
          * initial connection state for the network. This is a safeguard for
          * networks containing multiple APs whose DNS does not respond to pings.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_MAX_AP_CHECKS = "wifi_watchdog_max_ap_checks";
@@ -4257,109 +3647,31 @@ public final class Settings {
 
         /**
          * A comma-separated list of SSIDs for which the Wi-Fi watchdog should be enabled.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_WATCH_LIST = "wifi_watchdog_watch_list";
 
         /**
          * The number of pings to test if an access point is a good connection.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_PING_COUNT = "wifi_watchdog_ping_count";
 
         /**
          * The delay between pings.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_PING_DELAY_MS = "wifi_watchdog_ping_delay_ms";
 
         /**
          * The timeout per ping.
+         * @deprecated This setting is not used.
          */
         @Deprecated
         public static final String WIFI_WATCHDOG_PING_TIMEOUT_MS = "wifi_watchdog_ping_timeout_ms";
-
-        /**
-         * ms delay before rechecking an 'online' wifi connection when it is thought to be unstable.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_DNS_CHECK_SHORT_INTERVAL_MS =
-                "wifi_watchdog_dns_check_short_interval_ms";
-
-        /**
-         * ms delay before rechecking an 'online' wifi connection when it is thought to be stable.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_DNS_CHECK_LONG_INTERVAL_MS =
-                "wifi_watchdog_dns_check_long_interval_ms";
-
-        /**
-         * ms delay before rechecking a connect SSID for walled garden with a http download.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_WALLED_GARDEN_INTERVAL_MS =
-                "wifi_watchdog_walled_garden_interval_ms";
-
-        /**
-         * max blacklist calls on an SSID before full dns check failures disable the network.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_MAX_SSID_BLACKLISTS =
-                "wifi_watchdog_max_ssid_blacklists";
-
-        /**
-         * Number of dns pings per check.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_NUM_DNS_PINGS = "wifi_watchdog_num_dns_pings";
-
-        /**
-         * Minimum number of responses to the dns pings to consider the test 'successful'.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_MIN_DNS_RESPONSES =
-                "wifi_watchdog_min_dns_responses";
-
-        /**
-         * Timeout on dns pings
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_DNS_PING_TIMEOUT_MS =
-                "wifi_watchdog_dns_ping_timeout_ms";
-
-        /**
-         * We consider action from a 'blacklist' call to have finished by the end of
-         * this interval.  If we are connected to the same AP with no network connection,
-         * we are likely stuck on an SSID with no external connectivity.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_BLACKLIST_FOLLOWUP_INTERVAL_MS =
-                "wifi_watchdog_blacklist_followup_interval_ms";
-
-        /**
-         * Setting to turn off walled garden test on Wi-Fi. Feature is enabled by default and
-         * the setting needs to be set to 0 to disable it.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_WALLED_GARDEN_TEST_ENABLED =
-                "wifi_watchdog_walled_garden_test_enabled";
-
-        /**
-         * The URL used for walled garden check upon a new conection. WifiWatchdogService
-         * fetches the URL and checks to see if {@link #WIFI_WATCHDOG_WALLED_GARDEN_PATTERN}
-         * is not part of the title string to notify the user on the presence of a walled garden.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_WALLED_GARDEN_URL =
-                "wifi_watchdog_walled_garden_url";
-
-        /**
-         * Boolean to determine whether to notify on disabling a network.  Secure setting used
-         * to notify user only once.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_SHOW_DISABLED_NETWORK_POPUP =
-                "wifi_watchdog_show_disabled_network_popup";
 
         /**
          * @deprecated Use
@@ -4369,15 +3681,21 @@ public final class Settings {
         public static final String WIFI_MAX_DHCP_RETRY_COUNT = Global.WIFI_MAX_DHCP_RETRY_COUNT;
 
         /**
-         * Maximum amount of time in milliseconds to hold a wakelock while waiting for mobile
-         * data connectivity to be established after a disconnect from Wi-Fi.
+         * @deprecated Use
+         * {@link android.provider.Settings.Global#WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS} instead
          */
+        @Deprecated
         public static final String WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS =
-            "wifi_mobile_data_transition_wakelock_timeout_ms";
+                Global.WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS;
 
         /**
-         * Whether background data usage is allowed by the user. See
-         * ConnectivityManager for more info.
+         * Whether background data usage is allowed.
+         *
+         * @deprecated As of {@link VERSION_CODES#ICE_CREAM_SANDWICH},
+         *             availability of background data depends on several
+         *             combined factors. When background data is unavailable,
+         *             {@link ConnectivityManager#getActiveNetworkInfo()} will
+         *             now appear disconnected.
          */
         @Deprecated
         public static final String BACKGROUND_DATA = "background_data";
@@ -4388,20 +3706,6 @@ public final class Settings {
          */
         public static final String ALLOWED_GEOLOCATION_ORIGINS
                 = "allowed_geolocation_origins";
-
-        /**
-         * The preferred network mode   7 = Global
-         *                              6 = EvDo only
-         *                              5 = CDMA w/o EvDo
-         *                              4 = CDMA / EvDo auto
-         *                              3 = GSM / WCDMA auto
-         *                              2 = WCDMA only
-         *                              1 = GSM only
-         *                              0 = GSM / WCDMA preferred
-         * @hide
-         */
-        public static final String PREFERRED_NETWORK_MODE =
-                "preferred_network_mode";
 
         /**
          * The preferred TTY mode     0 = TTy Off, CDMA default
@@ -4428,18 +3732,6 @@ public final class Settings {
          * @hide
          */
         public static final String TTY_MODE_ENABLED = "tty_mode_enabled";
-
-        /**
-         * The number of milliseconds to delay before sending out Connectivyt Change broadcasts
-         * @hide
-         */
-        public static final String CONNECTIVITY_CHANGE_DELAY = "connectivity_change_delay";
-
-        /**
-         * Default value for CONNECTIVITY_CHANGE_DELAY in milliseconds.
-         * @hide
-         */
-        public static final int CONNECTIVITY_CHANGE_DELAY_DEFAULT = 3000;
 
         /**
          * Controls whether settings backup is enabled.
@@ -4475,208 +3767,6 @@ public final class Settings {
          * @hide
          */
         public static final String LAST_SETUP_SHOWN = "last_setup_shown";
-
-        /**
-         * How frequently (in seconds) to check the memory status of the
-         * device.
-         * @hide
-         */
-        public static final String MEMCHECK_INTERVAL = "memcheck_interval";
-
-        /**
-         * Max frequency (in seconds) to log memory check stats, in realtime
-         * seconds.  This allows for throttling of logs when the device is
-         * running for large amounts of time.
-         * @hide
-         */
-        public static final String MEMCHECK_LOG_REALTIME_INTERVAL =
-                "memcheck_log_realtime_interval";
-
-        /**
-         * Boolean indicating whether rebooting due to system memory checks
-         * is enabled.
-         * @hide
-         */
-        public static final String MEMCHECK_SYSTEM_ENABLED = "memcheck_system_enabled";
-
-        /**
-         * How many bytes the system process must be below to avoid scheduling
-         * a soft reboot.  This reboot will happen when it is next determined
-         * to be a good time.
-         * @hide
-         */
-        public static final String MEMCHECK_SYSTEM_SOFT_THRESHOLD = "memcheck_system_soft";
-
-        /**
-         * How many bytes the system process must be below to avoid scheduling
-         * a hard reboot.  This reboot will happen immediately.
-         * @hide
-         */
-        public static final String MEMCHECK_SYSTEM_HARD_THRESHOLD = "memcheck_system_hard";
-
-        /**
-         * How many bytes the phone process must be below to avoid scheduling
-         * a soft restart.  This restart will happen when it is next determined
-         * to be a good time.
-         * @hide
-         */
-        public static final String MEMCHECK_PHONE_SOFT_THRESHOLD = "memcheck_phone_soft";
-
-        /**
-         * How many bytes the phone process must be below to avoid scheduling
-         * a hard restart.  This restart will happen immediately.
-         * @hide
-         */
-        public static final String MEMCHECK_PHONE_HARD_THRESHOLD = "memcheck_phone_hard";
-
-        /**
-         * Boolean indicating whether restarting the phone process due to
-         * memory checks is enabled.
-         * @hide
-         */
-        public static final String MEMCHECK_PHONE_ENABLED = "memcheck_phone_enabled";
-
-        /**
-         * First time during the day it is okay to kill processes
-         * or reboot the device due to low memory situations.  This number is
-         * in seconds since midnight.
-         * @hide
-         */
-        public static final String MEMCHECK_EXEC_START_TIME = "memcheck_exec_start_time";
-
-        /**
-         * Last time during the day it is okay to kill processes
-         * or reboot the device due to low memory situations.  This number is
-         * in seconds since midnight.
-         * @hide
-         */
-        public static final String MEMCHECK_EXEC_END_TIME = "memcheck_exec_end_time";
-
-        /**
-         * How long the screen must have been off in order to kill processes
-         * or reboot.  This number is in seconds.  A value of -1 means to
-         * entirely disregard whether the screen is on.
-         * @hide
-         */
-        public static final String MEMCHECK_MIN_SCREEN_OFF = "memcheck_min_screen_off";
-
-        /**
-         * How much time there must be until the next alarm in order to kill processes
-         * or reboot.  This number is in seconds.  Note: this value must be
-         * smaller than {@link #MEMCHECK_RECHECK_INTERVAL} or else it will
-         * always see an alarm scheduled within its time.
-         * @hide
-         */
-        public static final String MEMCHECK_MIN_ALARM = "memcheck_min_alarm";
-
-        /**
-         * How frequently to check whether it is a good time to restart things,
-         * if the device is in a bad state.  This number is in seconds.  Note:
-         * this value must be larger than {@link #MEMCHECK_MIN_ALARM} or else
-         * the alarm to schedule the recheck will always appear within the
-         * minimum "do not execute now" time.
-         * @hide
-         */
-        public static final String MEMCHECK_RECHECK_INTERVAL = "memcheck_recheck_interval";
-
-        /**
-         * How frequently (in DAYS) to reboot the device.  If 0, no reboots
-         * will occur.
-         * @hide
-         */
-        public static final String REBOOT_INTERVAL = "reboot_interval";
-
-        /**
-         * First time during the day it is okay to force a reboot of the
-         * device (if REBOOT_INTERVAL is set).  This number is
-         * in seconds since midnight.
-         * @hide
-         */
-        public static final String REBOOT_START_TIME = "reboot_start_time";
-
-        /**
-         * The window of time (in seconds) after each REBOOT_INTERVAL in which
-         * a reboot can be executed.  If 0, a reboot will always be executed at
-         * exactly the given time.  Otherwise, it will only be executed if
-         * the device is idle within the window.
-         * @hide
-         */
-        public static final String REBOOT_WINDOW = "reboot_window";
-
-        /**
-        * Overlay display devices setting.
-        * The associated value is a specially formatted string that describes the
-        * size and density of simulated secondary display devices.
-        * <p>
-        * Format: {width}x{height}/{dpi};...
-        * </p><p>
-        * Example:
-        * <ul>
-        * <li><code>1280x720/213</code>: make one overlay that is 1280x720 at 213dpi.</li>
-        * <li><code>1920x1080/320;1280x720/213</code>: make two overlays, the first
-        * at 1080p and the second at 720p.</li>
-        * <li>If the value is empty, then no overlay display devices are created.</li>
-        * </ul></p>
-        *
-        * @hide
-        */
-       public static final String OVERLAY_DISPLAY_DEVICES = "overlay_display_devices";
-
-        /**
-         * Screen timeout in milliseconds corresponding to the
-         * PowerManager's POKE_LOCK_SHORT_TIMEOUT flag (i.e. the fastest
-         * possible screen timeout behavior.)
-         * @hide
-         */
-        public static final String SHORT_KEYLIGHT_DELAY_MS =
-                "short_keylight_delay_ms";
-
-        /**
-         * The interval in minutes after which the amount of free storage left on the
-         * device is logged to the event log
-         * @hide
-         */
-        public static final String SYS_FREE_STORAGE_LOG_INTERVAL =
-                "sys_free_storage_log_interval";
-
-        /**
-         * Threshold for the amount of change in disk free space required to report the amount of
-         * free space. Used to prevent spamming the logs when the disk free space isn't changing
-         * frequently.
-         * @hide
-         */
-        public static final String DISK_FREE_CHANGE_REPORTING_THRESHOLD =
-                "disk_free_change_reporting_threshold";
-
-
-        /**
-         * Minimum percentage of free storage on the device that is used to determine if
-         * the device is running low on storage.  The default is 10.
-         * <p>Say this value is set to 10, the device is considered running low on storage
-         * if 90% or more of the device storage is filled up.
-         * @hide
-         */
-        public static final String SYS_STORAGE_THRESHOLD_PERCENTAGE =
-                "sys_storage_threshold_percentage";
-
-        /**
-         * Maximum byte size of the low storage threshold.  This is to ensure
-         * that {@link #SYS_STORAGE_THRESHOLD_PERCENTAGE} does not result in
-         * an overly large threshold for large storage devices.  Currently this
-         * must be less than 2GB.  This default is 500MB.
-         * @hide
-         */
-        public static final String SYS_STORAGE_THRESHOLD_MAX_BYTES =
-                "sys_storage_threshold_max_bytes";
-
-        /**
-         * Minimum bytes of free storage on the device before the data
-         * partition is considered full. By default, 1 MB is reserved
-         * to avoid system-wide SQLite disk full exceptions.
-         * @hide
-         */
-        public static final String SYS_STORAGE_FULL_THRESHOLD_BYTES =
-                "sys_storage_full_threshold_bytes";
 
         /**
          * The interval in milliseconds after which Wi-Fi is considered idle.
@@ -4838,18 +3928,6 @@ public final class Settings {
         public static final String ANR_SHOW_BACKGROUND = "anr_show_background";
 
         /**
-         * Whether to allow killing of the foreground app by long-pressing the Back button
-         * @hide
-         */
-        public static final String KILL_APP_LONGPRESS_BACK = "kill_app_longpress_back";
-
-        /**
-         * Whether to include options in power menu for rebooting into recovery or bootloader
-         * @hide
-         */
-        public static final String ADVANCED_REBOOT = "advanced_reboot";
-
-        /**
          * The {@link ComponentName} string of the service to be used as the voice recognition
          * service.
          *
@@ -4913,36 +3991,6 @@ public final class Settings {
                 INCALL_POWER_BUTTON_BEHAVIOR_SCREEN_OFF;
 
         /**
-         * What happens when the user presses the Home button when the
-         * phone is ringing.<br/>
-         * <b>Values:</b><br/>
-         * 1 - Nothing happens. (Default behavior)<br/>
-         * 2 - The Home button answer the current call.<br/>
-         *
-         * @hide
-         */
-        public static final String RING_HOME_BUTTON_BEHAVIOR = "ring_home_button_behavior";
-
-        /**
-         * RING_HOME_BUTTON_BEHAVIOR value for "do nothing".
-         * @hide
-         */
-        public static final int RING_HOME_BUTTON_BEHAVIOR_DO_NOTHING = 0x1;
-
-        /**
-         * RING_HOME_BUTTON_BEHAVIOR value for "answer".
-         * @hide
-         */
-        public static final int RING_HOME_BUTTON_BEHAVIOR_ANSWER = 0x2;
-
-        /**
-         * RING_HOME_BUTTON_BEHAVIOR default value.
-         * @hide
-         */
-        public static final int RING_HOME_BUTTON_BEHAVIOR_DEFAULT =
-                RING_HOME_BUTTON_BEHAVIOR_DO_NOTHING;
-
-        /**
          * The current night mode that has been selected by the user.  Owned
          * and controlled by UiModeManagerService.  Constants are as per
          * UiModeManager.
@@ -4986,51 +4034,6 @@ public final class Settings {
         public static final String SCREENSAVER_DEFAULT_COMPONENT = "screensaver_default_component";
 
         /**
-         * ms during which to consume extra events related to Inet connection condition
-         * after a transtion to fully-connected
-         * @hide
-         */
-        public static final String INET_CONDITION_DEBOUNCE_UP_DELAY =
-                "inet_condition_debounce_up_delay";
-
-        /**
-         * ms during which to consume extra events related to Inet connection condtion
-         * after a transtion to partly-connected
-         * @hide
-         */
-        public static final String INET_CONDITION_DEBOUNCE_DOWN_DELAY =
-                "inet_condition_debounce_down_delay";
-
-        /**
-         * URL to attempt a GET on to see if this is a prepay device
-         * @hide
-         */
-        public static final String SETUP_PREPAID_DETECTION_TARGET_URL =
-                "setup_prepaid_detection_target_url";
-
-        /**
-         * Host to check for a redirect to after an attempt to GET
-         * SETUP_PREPAID_DETECTION_TARGET_URL. (If we redirected there,
-         * this is a prepaid device with zero balance.)
-         * @hide
-         */
-        public static final String SETUP_PREPAID_DETECTION_REDIR_HOST =
-                "setup_prepaid_detection_redir_host";
-
-        /** Preferred NTP server. {@hide} */
-        public static final String NTP_SERVER = "ntp_server";
-        /** Timeout in milliseconds to wait for NTP server. {@hide} */
-        public static final String NTP_TIMEOUT = "ntp_timeout";
-
-        /**
-         * Duration in milliseconds before pre-authorized URIs for the contacts
-         * provider should expire.
-         * @hide
-         */
-        public static final String CONTACTS_PREAUTH_URI_EXPIRATION =
-                "contacts_preauth_uri_expiration";
-
-        /**
          * This are the settings to be backed up.
          *
          * NOTE: Settings are backed up and restored in the order they appear
@@ -5041,7 +4044,6 @@ public final class Settings {
          */
         public static final String[] SETTINGS_TO_BACKUP = {
             BUGREPORT_IN_POWER_MENU,
-            ADB_ENABLED,
             ALLOW_MOCK_LOCATION,
             PARENTAL_CONTROL_ENABLED,
             PARENTAL_CONTROL_REDIRECT_URL,
@@ -5066,15 +4068,14 @@ public final class Settings {
             TTS_DEFAULT_LOCALE,
             WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,            // moved to global
             WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,               // moved to global
-            WIFI_NUM_OPEN_NETWORKS_KEPT,
+            WIFI_NUM_OPEN_NETWORKS_KEPT,                        // moved to global
             MOUNT_PLAY_NOTIFICATION_SND,
             MOUNT_UMS_AUTOSTART,
             MOUNT_UMS_PROMPT,
             MOUNT_UMS_NOTIFY_ENABLED,
             UI_NIGHT_MODE,
             LOCK_SCREEN_OWNER_INFO,
-            LOCK_SCREEN_OWNER_INFO_ENABLED,
-            ADVANCED_REBOOT
+            LOCK_SCREEN_OWNER_INFO_ENABLED
         };
 
         /**
@@ -5135,7 +4136,7 @@ public final class Settings {
         }
     }
 
-     /**
+    /**
      * Global system settings, containing preferences that always apply identically
      * to all defined users.  Applications can read these but are not allowed to write;
      * like the "Secure" settings, these are for preferences that the user must
@@ -5177,6 +4178,10 @@ public final class Settings {
          * {@hide}
          */
         public static final String RADIO_WIMAX = "wimax";
+        /**
+         * Constant for use in AIRPLANE_MODE_RADIOS to specify Cellular radio.
+         */
+        public static final String RADIO_CELL = "cell";
 
         /**
          * Constant for use in AIRPLANE_MODE_RADIOS to specify NFC radio.
@@ -5210,6 +4215,13 @@ public final class Settings {
          * {@link #WIFI_SLEEP_POLICY_NEVER}.
          */
         public static final String WIFI_SLEEP_POLICY = "wifi_sleep_policy";
+
+        /**
+         * Value for {@link #WIFI_SLEEP_POLICY} to use the default Wi-Fi sleep
+         * policy, which is to sleep shortly after the turning off
+         * according to the {@link #STAY_ON_WHILE_PLUGGED_IN} setting.
+         */
+        public static final int WIFI_SLEEP_POLICY_DEFAULT = 0;
 
         /**
          * Value for {@link #WIFI_SLEEP_POLICY} to use the default policy when
@@ -5351,236 +4363,299 @@ public final class Settings {
         public static final String CDMA_SUBSCRIPTION_MODE = "subscription_mode";
 
         /** Inactivity timeout to track mobile data activity.
-         *
-         * If set to a positive integer, it indicates the inactivity timeout value in seconds to
-         * infer the data activity of mobile network. After a period of no activity on mobile
-         * networks with length specified by the timeout, an {@code ACTION_DATA_ACTIVITY_CHANGE}
-         * intent is fired to indicate a transition of network status from "active" to "idle". Any
-         * subsequent activity on mobile networks triggers the firing of {@code
-         * ACTION_DATA_ACTIVITY_CHANGE} intent indicating transition from "idle" to "active".
-         *
-         * Network activity refers to transmitting or receiving data on the network interfaces.
-         *
-         * Tracking is disabled if set to zero or negative value.
-         *
-         * @hide
-         */
-        public static final String DATA_ACTIVITY_TIMEOUT_MOBILE = "data_activity_timeout_mobile";
+        *
+        * If set to a positive integer, it indicates the inactivity timeout value in seconds to
+        * infer the data activity of mobile network. After a period of no activity on mobile
+        * networks with length specified by the timeout, an {@code ACTION_DATA_ACTIVITY_CHANGE}
+        * intent is fired to indicate a transition of network status from "active" to "idle". Any
+        * subsequent activity on mobile networks triggers the firing of {@code
+        * ACTION_DATA_ACTIVITY_CHANGE} intent indicating transition from "idle" to "active".
+        *
+        * Network activity refers to transmitting or receiving data on the network interfaces.
+        *
+        * Tracking is disabled if set to zero or negative value.
+        *
+        * @hide
+        */
+       public static final String DATA_ACTIVITY_TIMEOUT_MOBILE = "data_activity_timeout_mobile";
 
-        /** Timeout to tracking Wifi data activity. Same as {@code DATA_ACTIVITY_TIMEOUT_MOBILE}
+       /** Timeout to tracking Wifi data activity. Same as {@code DATA_ACTIVITY_TIMEOUT_MOBILE}
         * but for Wifi network.
         * @hide
         */
        public static final String DATA_ACTIVITY_TIMEOUT_WIFI = "data_activity_timeout_wifi";
 
-        /**
-         * Whether or not data roaming is enabled. (0 = false, 1 = true)
-         */
-        public static final String DATA_ROAMING = "data_roaming";
+       /**
+        * Whether or not data roaming is enabled. (0 = false, 1 = true)
+        */
+       public static final String DATA_ROAMING = "data_roaming";
 
-        /**
-         * Whether user has enabled development settings.
-         */
-        public static final String DEVELOPMENT_SETTINGS_ENABLED = "development_settings_enabled";
+       /**
+        * Whether user has enabled development settings.
+        */
+       public static final String DEVELOPMENT_SETTINGS_ENABLED = "development_settings_enabled";
 
-        /**
-         * Whether the device has been provisioned (0 = false, 1 = true)
-         */
-        public static final String DEVICE_PROVISIONED = "device_provisioned";
+       /**
+        * Whether the device has been provisioned (0 = false, 1 = true)
+        */
+       public static final String DEVICE_PROVISIONED = "device_provisioned";
 
-        /**
-         * The saved value for WindowManagerService.setForcedDisplayDensity().
-         * One integer in dpi.  If unset, then use the real display density.
-         * @hide
-         */
-        public static final String DISPLAY_DENSITY_FORCED = "display_density_forced";
+       /**
+        * The saved value for WindowManagerService.setForcedDisplayDensity().
+        * One integer in dpi.  If unset, then use the real display density.
+        * @hide
+        */
+       public static final String DISPLAY_DENSITY_FORCED = "display_density_forced";
 
-        /**
-         * The saved value for WindowManagerService.setForcedDisplaySize().
-         * Two integers separated by a comma.  If unset, then use the real display size.
-         * @hide
-         */
-        public static final String DISPLAY_SIZE_FORCED = "display_size_forced";
+       /**
+        * The saved value for WindowManagerService.setForcedDisplaySize().
+        * Two integers separated by a comma.  If unset, then use the real display size.
+        * @hide
+        */
+       public static final String DISPLAY_SIZE_FORCED = "display_size_forced";
 
-        /**
-         * The maximum size, in bytes, of a download that the download manager will transfer over
-         * a non-wifi connection.
-         * @hide
-         */
-        public static final String DOWNLOAD_MAX_BYTES_OVER_MOBILE =
-                "download_manager_max_bytes_over_mobile";
+       /**
+        * The maximum size, in bytes, of a download that the download manager will transfer over
+        * a non-wifi connection.
+        * @hide
+        */
+       public static final String DOWNLOAD_MAX_BYTES_OVER_MOBILE =
+               "download_manager_max_bytes_over_mobile";
 
-        /**
-         * The recommended maximum size, in bytes, of a download that the download manager should
-         * transfer over a non-wifi connection. Over this size, the use will be warned, but will
-         * have the option to start the download over the mobile connection anyway.
-         * @hide
-         */
-        public static final String DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE =
-                "download_manager_recommended_max_bytes_over_mobile";
+       /**
+        * The recommended maximum size, in bytes, of a download that the download manager should
+        * transfer over a non-wifi connection. Over this size, the use will be warned, but will
+        * have the option to start the download over the mobile connection anyway.
+        * @hide
+        */
+       public static final String DOWNLOAD_RECOMMENDED_MAX_BYTES_OVER_MOBILE =
+               "download_manager_recommended_max_bytes_over_mobile";
 
-        /**
-         * Whether the package installer should allow installation of apps downloaded from
-         * sources other than Google Play.
-         *
-         * 1 = allow installing from other sources
-         * 0 = only allow installing from Google Play
-         */
-        public static final String INSTALL_NON_MARKET_APPS = "install_non_market_apps";
+       /**
+        * Whether the package installer should allow installation of apps downloaded from
+        * sources other than Google Play.
+        *
+        * 1 = allow installing from other sources
+        * 0 = only allow installing from Google Play
+        */
+       public static final String INSTALL_NON_MARKET_APPS = "install_non_market_apps";
 
-        /**
-         * Whether mobile data connections are allowed by the user.  See
-         * ConnectivityManager for more info.
-         * @hide
-         */
-        public static final String MOBILE_DATA = "mobile_data";
+       /**
+        * Whether mobile data connections are allowed by the user.  See
+        * ConnectivityManager for more info.
+        * @hide
+        */
+       public static final String MOBILE_DATA = "mobile_data";
 
-        /** {@hide} */
-        public static final String NETSTATS_ENABLED = "netstats_enabled";
-        /** {@hide} */
-        public static final String NETSTATS_POLL_INTERVAL = "netstats_poll_interval";
-        /** {@hide} */
-        public static final String NETSTATS_TIME_CACHE_MAX_AGE = "netstats_time_cache_max_age";
-        /** {@hide} */
-        public static final String NETSTATS_GLOBAL_ALERT_BYTES = "netstats_global_alert_bytes";
-        /** {@hide} */
-        public static final String NETSTATS_SAMPLE_ENABLED = "netstats_sample_enabled";
-        /** {@hide} */
-        public static final String NETSTATS_REPORT_XT_OVER_DEV = "netstats_report_xt_over_dev";
+       /** {@hide} */
+       public static final String NETSTATS_ENABLED = "netstats_enabled";
+       /** {@hide} */
+       public static final String NETSTATS_POLL_INTERVAL = "netstats_poll_interval";
+       /** {@hide} */
+       public static final String NETSTATS_TIME_CACHE_MAX_AGE = "netstats_time_cache_max_age";
+       /** {@hide} */
+       public static final String NETSTATS_GLOBAL_ALERT_BYTES = "netstats_global_alert_bytes";
+       /** {@hide} */
+       public static final String NETSTATS_SAMPLE_ENABLED = "netstats_sample_enabled";
+       /** {@hide} */
+       public static final String NETSTATS_REPORT_XT_OVER_DEV = "netstats_report_xt_over_dev";
 
-        /** {@hide} */
-        public static final String NETSTATS_DEV_BUCKET_DURATION = "netstats_dev_bucket_duration";
-        /** {@hide} */
-        public static final String NETSTATS_DEV_PERSIST_BYTES = "netstats_dev_persist_bytes";
-        /** {@hide} */
-        public static final String NETSTATS_DEV_ROTATE_AGE = "netstats_dev_rotate_age";
-        /** {@hide} */
-        public static final String NETSTATS_DEV_DELETE_AGE = "netstats_dev_delete_age";
+       /** {@hide} */
+       public static final String NETSTATS_DEV_BUCKET_DURATION = "netstats_dev_bucket_duration";
+       /** {@hide} */
+       public static final String NETSTATS_DEV_PERSIST_BYTES = "netstats_dev_persist_bytes";
+       /** {@hide} */
+       public static final String NETSTATS_DEV_ROTATE_AGE = "netstats_dev_rotate_age";
+       /** {@hide} */
+       public static final String NETSTATS_DEV_DELETE_AGE = "netstats_dev_delete_age";
 
-        /** {@hide} */
-        public static final String NETSTATS_UID_BUCKET_DURATION = "netstats_uid_bucket_duration";
-        /** {@hide} */
-        public static final String NETSTATS_UID_PERSIST_BYTES = "netstats_uid_persist_bytes";
-        /** {@hide} */
-        public static final String NETSTATS_UID_ROTATE_AGE = "netstats_uid_rotate_age";
-        /** {@hide} */
-        public static final String NETSTATS_UID_DELETE_AGE = "netstats_uid_delete_age";
+       /** {@hide} */
+       public static final String NETSTATS_UID_BUCKET_DURATION = "netstats_uid_bucket_duration";
+       /** {@hide} */
+       public static final String NETSTATS_UID_PERSIST_BYTES = "netstats_uid_persist_bytes";
+       /** {@hide} */
+       public static final String NETSTATS_UID_ROTATE_AGE = "netstats_uid_rotate_age";
+       /** {@hide} */
+       public static final String NETSTATS_UID_DELETE_AGE = "netstats_uid_delete_age";
 
-        /** {@hide} */
-        public static final String NETSTATS_UID_TAG_BUCKET_DURATION = "netstats_uid_tag_bucket_duration";
-        /** {@hide} */
-        public static final String NETSTATS_UID_TAG_PERSIST_BYTES = "netstats_uid_tag_persist_bytes";
-        /** {@hide} */
-        public static final String NETSTATS_UID_TAG_ROTATE_AGE = "netstats_uid_tag_rotate_age";
-        /** {@hide} */
-        public static final String NETSTATS_UID_TAG_DELETE_AGE = "netstats_uid_tag_delete_age";
+       /** {@hide} */
+       public static final String NETSTATS_UID_TAG_BUCKET_DURATION = "netstats_uid_tag_bucket_duration";
+       /** {@hide} */
+       public static final String NETSTATS_UID_TAG_PERSIST_BYTES = "netstats_uid_tag_persist_bytes";
+       /** {@hide} */
+       public static final String NETSTATS_UID_TAG_ROTATE_AGE = "netstats_uid_tag_rotate_age";
+       /** {@hide} */
+       public static final String NETSTATS_UID_TAG_DELETE_AGE = "netstats_uid_tag_delete_age";
 
-        /**
-         * User preference for which network(s) should be used. Only the
-         * connectivity service should touch this.
-         */
-        public static final String NETWORK_PREFERENCE = "network_preference";
+       /**
+        * User preference for which network(s) should be used. Only the
+        * connectivity service should touch this.
+        */
+       public static final String NETWORK_PREFERENCE = "network_preference";
 
-        /**
-         * If the NITZ_UPDATE_DIFF time is exceeded then an automatic adjustment
-         * to SystemClock will be allowed even if NITZ_UPDATE_SPACING has not been
-         * exceeded.
-         * @hide
-         */
-        public static final String NITZ_UPDATE_DIFF = "nitz_update_diff";
+       /**
+        * If the NITZ_UPDATE_DIFF time is exceeded then an automatic adjustment
+        * to SystemClock will be allowed even if NITZ_UPDATE_SPACING has not been
+        * exceeded.
+        * @hide
+        */
+       public static final String NITZ_UPDATE_DIFF = "nitz_update_diff";
 
-        /**
-         * The length of time in milli-seconds that automatic small adjustments to
-         * SystemClock are ignored if NITZ_UPDATE_DIFF is not exceeded.
-         * @hide
-         */
-        public static final String NITZ_UPDATE_SPACING = "nitz_update_spacing";
+       /**
+        * The length of time in milli-seconds that automatic small adjustments to
+        * SystemClock are ignored if NITZ_UPDATE_DIFF is not exceeded.
+        * @hide
+        */
+       public static final String NITZ_UPDATE_SPACING = "nitz_update_spacing";
 
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface when screen is on, to detect possible data
-         * connection problems.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_POLL_INTERVAL_MS =
-                "pdp_watchdog_poll_interval_ms";
+       /** Preferred NTP server. {@hide} */
+       public static final String NTP_SERVER = "ntp_server";
+       /** Timeout in milliseconds to wait for NTP server. {@hide} */
+       public static final String NTP_TIMEOUT = "ntp_timeout";
 
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface when screen is off, to detect possible data
-         * connection problems.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_LONG_POLL_INTERVAL_MS =
-                "pdp_watchdog_long_poll_interval_ms";
+       /**
+        * Whether the package manager should send package verification broadcasts for verifiers to
+        * review apps prior to installation.
+        * 1 = request apps to be verified prior to installation, if a verifier exists.
+        * 0 = do not verify apps before installation
+        * @hide
+        */
+       public static final String PACKAGE_VERIFIER_ENABLE = "package_verifier_enable";
 
-        /**
-         * The interval in milliseconds at which to check packet counts on the
-         * mobile data interface after {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT}
-         * outgoing packets has been reached without incoming packets.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS =
-                "pdp_watchdog_error_poll_interval_ms";
+       /** Timeout for package verification.
+        * @hide */
+       public static final String PACKAGE_VERIFIER_TIMEOUT = "verifier_timeout";
 
-        /**
-         * The number of outgoing packets sent without seeing an incoming packet
-         * that triggers a countdown (of {@link #PDP_WATCHDOG_ERROR_POLL_COUNT}
-         * device is logged to the event log
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_TRIGGER_PACKET_COUNT =
-                "pdp_watchdog_trigger_packet_count";
+       /** Default response code for package verification.
+        * @hide */
+       public static final String PACKAGE_VERIFIER_DEFAULT_RESPONSE = "verifier_default_response";
 
-        /**
-         * The number of polls to perform (at {@link #PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS})
-         * after hitting {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT} before
-         * attempting data connection recovery.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_ERROR_POLL_COUNT =
-                "pdp_watchdog_error_poll_count";
+       /**
+        * Show package verification setting in the Settings app.
+        * 1 = show (default)
+        * 0 = hide
+        * @hide
+        */
+       public static final String PACKAGE_VERIFIER_SETTING_VISIBLE = "verifier_setting_visible";
 
-        /**
-         * The number of failed PDP reset attempts before moving to something more
-         * drastic: re-registering to the network.
-         * @hide
-         */
-        public static final String PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT =
-                "pdp_watchdog_max_pdp_reset_fail_count";
+       /**
+        * Run package verificaiton on apps installed through ADB/ADT/USB
+        * 1 = perform package verification on ADB installs (default)
+        * 0 = bypass package verification on ADB installs
+        * @hide
+        */
+       public static final String PACKAGE_VERIFIER_INCLUDE_ADB = "verifier_verify_adb_installs";
 
-        /**
-         * URL to open browser on to allow user to manage a prepay account
-         * @hide
-         */
-        public static final String SETUP_PREPAID_DATA_SERVICE_URL =
+       /**
+        * The interval in milliseconds at which to check packet counts on the
+        * mobile data interface when screen is on, to detect possible data
+        * connection problems.
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_POLL_INTERVAL_MS =
+               "pdp_watchdog_poll_interval_ms";
+
+       /**
+        * The interval in milliseconds at which to check packet counts on the
+        * mobile data interface when screen is off, to detect possible data
+        * connection problems.
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_LONG_POLL_INTERVAL_MS =
+               "pdp_watchdog_long_poll_interval_ms";
+
+       /**
+        * The interval in milliseconds at which to check packet counts on the
+        * mobile data interface after {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT}
+        * outgoing packets has been reached without incoming packets.
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS =
+               "pdp_watchdog_error_poll_interval_ms";
+
+       /**
+        * The number of outgoing packets sent without seeing an incoming packet
+        * that triggers a countdown (of {@link #PDP_WATCHDOG_ERROR_POLL_COUNT}
+        * device is logged to the event log
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_TRIGGER_PACKET_COUNT =
+               "pdp_watchdog_trigger_packet_count";
+
+       /**
+        * The number of polls to perform (at {@link #PDP_WATCHDOG_ERROR_POLL_INTERVAL_MS})
+        * after hitting {@link #PDP_WATCHDOG_TRIGGER_PACKET_COUNT} before
+        * attempting data connection recovery.
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_ERROR_POLL_COUNT =
+               "pdp_watchdog_error_poll_count";
+
+       /**
+        * The number of failed PDP reset attempts before moving to something more
+        * drastic: re-registering to the network.
+        * @hide
+        */
+       public static final String PDP_WATCHDOG_MAX_PDP_RESET_FAIL_COUNT =
+               "pdp_watchdog_max_pdp_reset_fail_count";
+
+       /**
+        * A positive value indicates how often the SamplingProfiler
+        * should take snapshots. Zero value means SamplingProfiler
+        * is disabled.
+        *
+        * @hide
+        */
+       public static final String SAMPLING_PROFILER_MS = "sampling_profiler_ms";
+
+       /**
+        * URL to open browser on to allow user to manage a prepay account
+        * @hide
+        */
+       public static final String SETUP_PREPAID_DATA_SERVICE_URL =
                "setup_prepaid_data_service_url";
 
-        /**
-         * The interval in milliseconds at which to check the number of SMS sent out without asking
-         * for use permit, to limit the un-authorized SMS usage.
-         *
-         * @hide
-         */
-        public static final String SMS_OUTGOING_CHECK_INTERVAL_MS =
-                "sms_outgoing_check_interval_ms";
+       /**
+        * URL to attempt a GET on to see if this is a prepay device
+        * @hide
+        */
+       public static final String SETUP_PREPAID_DETECTION_TARGET_URL =
+               "setup_prepaid_detection_target_url";
 
-        /**
-         * The number of outgoing SMS sent without asking for user permit (of {@link
-         * #SMS_OUTGOING_CHECK_INTERVAL_MS}
-         *
-         * @hide
-         */
-        public static final String SMS_OUTGOING_CHECK_MAX_COUNT =
-                "sms_outgoing_check_max_count";
+       /**
+        * Host to check for a redirect to after an attempt to GET
+        * SETUP_PREPAID_DETECTION_TARGET_URL. (If we redirected there,
+        * this is a prepaid device with zero balance.)
+        * @hide
+        */
+       public static final String SETUP_PREPAID_DETECTION_REDIR_HOST =
+               "setup_prepaid_detection_redir_host";
 
-        /**
-         * Used to disable SMS short code confirmation - defaults to true.
-         * True indcates we will do the check, etc.  Set to false to disable.
-         * @see com.android.internal.telephony.SmsUsageMonitor
-         * @hide
-         */
-        public static final String SMS_SHORT_CODE_CONFIRMATION = "sms_short_code_confirmation";
+       /**
+        * The interval in milliseconds at which to check the number of SMS sent out without asking
+        * for use permit, to limit the un-authorized SMS usage.
+        *
+        * @hide
+        */
+       public static final String SMS_OUTGOING_CHECK_INTERVAL_MS =
+               "sms_outgoing_check_interval_ms";
+
+       /**
+        * The number of outgoing SMS sent without asking for user permit (of {@link
+        * #SMS_OUTGOING_CHECK_INTERVAL_MS}
+        *
+        * @hide
+        */
+       public static final String SMS_OUTGOING_CHECK_MAX_COUNT =
+               "sms_outgoing_check_max_count";
+
+       /**
+        * Used to disable SMS short code confirmation - defaults to true.
+        * True indcates we will do the check, etc.  Set to false to disable.
+        * @see com.android.internal.telephony.SmsUsageMonitor
+        * @hide
+        */
+       public static final String SMS_SHORT_CODE_CONFIRMATION = "sms_short_code_confirmation";
 
         /**
          * Used to select which country we use to determine premium sms codes.
@@ -5591,276 +4666,268 @@ public final class Settings {
          */
         public static final String SMS_SHORT_CODE_RULE = "sms_short_code_rule";
 
-        /**
-         * Used to disable Tethering on a device - defaults to true
-         * @hide
-         */
-        public static final String TETHER_SUPPORTED = "tether_supported";
+       /**
+        * Used to disable Tethering on a device - defaults to true
+        * @hide
+        */
+       public static final String TETHER_SUPPORTED = "tether_supported";
 
-        /**
-         * Used to require DUN APN on the device or not - defaults to a build config value
-         * which defaults to false
-         * @hide
-         */
-        public static final String TETHER_DUN_REQUIRED = "tether_dun_required";
+       /**
+        * Used to require DUN APN on the device or not - defaults to a build config value
+        * which defaults to false
+        * @hide
+        */
+       public static final String TETHER_DUN_REQUIRED = "tether_dun_required";
 
-        /**
-         * Used to hold a gservices-provisioned apn value for DUN.  If set, or the
-         * corresponding build config values are set it will override the APN DB
-         * values.
-         * Consists of a comma seperated list of strings:
-         * "name,apn,proxy,port,username,password,server,mmsc,mmsproxy,mmsport,mcc,mnc,auth,type"
-         * note that empty fields can be ommitted: "name,apn,,,,,,,,,310,260,,DUN"
-         * @hide
-         */
-        public static final String TETHER_DUN_APN = "tether_dun_apn";
+       /**
+        * Used to hold a gservices-provisioned apn value for DUN.  If set, or the
+        * corresponding build config values are set it will override the APN DB
+        * values.
+        * Consists of a comma seperated list of strings:
+        * "name,apn,proxy,port,username,password,server,mmsc,mmsproxy,mmsport,mcc,mnc,auth,type"
+        * note that empty fields can be ommitted: "name,apn,,,,,,,,,310,260,,DUN"
+        * @hide
+        */
+       public static final String TETHER_DUN_APN = "tether_dun_apn";
 
-        /**
-         * The bandwidth throttle polling freqency in seconds
-         * @hide
-         */
-        public static final String THROTTLE_POLLING_SEC = "throttle_polling_sec";
+       /**
+        * The bandwidth throttle polling freqency in seconds
+        * @hide
+        */
+       public static final String THROTTLE_POLLING_SEC = "throttle_polling_sec";
 
-        /**
-         * The bandwidth throttle threshold (long)
-         * @hide
-         */
-        public static final String THROTTLE_THRESHOLD_BYTES = "throttle_threshold_bytes";
+       /**
+        * The bandwidth throttle threshold (long)
+        * @hide
+        */
+       public static final String THROTTLE_THRESHOLD_BYTES = "throttle_threshold_bytes";
 
-        /**
-         * The bandwidth throttle value (kbps)
-         * @hide
-         */
-        public static final String THROTTLE_VALUE_KBITSPS = "throttle_value_kbitsps";
+       /**
+        * The bandwidth throttle value (kbps)
+        * @hide
+        */
+       public static final String THROTTLE_VALUE_KBITSPS = "throttle_value_kbitsps";
 
-        /**
-         * The bandwidth throttle reset calendar day (1-28)
-         * @hide
-         */
-        public static final String THROTTLE_RESET_DAY = "throttle_reset_day";
+       /**
+        * The bandwidth throttle reset calendar day (1-28)
+        * @hide
+        */
+       public static final String THROTTLE_RESET_DAY = "throttle_reset_day";
 
-        /**
-         * The throttling notifications we should send
-         * @hide
-         */
-        public static final String THROTTLE_NOTIFICATION_TYPE = "throttle_notification_type";
+       /**
+        * The throttling notifications we should send
+        * @hide
+        */
+       public static final String THROTTLE_NOTIFICATION_TYPE = "throttle_notification_type";
 
-        /**
-         * Help URI for data throttling policy
-         * @hide
-         */
-        public static final String THROTTLE_HELP_URI = "throttle_help_uri";
+       /**
+        * Help URI for data throttling policy
+        * @hide
+        */
+       public static final String THROTTLE_HELP_URI = "throttle_help_uri";
 
-        /**
-         * The length of time in Sec that we allow our notion of NTP time
-         * to be cached before we refresh it
-         * @hide
-         */
-        public static final String THROTTLE_MAX_NTP_CACHE_AGE_SEC =
-                "throttle_max_ntp_cache_age_sec";
+       /**
+        * The length of time in Sec that we allow our notion of NTP time
+        * to be cached before we refresh it
+        * @hide
+        */
+       public static final String THROTTLE_MAX_NTP_CACHE_AGE_SEC =
+               "throttle_max_ntp_cache_age_sec";
 
-        /**
-         * USB Mass Storage Enabled
-         */
-        public static final String USB_MASS_STORAGE_ENABLED = "usb_mass_storage_enabled";
+       /**
+        * USB Mass Storage Enabled
+        */
+       public static final String USB_MASS_STORAGE_ENABLED = "usb_mass_storage_enabled";
 
-        /** Autofill server address (Used in WebView/browser).
-         * {@hide} */
-        public static final String WEB_AUTOFILL_QUERY_URL = "web_autofill_query_url";
+       /**
+        * If this setting is set (to anything), then all references
+        * to Gmail on the device must change to Google Mail.
+        */
+       public static final String USE_GOOGLE_MAIL = "use_google_mail";
 
-        /**
-         * Delay (in seconds) before repeating the Wi-Fi networks available notification.
-         * Connecting to a network will reset the timer.
-         */
-        public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
+       /** Autofill server address (Used in WebView/browser).
+        * {@hide} */
+       public static final String WEB_AUTOFILL_QUERY_URL =
+           "web_autofill_query_url";
+
+       /**
+        * Whether Wifi display is enabled/disabled
+        * 0=disabled. 1=enabled.
+        * @hide
+        */
+       public static final String WIFI_DISPLAY_ON = "wifi_display_on";
+
+       /**
+        * Whether to notify the user of open networks.
+        * <p>
+        * If not connected and the scan results have an open network, we will
+        * put this notification up. If we attempt to connect to a network or
+        * the open network(s) disappear, we remove the notification. When we
+        * show the notification, we will not show it again for
+        * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} time.
+        */
+       public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
+               "wifi_networks_available_notification_on";
+       /**
+        * {@hide}
+        */
+       public static final String WIMAX_NETWORKS_AVAILABLE_NOTIFICATION_ON =
+               "wimax_networks_available_notification_on";
+
+       /**
+        * Delay (in seconds) before repeating the Wi-Fi networks available notification.
+        * Connecting to a network will reset the timer.
+        */
+       public static final String WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY =
                "wifi_networks_available_repeat_delay";
 
-        /**
-         * Whether the package manager should send package verification broadcasts for verifiers to
-         * review apps prior to installation.
-         * 1 = request apps to be verified prior to installation, if a verifier exists.
-         * 0 = do not verify apps before installation
-         * @hide
-         */
-        public static final String PACKAGE_VERIFIER_ENABLE = "package_verifier_enable";
+       /**
+        * 802.11 country code in ISO 3166 format
+        * @hide
+        */
+       public static final String WIFI_COUNTRY_CODE = "wifi_country_code";
 
-        /** Timeout for package verification.
-         * @hide */
-        public static final String PACKAGE_VERIFIER_TIMEOUT = "verifier_timeout";
+       /**
+        * The interval in milliseconds to issue wake up scans when wifi needs
+        * to connect. This is necessary to connect to an access point when
+        * device is on the move and the screen is off.
+        * @hide
+        */
+       public static final String WIFI_FRAMEWORK_SCAN_INTERVAL_MS =
+               "wifi_framework_scan_interval_ms";
 
-        /** Default response code for package verification.
-         * @hide */
-        public static final String PACKAGE_VERIFIER_DEFAULT_RESPONSE = "verifier_default_response";
+       /**
+        * The interval in milliseconds after which Wi-Fi is considered idle.
+        * When idle, it is possible for the device to be switched from Wi-Fi to
+        * the mobile data network.
+        * @hide
+        */
+       public static final String WIFI_IDLE_MS = "wifi_idle_ms";
 
-        /**
-         * Show package verification setting in the Settings app.
-         * 1 = show (default)
-         * 0 = hide
-         * @hide
-         */
-        public static final String PACKAGE_VERIFIER_SETTING_VISIBLE = "verifier_setting_visible";
+       /**
+        * When the number of open networks exceeds this number, the
+        * least-recently-used excess networks will be removed.
+        */
+       public static final String WIFI_NUM_OPEN_NETWORKS_KEPT = "wifi_num_open_networks_kept";
 
-        /**
-         * Run package verificaiton on apps installed through ADB/ADT/USB
-         * 1 = perform package verification on ADB installs (default)
-         * 0 = bypass package verification on ADB installs
-         * @hide
-         */
-        public static final String PACKAGE_VERIFIER_INCLUDE_ADB = "verifier_verify_adb_installs";
+       /**
+        * Whether the Wi-Fi should be on.  Only the Wi-Fi service should touch this.
+        */
+       public static final String WIFI_ON = "wifi_on";
 
-        /**
-         * Whether Wifi display is enabled/disabled
-         * 0=disabled. 1=enabled.
-         * @hide
-         */
-        public static final String WIFI_DISPLAY_ON = "wifi_display_on";
+       /**
+        * Used to save the Wifi_ON state prior to tethering.
+        * This state will be checked to restore Wifi after
+        * the user turns off tethering.
+        *
+        * @hide
+        */
+       public static final String WIFI_SAVED_STATE = "wifi_saved_state";
 
-        /**
-         * Whether to notify the user of open networks.
-         * <p>
-         * If not connected and the scan results have an open network, we will
-         * put this notification up. If we attempt to connect to a network or
-         * the open network(s) disappear, we remove the notification. When we
-         * show the notification, we will not show it again for
-         * {@link android.provider.Settings.Secure#WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY} time.
-         */
-        public static final String WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON =
-               "wifi_networks_available_notification_on";
-
-        /**
-         * 802.11 country code in ISO 3166 format
-         * @hide
-         */
-        public static final String WIFI_COUNTRY_CODE = "wifi_country_code";
-
-        /**
-         * The interval in milliseconds to issue wake up scans when wifi needs
-         * to connect. This is necessary to connect to an access point when
-         * device is on the move and the screen is off.
-         * @hide
-         */
-        public static final String WIFI_FRAMEWORK_SCAN_INTERVAL_MS =
-                "wifi_framework_scan_interval_ms";
-
-        /**
-         * The interval in milliseconds after which Wi-Fi is considered idle.
-         * When idle, it is possible for the device to be switched from Wi-Fi to
-         * the mobile data network.
-         * @hide
-         */
-        public static final String WIFI_IDLE_MS = "wifi_idle_ms";
-
-        /**
-         * Whether the Wi-Fi should be on.  Only the Wi-Fi service should touch this.
-         */
-        public static final String WIFI_ON = "wifi_on";
-
-        /**
-         * Used to save the Wifi_ON state prior to tethering.
-         * This state will be checked to restore Wifi after
-         * the user turns off tethering.
-         *
-         * @hide
-         */
-        public static final String WIFI_SAVED_STATE = "wifi_saved_state";
-
-        /**
-         * The interval in milliseconds to scan as used by the wifi supplicant
-         * @hide
-         */
-        public static final String WIFI_SUPPLICANT_SCAN_INTERVAL_MS =
+       /**
+        * The interval in milliseconds to scan as used by the wifi supplicant
+        * @hide
+        */
+       public static final String WIFI_SUPPLICANT_SCAN_INTERVAL_MS =
                "wifi_supplicant_scan_interval_ms";
 
-        /**
-         * The interval in milliseconds to scan at supplicant when p2p is connected
-         * @hide
-         */
-        public static final String WIFI_SCAN_INTERVAL_WHEN_P2P_CONNECTED_MS =
+       /**
+        * The interval in milliseconds to scan at supplicant when p2p is connected
+        * @hide
+        */
+       public static final String WIFI_SCAN_INTERVAL_WHEN_P2P_CONNECTED_MS =
                "wifi_scan_interval_p2p_connected_ms";
 
-        /**
-         * Whether the Wi-Fi watchdog is enabled.
-         */
-        public static final String WIFI_WATCHDOG_ON = "wifi_watchdog_on";
+       /**
+        * Whether the Wi-Fi watchdog is enabled.
+        */
+       public static final String WIFI_WATCHDOG_ON = "wifi_watchdog_on";
 
-        /**
-         * Setting to turn off poor network avoidance on Wi-Fi. Feature is enabled by default and
-         * the setting needs to be set to 0 to disable it.
-         * @hide
-         */
-        public static final String WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED =
+       /**
+        * Setting to turn off poor network avoidance on Wi-Fi. Feature is enabled by default and
+        * the setting needs to be set to 0 to disable it.
+        * @hide
+        */
+       public static final String WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED =
                "wifi_watchdog_poor_network_test_enabled";
 
-        /**
-         * Setting to turn on suspend optimizations at screen off on Wi-Fi. Enabled by default and
-         * needs to be set to 0 to disable it.
-         * @hide
-         */
-        public static final String WIFI_SUSPEND_OPTIMIZATIONS_ENABLED =
+       /**
+        * Setting to turn on suspend optimizations at screen off on Wi-Fi. Enabled by default and
+        * needs to be set to 0 to disable it.
+        * @hide
+        */
+       public static final String WIFI_SUSPEND_OPTIMIZATIONS_ENABLED =
                "wifi_suspend_optimizations_enabled";
 
-        /**
-         * The maximum number of times we will retry a connection to an access
-         * point for which we have failed in acquiring an IP address from DHCP.
-         * A value of N means that we will make N+1 connection attempts in all.
-         */
-        public static final String WIFI_MAX_DHCP_RETRY_COUNT = "wifi_max_dhcp_retry_count";
+       /**
+        * The maximum number of times we will retry a connection to an access
+        * point for which we have failed in acquiring an IP address from DHCP.
+        * A value of N means that we will make N+1 connection attempts in all.
+        */
+       public static final String WIFI_MAX_DHCP_RETRY_COUNT = "wifi_max_dhcp_retry_count";
 
-        /**
-         * The operational wifi frequency band
-         * Set to one of {@link WifiManager#WIFI_FREQUENCY_BAND_AUTO},
-         * {@link WifiManager#WIFI_FREQUENCY_BAND_5GHZ} or
-         * {@link WifiManager#WIFI_FREQUENCY_BAND_2GHZ}
-         *
-         * @hide
-         */
-        public static final String WIFI_FREQUENCY_BAND = "wifi_frequency_band";
+       /**
+        * Maximum amount of time in milliseconds to hold a wakelock while waiting for mobile
+        * data connectivity to be established after a disconnect from Wi-Fi.
+        */
+       public static final String WIFI_MOBILE_DATA_TRANSITION_WAKELOCK_TIMEOUT_MS =
+           "wifi_mobile_data_transition_wakelock_timeout_ms";
 
-        /**
-         * The Wi-Fi peer-to-peer device name
-         * @hide
-         */
-        public static final String WIFI_P2P_DEVICE_NAME = "wifi_p2p_device_name";
+       /**
+        * The operational wifi frequency band
+        * Set to one of {@link WifiManager#WIFI_FREQUENCY_BAND_AUTO},
+        * {@link WifiManager#WIFI_FREQUENCY_BAND_5GHZ} or
+        * {@link WifiManager#WIFI_FREQUENCY_BAND_2GHZ}
+        *
+        * @hide
+        */
+       public static final String WIFI_FREQUENCY_BAND = "wifi_frequency_band";
 
-        /**
-         * The number of milliseconds to delay when checking for data stalls during
-         * non-aggressive detection. (screen is turned off.)
-         * @hide
-         */
-        public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
+       /**
+        * The Wi-Fi peer-to-peer device name
+        * @hide
+        */
+       public static final String WIFI_P2P_DEVICE_NAME = "wifi_p2p_device_name";
+
+       /**
+        * The number of milliseconds to delay when checking for data stalls during
+        * non-aggressive detection. (screen is turned off.)
+        * @hide
+        */
+       public static final String DATA_STALL_ALARM_NON_AGGRESSIVE_DELAY_IN_MS =
                "data_stall_alarm_non_aggressive_delay_in_ms";
 
-        /**
-         * The number of milliseconds to delay when checking for data stalls during
-         * aggressive detection. (screen on or suspected data stall)
-         * @hide
-         */
-        public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
+       /**
+        * The number of milliseconds to delay when checking for data stalls during
+        * aggressive detection. (screen on or suspected data stall)
+        * @hide
+        */
+       public static final String DATA_STALL_ALARM_AGGRESSIVE_DELAY_IN_MS =
                "data_stall_alarm_aggressive_delay_in_ms";
 
-        /**
-         * The interval in milliseconds at which to check gprs registration
-         * after the first registration mismatch of gprs and voice service,
-         * to detect possible data network registration problems.
-         *
-         * @hide
-         */
-        public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
-                "gprs_register_check_period_ms";
+       /**
+        * The interval in milliseconds at which to check gprs registration
+        * after the first registration mismatch of gprs and voice service,
+        * to detect possible data network registration problems.
+        *
+        * @hide
+        */
+       public static final String GPRS_REGISTER_CHECK_PERIOD_MS =
+               "gprs_register_check_period_ms";
 
-        /**
-         * Nonzero causes Log.wtf() to crash.
-         * @hide
-         */
-        public static final String WTF_IS_FATAL = "wtf_is_fatal";
+       /**
+        * Nonzero causes Log.wtf() to crash.
+        * @hide
+        */
+       public static final String WTF_IS_FATAL = "wtf_is_fatal";
 
-        /**
-         * Ringer mode. This is used internally, changing this value will not
-         * change the ringer mode. See AudioManager.
-         */
-        public static final String MODE_RINGER = "mode_ringer";
+       /**
+        * Ringer mode. This is used internally, changing this value will not
+        * change the ringer mode. See AudioManager.
+        */
+       public static final String MODE_RINGER = "mode_ringer";
 
-        /**
+       /**
         * Overlay display devices setting.
         * The associated value is a specially formatted string that describes the
         * size and density of simulated secondary display devices.
@@ -6243,7 +5310,7 @@ public final class Settings {
         public static final String PREFERRED_CDMA_SUBSCRIPTION =
                 "preferred_cdma_subscription";
 
-         /**
+        /**
          * Name of an application package to be debugged.
          */
         public static final String DEBUG_APP = "debug_app";
@@ -6308,6 +5375,8 @@ public final class Settings {
             ENABLE_ACCESSIBILITY_GLOBAL_GESTURE_ENABLED,
             WIFI_NETWORKS_AVAILABLE_NOTIFICATION_ON,
             WIFI_NETWORKS_AVAILABLE_REPEAT_DELAY,
+            WIFI_WATCHDOG_POOR_NETWORK_TEST_ENABLED,
+            WIFI_NUM_OPEN_NETWORKS_KEPT,
             EMERGENCY_TONE,
             CALL_AUTO_RETRY,
             DOCK_AUDIO_MEDIA_ENABLED

@@ -22,7 +22,6 @@ import android.app.Activity;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.opengl.GLUtils;
 import android.os.Bundle;
@@ -210,28 +209,31 @@ public class GLTextureViewActivity extends Activity implements TextureView.Surfa
             glEnableVertexAttribArray(attribTexCoords);
             checkGlError();
 
-            glUniform1i(uniformTexture, texture);
+            glUniform1i(uniformTexture, 0);
+            checkGlError();
+
+            // drawQuad
+            triangleVertices.position(TRIANGLE_VERTICES_DATA_POS_OFFSET);
+            glVertexAttribPointer(attribPosition, 3, GL_FLOAT, false,
+                    TRIANGLE_VERTICES_DATA_STRIDE_BYTES, triangleVertices);
+            checkGlError();
+
+            triangleVertices.position(TRIANGLE_VERTICES_DATA_UV_OFFSET);
+            glVertexAttribPointer(attribTexCoords, 3, GL_FLOAT, false,
+                    TRIANGLE_VERTICES_DATA_STRIDE_BYTES, triangleVertices);
+            checkGlError();
+
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             checkGlError();
             
             while (!mFinished) {
                 checkCurrent();
 
-                glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-                checkGlError();
-
                 glClear(GL_COLOR_BUFFER_BIT);
                 checkGlError();
 
-                // drawQuad
-                triangleVertices.position(TRIANGLE_VERTICES_DATA_POS_OFFSET);
-                glVertexAttribPointer(attribPosition, 3, GL_FLOAT, false,
-                        TRIANGLE_VERTICES_DATA_STRIDE_BYTES, triangleVertices);
-
-                triangleVertices.position(TRIANGLE_VERTICES_DATA_UV_OFFSET);
-                glVertexAttribPointer(attribTexCoords, 3, GL_FLOAT, false,
-                        TRIANGLE_VERTICES_DATA_STRIDE_BYTES, triangleVertices);
-
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                checkGlError();
 
                 if (!mEgl.eglSwapBuffers(mEglDisplay, mEglSurface)) {
                     throw new RuntimeException("Cannot swap buffers");
@@ -275,7 +277,7 @@ public class GLTextureViewActivity extends Activity implements TextureView.Surfa
             return texture;
         }
         
-        private int buildProgram(String vertex, String fragment) {
+        private static int buildProgram(String vertex, String fragment) {
             int vertexShader = buildShader(vertex, GL_VERTEX_SHADER);
             if (vertexShader == 0) return 0;
 
@@ -306,7 +308,7 @@ public class GLTextureViewActivity extends Activity implements TextureView.Surfa
             return program;
         }
         
-        private int buildShader(String source, int type) {
+        private static int buildShader(String source, int type) {
             int shader = glCreateShader(type);
 
             glShaderSource(shader, source);
@@ -334,7 +336,7 @@ public class GLTextureViewActivity extends Activity implements TextureView.Surfa
             }
         }
 
-        private void checkGlError() {
+        private static void checkGlError() {
             int error = glGetError();
             if (error != GL_NO_ERROR) {
                 Log.w(LOG_TAG, "GL error = 0x" + Integer.toHexString(error));
@@ -417,7 +419,7 @@ public class GLTextureViewActivity extends Activity implements TextureView.Surfa
             return null;
         }
         
-        private int[] getConfig() {
+        private static int[] getConfig() {
             return new int[] {
                     EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
                     EGL10.EGL_RED_SIZE, 8,

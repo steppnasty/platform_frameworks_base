@@ -419,6 +419,14 @@ status_t OpenGLRenderer::callDrawGLFunction(Functor* functor, Rect& dirty) {
 // Debug
 ///////////////////////////////////////////////////////////////////////////////
 
+void OpenGLRenderer::startMark(const char* name) const {
+    mCaches.startMark(0, name);
+}
+
+void OpenGLRenderer::endMark() const {
+    mCaches.endMark();
+}
+
 void OpenGLRenderer::debugOverdraw(bool enable, bool clear) {
     if (mCaches.debugOverdraw && getTargetFbo() == 0) {
         if (clear) {
@@ -491,6 +499,8 @@ bool OpenGLRenderer::updateLayer(Layer* layer, bool inFrame) {
 void OpenGLRenderer::updateLayers() {
     int count = mLayerUpdates.size();
     if (count > 0) {
+        startMark("Layer Updates");
+
         // Note: it is very important to update the layers in reverse order
         for (int i = count - 1; i >= 0; i--) {
             Layer* layer = mLayerUpdates.itemAt(i);
@@ -500,6 +510,7 @@ void OpenGLRenderer::updateLayers() {
         mLayerUpdates.clear();
 
         glBindFramebuffer(GL_FRAMEBUFFER, getTargetFbo());
+        endMark();
     }
 }
 

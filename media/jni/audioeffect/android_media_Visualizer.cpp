@@ -23,6 +23,7 @@
 #include <nativehelper/jni.h>
 #include <nativehelper/JNIHelp.h>
 #include <android_runtime/AndroidRuntime.h>
+#include <utils/threads.h>
 #include "media/Visualizer.h"
 
 using namespace android;
@@ -38,6 +39,7 @@ using namespace android;
 
 #define NATIVE_EVENT_PCM_CAPTURE                0
 #define NATIVE_EVENT_FFT_CAPTURE                1
+#define NATIVE_EVENT_SERVER_DIED                2
 
 // ----------------------------------------------------------------------------
 static const char* const kClassPathName = "android/media/audiofx/Visualizer";
@@ -54,6 +56,43 @@ static fields_t fields;
 struct visualizer_callback_cookie {
     jclass      visualizer_class;  // Visualizer class
     jobject     visualizer_ref;    // Visualizer object instance
+
+    // Lazily allocated arrays used to hold callback data provided to java
+    // applications.  These arrays are allocated during the first callback and
+    // reallocated when the size of the callback data changes.  Allocating on
+    // demand and saving the arrays means that applications cannot safely hold a
+    // reference to the provided data (they need to make a copy if they want to
+    // hold onto outside of the callback scope), but it avoids GC thrash caused
+    // by constantly allocating and releasing arrays to hold callback data.
+    Mutex       callback_data_lock;
+    jbyteArray  waveform_data;
+    jbyteArray  fft_data;
+
+    visualizer_callback_cookie() {
+        waveform_data = NULL;
+        fft_data = NULL;
+    }
+
+    ~visualizer_callback_cookie() {
+        cleanupBuffers();
+    }
+
+    void cleanupBuffers() {
+        AutoMutex lock(&callback_data_lock);
+        if (waveform_data || fft_data) {
+            JNIEnv *env = AndroidRuntime::getJNIEnv();
+
+            if (waveform_data) {
+                env->DeleteGlobalRef(waveform_data);
+                waveform_data = NULL;
+            }
+
+            if (fft_data) {
+                env->DeleteGlobalRef(fft_data);
+                fft_data = NULL;
+            }
+        }
+    }
  };
 
 // ----------------------------------------------------------------------------
@@ -66,7 +105,6 @@ class visualizerJniStorage {
 
     ~visualizerJniStorage() {
     }
-
 };
 
 
@@ -93,6 +131,26 @@ static jint translateError(int code) {
 
 
 // ----------------------------------------------------------------------------
+static void ensureArraySize(JNIEnv *env, jbyteArray *array, uint32_t size) {
+    if (NULL != *array) {
+        uint32_t len = env->GetArrayLength(*array);
+        if (len == size)
+            return;
+
+        env->DeleteGlobalRef(*array);
+        *array = NULL;
+    }
+
+    jbyteArray localRef = env->NewByteArray(size);
+    if (NULL != localRef) {
+        // Promote to global ref.
+        *array = (jbyteArray)env->NewGlobalRef(localRef);
+
+        // Release our (now pointless) local ref.
+        env->DeleteLocalRef(localRef);
+    }
+}
+
 static void captureCallback(void* user,
         uint32_t waveformSize,
         uint8_t *waveform,
@@ -106,6 +164,7 @@ static void captureCallback(void* user,
 
     visualizer_callback_cookie *callbackInfo = (visualizer_callback_cookie *)user;
     JNIEnv *env = AndroidRuntime::getJNIEnv();
+    AutoMutex lock(&callbackInfo->callback_data_lock);
 
     ALOGV("captureCallback: callbackInfo %p, visualizer_ref %p visualizer_class %p",
             callbackInfo,
@@ -118,7 +177,11 @@ static void captureCallback(void* user,
     }
 
     if (waveformSize != 0 && waveform != NULL) {
-        jbyteArray jArray = env->NewByteArray(waveformSize);
+        jbyteArray jArray;
+
+        ensureArraySize(env, &callbackInfo->waveform_data, waveformSize);
+        jArray = callbackInfo->waveform_data;
+
         if (jArray != NULL) {
             jbyte *nArray = env->GetByteArrayElements(jArray, NULL);
             memcpy(nArray, waveform, waveformSize);
@@ -131,12 +194,15 @@ static void captureCallback(void* user,
                 samplingrate,
                 0,
                 jArray);
-            env->DeleteLocalRef(jArray);
         }
     }
 
     if (fftSize != 0 && fft != NULL) {
-        jbyteArray jArray = env->NewByteArray(fftSize);
+        jbyteArray jArray;
+
+        ensureArraySize(env, &callbackInfo->fft_data, fftSize);
+        jArray = callbackInfo->fft_data;
+
         if (jArray != NULL) {
             jbyte *nArray = env->GetByteArrayElements(jArray, NULL);
             memcpy(nArray, fft, fftSize);
@@ -149,7 +215,6 @@ static void captureCallback(void* user,
                 samplingrate,
                 0,
                 jArray);
-            env->DeleteLocalRef(jArray);
         }
     }
 
@@ -220,6 +285,23 @@ android_media_visualizer_native_init(JNIEnv *env)
 
 }
 
+static void android_media_visualizer_effect_callback(int32_t event,
+                                                     void *user,
+                                                     void *info) {
+    if ((event == AudioEffect::EVENT_ERROR) &&
+        (*((status_t*)info) == DEAD_OBJECT)) {
+        visualizerJniStorage* lpJniStorage = (visualizerJniStorage*)user;
+        visualizer_callback_cookie* callbackInfo = &lpJniStorage->mCallbackData;
+        JNIEnv *env = AndroidRuntime::getJNIEnv();
+
+        env->CallStaticVoidMethod(
+            callbackInfo->visualizer_class,
+            fields.midPostNativeEvent,
+            callbackInfo->visualizer_ref,
+            NATIVE_EVENT_SERVER_DIED,
+            0, 0, 0);
+    }
+}
 
 static jint
 android_media_visualizer_native_setup(JNIEnv *env, jobject thiz, jobject weak_this,
@@ -255,8 +337,8 @@ android_media_visualizer_native_setup(JNIEnv *env, jobject thiz, jobject weak_th
 
     // create the native Visualizer object
     lpVisualizer = new Visualizer(0,
-                                  NULL,
-                                  NULL,
+                                  android_media_visualizer_effect_callback,
+                                  lpJniStorage,
                                   sessionId);
     if (lpVisualizer == NULL) {
         ALOGE("Error creating Visualizer");
@@ -345,7 +427,17 @@ android_media_visualizer_native_setEnabled(JNIEnv *env, jobject thiz, jboolean e
         return VISUALIZER_ERROR_NO_INIT;
     }
 
-    return translateError(lpVisualizer->setEnabled(enabled));
+    jint retVal = translateError(lpVisualizer->setEnabled(enabled));
+
+    if (!enabled) {
+        visualizerJniStorage* lpJniStorage = (visualizerJniStorage *)env->GetIntField(
+            thiz, fields.fidJniData);
+
+        if (NULL != lpJniStorage)
+            lpJniStorage->mCallbackData.cleanupBuffers();
+    }
+
+    return retVal;
 }
 
 static jboolean
@@ -396,6 +488,27 @@ android_media_visualizer_native_getCaptureSize(JNIEnv *env, jobject thiz)
         return -1;
     }
     return lpVisualizer->getCaptureSize();
+}
+
+static jint
+android_media_visualizer_native_setScalingMode(JNIEnv *env, jobject thiz, jint mode)
+{
+    Visualizer* lpVisualizer = getVisualizer(env, thiz);
+    if (lpVisualizer == NULL) {
+        return VISUALIZER_ERROR_NO_INIT;
+    }
+
+    return translateError(lpVisualizer->setScalingMode(mode));
+}
+
+static jint
+android_media_visualizer_native_getScalingMode(JNIEnv *env, jobject thiz)
+{
+    Visualizer* lpVisualizer = getVisualizer(env, thiz);
+    if (lpVisualizer == NULL) {
+        return -1;
+    }
+    return lpVisualizer->getScalingMode();
 }
 
 static jint
@@ -490,6 +603,8 @@ static JNINativeMethod gMethods[] = {
     {"getMaxCaptureRate",        "()I",   (void *)android_media_visualizer_native_getMaxCaptureRate},
     {"native_setCaptureSize",    "(I)I",  (void *)android_media_visualizer_native_setCaptureSize},
     {"native_getCaptureSize",    "()I",   (void *)android_media_visualizer_native_getCaptureSize},
+    {"native_setScalingMode",    "(I)I",  (void *)android_media_visualizer_native_setScalingMode},
+    {"native_getScalingMode",    "()I",   (void *)android_media_visualizer_native_getScalingMode},
     {"native_getSamplingRate",   "()I",   (void *)android_media_visualizer_native_getSamplingRate},
     {"native_getWaveForm",       "([B)I", (void *)android_media_visualizer_native_getWaveForm},
     {"native_getFft",            "([B)I", (void *)android_media_visualizer_native_getFft},

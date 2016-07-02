@@ -77,6 +77,7 @@ extern int register_android_opengl_jni_GLES20(JNIEnv* env);
 
 extern int register_android_hardware_Camera(JNIEnv *env);
 extern int register_android_hardware_SensorManager(JNIEnv *env);
+extern int register_android_hardware_SerialPort(JNIEnv *env);
 extern int register_android_hardware_UsbDevice(JNIEnv *env);
 extern int register_android_hardware_UsbDeviceConnection(JNIEnv *env);
 extern int register_android_hardware_UsbRequest(JNIEnv *env);
@@ -159,6 +160,7 @@ extern int register_android_backup_BackupHelperDispatcher(JNIEnv *env);
 extern int register_android_app_backup_FullBackup(JNIEnv *env);
 extern int register_android_app_ActivityThread(JNIEnv *env);
 extern int register_android_app_NativeActivity(JNIEnv *env);
+extern int register_android_media_RemoteDisplay(JNIEnv *env);
 extern int register_android_view_InputChannel(JNIEnv* env);
 extern int register_android_view_InputDevice(JNIEnv* env);
 extern int register_android_view_InputEventReceiver(JNIEnv* env);
@@ -172,10 +174,8 @@ extern int register_android_content_res_Configuration(JNIEnv* env);
 extern int register_android_animation_PropertyValuesHolder(JNIEnv *env);
 extern int register_com_android_internal_content_NativeLibraryHelper(JNIEnv *env);
 extern int register_android_content_res_PackageRedirectionMap(JNIEnv* env);
-#ifdef QCOM_HARDWARE
-extern int register_org_codeaurora_Performance(JNIEnv *env);
 extern int register_com_android_internal_app_ActivityTrigger(JNIEnv *env);
-#endif
+extern int register_org_codeaurora_Performance(JNIEnv *env);
 
 static AndroidRuntime* gCurRuntime = NULL;
 
@@ -188,49 +188,32 @@ static void doThrow(JNIEnv* env, const char* exc, const char* msg = NULL)
 /*
  * Code written in the Java Programming Language calls here from main().
  */
-static void com_android_internal_os_RuntimeInit_finishInit(JNIEnv* env, jobject clazz)
+static void com_android_internal_os_RuntimeInit_nativeFinishInit(JNIEnv* env, jobject clazz)
 {
     gCurRuntime->onStarted();
 }
 
-static void com_android_internal_os_RuntimeInit_zygoteInit(JNIEnv* env, jobject clazz)
+static void com_android_internal_os_RuntimeInit_nativeZygoteInit(JNIEnv* env, jobject clazz)
 {
     gCurRuntime->onZygoteInit();
 }
 
-static jint com_android_internal_os_RuntimeInit_isComputerOn(JNIEnv* env, jobject clazz)
+static void com_android_internal_os_RuntimeInit_nativeSetExitWithoutCleanup(JNIEnv* env,
+        jobject clazz, jboolean exitWithoutCleanup)
 {
-    return 1;
-}
-
-static void com_android_internal_os_RuntimeInit_turnComputerOn(JNIEnv* env, jobject clazz)
-{
-}
-
-static jint com_android_internal_os_RuntimeInit_getQwertyKeyboard(JNIEnv* env, jobject clazz)
-{
-    char* value = getenv("qwerty");
-    if (value != NULL && strcmp(value, "true") == 0) {
-        return 1;
-    }
-
-    return 0;
+    gCurRuntime->setExitWithoutCleanup(exitWithoutCleanup);
 }
 
 /*
  * JNI registration.
  */
 static JNINativeMethod gMethods[] = {
-    { "finishInit", "()V",
-        (void*) com_android_internal_os_RuntimeInit_finishInit },
-    { "zygoteInitNative", "()V",
-        (void*) com_android_internal_os_RuntimeInit_zygoteInit },
-    { "isComputerOn", "()I",
-        (void*) com_android_internal_os_RuntimeInit_isComputerOn },
-    { "turnComputerOn", "()V",
-        (void*) com_android_internal_os_RuntimeInit_turnComputerOn },
-    { "getQwertyKeyboard", "()I",
-        (void*) com_android_internal_os_RuntimeInit_getQwertyKeyboard },
+    { "nativeFinishInit", "()V",
+        (void*) com_android_internal_os_RuntimeInit_nativeFinishInit },
+    { "nativeZygoteInit", "()V",
+        (void*) com_android_internal_os_RuntimeInit_nativeZygoteInit },
+    { "nativeSetExitWithoutCleanup", "(Z)V",
+        (void*) com_android_internal_os_RuntimeInit_nativeSetExitWithoutCleanup },
 };
 
 int register_com_android_internal_os_RuntimeInit(JNIEnv* env)
@@ -244,7 +227,8 @@ int register_com_android_internal_os_RuntimeInit(JNIEnv* env)
 /*static*/ JavaVM* AndroidRuntime::mJavaVM = NULL;
 
 
-AndroidRuntime::AndroidRuntime()
+AndroidRuntime::AndroidRuntime() :
+        mExitWithoutCleanup(false)
 {
     SkGraphics::Init();
     // this sets our preference for 16bit images during decode
@@ -322,8 +306,7 @@ status_t AndroidRuntime::callMain(const char* className,
  */
 static void runtime_exit(int code)
 {
-    gCurRuntime->onExit(code);
-    exit(code);
+    gCurRuntime->exit(code);
 }
 
 /*
@@ -569,7 +552,7 @@ int AndroidRuntime::startVm(JavaVM** pJavaVM, JNIEnv** pEnv)
 
     // Increase the main thread's interpreter stack size for bug 6315322.
     opt.optionString = "-XX:mainThreadStackSize=24K";
-    mOptions.add(opt); 
+    mOptions.add(opt);
 
     strcpy(heapgrowthlimitOptsBuf, "-XX:HeapGrowthLimit=");
     property_get("dalvik.vm.heapgrowthlimit", heapgrowthlimitOptsBuf+20, "");
@@ -922,10 +905,16 @@ void AndroidRuntime::start(const char* className, const char* options)
         ALOGW("Warning: VM did not shut down cleanly\n");
 }
 
-void AndroidRuntime::onExit(int code)
+void AndroidRuntime::exit(int code)
 {
-    ALOGV("AndroidRuntime onExit calling exit(%d)", code);
-    exit(code);
+    if (mExitWithoutCleanup) {
+        ALOGI("VM exiting with result code %d, cleanup skipped.", code);
+        ::_exit(code);
+    } else {
+        ALOGI("VM exiting with result code %d.", code);
+        onExit(code);
+        ::exit(code);
+    }
 }
 
 void AndroidRuntime::onVmCreated(JNIEnv* env)
@@ -1126,7 +1115,6 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_os_SystemProperties),
     REG_JNI(register_android_os_Binder),
     REG_JNI(register_android_os_Parcel),
-    REG_JNI(register_android_os_SELinux),
     REG_JNI(register_android_view_DisplayEventReceiver),
     REG_JNI(register_android_nio_utils),
     REG_JNI(register_android_graphics_PixelFormat),
@@ -1182,6 +1170,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_os_FileUtils),
     REG_JNI(register_android_os_MessageQueue),
     REG_JNI(register_android_os_ParcelFileDescriptor),
+    REG_JNI(register_android_os_SELinux),
     REG_JNI(register_android_os_Trace),
     REG_JNI(register_android_os_UEventObserver),
     REG_JNI(register_android_net_LocalSocketImpl),
@@ -1192,6 +1181,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_com_android_internal_os_ZygoteInit),
     REG_JNI(register_android_hardware_Camera),
     REG_JNI(register_android_hardware_SensorManager),
+    REG_JNI(register_android_hardware_SerialPort),
     REG_JNI(register_android_hardware_UsbDevice),
     REG_JNI(register_android_hardware_UsbDeviceConnection),
     REG_JNI(register_android_hardware_UsbRequest),
@@ -1199,6 +1189,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_media_AudioSystem),
     REG_JNI(register_android_media_AudioTrack),
     REG_JNI(register_android_media_JetPlayer),
+    REG_JNI(register_android_media_RemoteDisplay),
     REG_JNI(register_android_media_ToneGenerator),
 
     REG_JNI(register_android_opengl_classes),
@@ -1224,10 +1215,10 @@ static const RegJNIRec gRegJNI[] = {
 
     REG_JNI(register_android_animation_PropertyValuesHolder),
     REG_JNI(register_com_android_internal_content_NativeLibraryHelper),
-    REG_JNI(register_android_content_res_PackageRedirectionMap),
-#ifdef QCOM_HARDWARE
-    REG_JNI(register_org_codeaurora_Performance),
     REG_JNI(register_com_android_internal_app_ActivityTrigger),
+    REG_JNI(register_android_content_res_PackageRedirectionMap),
+#ifndef NON_QCOM_TARGET
+    REG_JNI(register_org_codeaurora_Performance),
 #endif
 };
 

@@ -225,6 +225,18 @@ public:
     }
 
     /**
+     * Inserts a named group marker in the stream of GL commands. This marker
+     * can be used by tools to group commands into logical groups. A call to
+     * this method must always be followed later on by a call to endMark().
+     */
+    void startMark(const char* name) const;
+
+    /**
+     * Closes the last group marker opened by startMark().
+     */
+    void endMark() const;
+
+    /**
      * Gets the alpha and xfermode out of a paint object. If the paint is null
      * alpha will be 255 and the xfermode will be SRC_OVER. This method does
      * not multiply the paint's alpha by the current snapshot's alpha.

@@ -50,6 +50,7 @@ namespace uirenderer {
 Caches::Caches(): Singleton<Caches>(), mInitialized(false) {
     init();
     initFont();
+    initExtensions();
     initConstraints();
     initProperties();
 
@@ -93,6 +94,26 @@ void Caches::init() {
 
 void Caches::initFont() {
     fontRenderer = GammaFontRenderer::createRenderer();
+}
+
+void Caches::initExtensions() {
+    if (extensions.hasDebugMarker()) {
+        eventMark = glInsertEventMarkerEXT;
+        startMark = glPushGroupMarkerEXT;
+        endMark = glPopGroupMarkerEXT;
+    } else {
+        eventMark = eventMarkNull;
+        startMark = startMarkNull;
+        endMark = endMarkNull;
+    }
+
+    if (extensions.hasDebugLabel()) {
+        setLabel = glLabelObjectEXT;
+        getLabel = glGetObjectLabelEXT;
+    } else {
+        setLabel = setLabelNull;
+        getLabel = getLabelNull;
+    }
 }
 
 void Caches::initConstraints() {

@@ -66,7 +66,7 @@ public final class DropBoxManagerService extends IDropBoxManagerService.Stub {
     private static final int DEFAULT_RESERVE_PERCENT = 10;
     private static final int QUOTA_RESCAN_MILLIS = 5000;
 
-    // mHandler 'what' value
+    // mHandler 'what' value.
     private static final int MSG_SEND_BROADCAST = 1;
 
     private static final boolean PROFILE_DUMP = false;
@@ -92,9 +92,6 @@ public final class DropBoxManagerService extends IDropBoxManagerService.Stub {
     private int mBlockSize = 0;
     private int mCachedQuotaBlocks = 0;  // Space we can use: computed from free space, etc.
     private long mCachedQuotaUptimeMillis = 0;
-
-    // Ensure that all log entries have a unique timestamp
-    private long mLastTimestamp = 0;
 
     private volatile boolean mBooted = false;
 
@@ -149,8 +146,9 @@ public final class DropBoxManagerService extends IDropBoxManagerService.Stub {
         context.registerReceiver(mReceiver, filter);
 
         mContentResolver.registerContentObserver(
-            Settings.Secure.CONTENT_URI, true,
+            Settings.Global.CONTENT_URI, true,
             new ContentObserver(new Handler()) {
+                @Override
                 public void onChange(boolean selfChange) {
                     mReceiver.onReceive(context, (Intent) null);
                 }
@@ -175,6 +173,7 @@ public final class DropBoxManagerService extends IDropBoxManagerService.Stub {
         mContext.unregisterReceiver(mReceiver);
     }
 
+    @Override
     public void add(DropBoxManager.Entry entry) {
         File temp = null;
         OutputStream output = null;
@@ -256,7 +255,6 @@ public final class DropBoxManagerService extends IDropBoxManagerService.Stub {
             // lock in ActivityManagerService. ActivityManagerService has been caught holding that
             // very lock while waiting for the WindowManagerService lock.
             mHandler.sendMessage(mHandler.obtainMessage(MSG_SEND_BROADCAST, dropboxIntent));
-
         } catch (IOException e) {
             Slog.e(TAG, "Can't write: " + tag, e);
         } finally {

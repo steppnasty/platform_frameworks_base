@@ -24,6 +24,7 @@ import android.content.Intent;
 import android.hardware.Camera;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.os.Environment;
 import android.test.ActivityInstrumentationTestCase2;
 import android.test.suitebuilder.annotation.LargeTest;
 import android.util.Log;
@@ -43,13 +44,18 @@ import android.test.InstrumentationTestCase;
 /**
  * Junit / Instrumentation test case for the media player
  */
-public class MediaPlayerStressTest extends InstrumentationTestCase {
+public class MediaPlayerStressTest extends ActivityInstrumentationTestCase2<MediaFrameworkTest> {
     private String TAG = "MediaPlayerStressTest";
 
     public MediaPlayerStressTest() {
+        super("com.android.mediaframeworktest", MediaFrameworkTest.class);
     }
 
     protected void setUp() throws Exception {
+        //Insert a 2 second before launching the test activity. This is
+        //the workaround for the race condition of requesting the updated surface.
+        Thread.sleep(2000);
+        getActivity();
         super.setUp();
     }
 
@@ -60,6 +66,9 @@ public class MediaPlayerStressTest extends InstrumentationTestCase {
     private int mTotalBadInterleaving = 0;
     private int mTotalNotSeekable = 0;
     private int mTotalMetaDataUpdate = 0;
+
+    //Test result output file
+    private static final String PLAYBACK_RESULT = "PlaybackTestResult.txt";
 
     private void writeTestOutput(String filename, Writer output) throws Exception{
         output.write("File Name: " + filename);
@@ -104,27 +113,19 @@ public class MediaPlayerStressTest extends InstrumentationTestCase {
     @LargeTest
     public void testVideoPlayback() throws Exception {
         String fileWithError = "Filename:\n";
-        File playbackOutput = new File("/sdcard/PlaybackTestResult.txt");
+        File playbackOutput = new File(Environment.getExternalStorageDirectory(), PLAYBACK_RESULT);
         Writer output = new BufferedWriter(new FileWriter(playbackOutput, true));
 
         boolean testResult = true;
         // load directory files
         boolean onCompleteSuccess = false;
         File dir = new File(MediaNames.MEDIA_SAMPLE_POOL);
-
-        Instrumentation inst = getInstrumentation();
-        Intent intent = new Intent();
-
-        intent.setClass(getInstrumentation().getTargetContext(), MediaFrameworkTest.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
         String[] children = dir.list();
         if (children == null) {
             Log.v("MediaPlayerApiTest:testMediaSamples", "dir is empty");
             return;
         } else {
             for (int i = 0; i < children.length; i++) {
-                Activity act = inst.startActivitySync(intent);
                 //Get filename of directory
                 String filename = children[i];
                 onCompleteSuccess =
@@ -136,8 +137,6 @@ public class MediaPlayerStressTest extends InstrumentationTestCase {
                     testResult = false;
                 }
                 Thread.sleep(3000);
-                //Call onCreat to recreate the surface
-                act.finish();
                 //Write test result to an output file
                 writeTestOutput(filename,output);
                 //Get the summary

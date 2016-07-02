@@ -21,11 +21,22 @@
     fallback fonts. That file can also specify the order in which the fallback fonts should be
     searched, to ensure that a vendor-provided font will be used before another fallback font
     which happens to handle the same glyph.
+
+    Han languages (Chinese, Japanese, and Korean) share a common range of unicode characters;
+    their ordering in the fallback or vendor files gives priority to the first in the list.
+    Language-specific ordering can be configured by adding a BCP 47-style "lang" attribute to
+    a "file" element; fonts matching the language of text being drawn will be prioritised over
+    all others.
 -->
 <familyset>
     <family>
         <fileset>
-            <file>DroidNaskh-Regular.ttf</file>
+            <file variant="elegant">DroidNaskh-Regular.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file variant="compact">DroidNaskh-Regular-SystemUI.ttf</file>
         </fileset>
     </family>
     <family>
@@ -56,7 +67,18 @@
     </family>
     <family>
         <fileset>
-            <file>Lohit-Devanagari.ttf</file>
+            <file>DroidSansDevanagari-Regular.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file>DroidSansTamil-Regular.ttf</file>
+            <file>DroidSansTamil-Bold.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file>AnjaliNewLipi-light.ttf</file>
         </fileset>
     </family>
     <family>
@@ -66,7 +88,22 @@
     </family>
     <family>
         <fileset>
-            <file>Lohit-Tamil.ttf</file>
+            <file>Lohit-Kannada.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file>NanumGothic.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file>AndroidEmoji.ttf</file>
+        </fileset>
+    </family>
+    <family>
+        <fileset>
+            <file>Lohit-Telugu.ttf</file>
         </fileset>
     </family>
     <family>
@@ -74,4 +111,15 @@
             <file>DroidSansFallback.ttf</file>
         </fileset>
     </family>
+    <family>
+        <fileset>
+            <file lang="ja">MTLmr3m.ttf</file>
+        </fileset>
+    </family>
+    <!-- Note: complex scripts (i.e. those requiring shaping in Harfbuzz) have
+         a cumulative limit of 64k glyphs. Thus, if they are placed after the
+         large fonts such as DroidSansFallback, they are likely to render
+         incorrectly. Please use caution when putting fonts toward the end of
+         the list.
+    -->
 </familyset>

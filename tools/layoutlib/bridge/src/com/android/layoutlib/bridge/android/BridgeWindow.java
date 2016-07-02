@@ -24,35 +24,23 @@ import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.view.DragEvent;
 import android.view.IWindow;
-import android.view.KeyEvent;
-import android.view.MotionEvent;
 
 /**
  * Implementation of {@link IWindow} to pass to the AttachInfo.
  */
 public final class BridgeWindow implements IWindow {
 
+    @Override
     public void dispatchAppVisibility(boolean arg0) throws RemoteException {
         // pass for now.
     }
 
+    @Override
     public void dispatchGetNewSurface() throws RemoteException {
         // pass for now.
     }
 
-    public void dispatchKey(KeyEvent arg0) throws RemoteException {
-        // pass for now.
-    }
-
-    public void dispatchPointer(MotionEvent arg0, long arg1, boolean arg2) throws RemoteException {
-        // pass for now.
-    }
-
-    public void dispatchTrackball(MotionEvent arg0, long arg1, boolean arg2)
-    throws RemoteException {
-        // pass for now.
-    }
-
+    @Override
     public void executeCommand(String arg0, String arg1, ParcelFileDescriptor arg2)
             throws RemoteException {
         // pass for now.
@@ -74,28 +62,34 @@ public final class BridgeWindow implements IWindow {
         // pass for now.
     }
 
+    @Override
     public void windowFocusChanged(boolean arg0, boolean arg1) throws RemoteException {
         // pass for now.
     }
 
+    @Override
     public void dispatchWallpaperOffsets(float x, float y, float xStep, float yStep,
             boolean sync) {
         // pass for now.
     }
 
+    @Override
     public void dispatchWallpaperCommand(String action, int x, int y,
             int z, Bundle extras, boolean sync) {
         // pass for now.
     }
 
+    @Override
     public void closeSystemDialogs(String reason) {
         // pass for now.
     }
 
+    @Override
     public void dispatchDragEvent(DragEvent event) {
         // pass for now.
     }
 
+    @Override
     public void dispatchSystemUiVisibilityChanged(int seq, int globalUi,
             int localValue, int localChanges) {
         // pass for now.
@@ -105,6 +99,7 @@ public final class BridgeWindow implements IWindow {
     public void doneAnimating() {
     }
 
+    @Override
     public IBinder asBinder() {
         // pass for now.
         return null;

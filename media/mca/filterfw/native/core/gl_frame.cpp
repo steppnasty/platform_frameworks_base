@@ -284,7 +284,7 @@ bool GLFrame::GenerateTextureName() {
   if (texture_state_ == kStateUninitialized) {
     // Make sure texture not in use already
     if (glIsTexture(texture_id_)) {
-      LOGE("GLFrame: Cannot generate texture id %d, as it is in use already!", texture_id_);
+      ALOGE("GLFrame: Cannot generate texture id %d, as it is in use already!", texture_id_);
       return false;
     }
 
@@ -329,7 +329,7 @@ bool GLFrame::GenerateFboName() {
   if (fbo_state_ == kStateUninitialized) {
     // Make sure FBO not in use already
     if (glIsFramebuffer(fbo_id_)) {
-      LOGE("GLFrame: Cannot generate FBO id %d, as it is in use already!", fbo_id_);
+      ALOGE("GLFrame: Cannot generate FBO id %d, as it is in use already!", fbo_id_);
       return false;
     }
 
@@ -367,9 +367,9 @@ bool GLFrame::ReadTexturePixels(uint8_t* pixels) const {
   // and unnecessary (this can only happen if the user is reading out data
   // that was just set, and not run through a filter), we warn the user about
   // this here.
-  LOGW("Warning: Reading pixel data from unfiltered GL frame. This is highly "
-       "inefficient. Please consider using your original pixel buffer "
-       "instead!");
+  ALOGW("Warning: Reading pixel data from unfiltered GL frame. This is highly "
+        "inefficient. Please consider using your original pixel buffer "
+        "instead!");
 
   // Create source frame set (unfortunately this requires an ugly const-cast,
   // as we need to wrap ourselves in a frame-set. Still, as this set is used
@@ -393,7 +393,7 @@ bool GLFrame::AttachTextureToFbo() {
   if (fbo_state_ == kStateComplete || texture_state_ == kStateUnmanaged) {
     return true;
   } else if (fbo_state_ != kStateGenerated) {
-    LOGE("Attempting to attach texture to FBO with no FBO in place!");
+    ALOGE("Attempting to attach texture to FBO with no FBO in place!");
     return false;
   }
 

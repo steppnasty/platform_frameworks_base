@@ -28,11 +28,10 @@ import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.UEventObserver;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.Log;
 import android.util.Slog;
-
-import com.android.server.power.PowerManagerService;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -40,14 +39,15 @@ import java.io.FileReader;
 /**
  * <p>DockObserver monitors for a docking station.
  */
-class DockObserver extends UEventObserver {
+final class DockObserver extends UEventObserver {
     private static final String TAG = DockObserver.class.getSimpleName();
-    private static final boolean LOG = false;
 
     private static final String DOCK_UEVENT_MATCH = "DEVPATH=/devices/virtual/switch/dock";
     private static final String DOCK_STATE_PATH = "/sys/class/switch/dock/state";
 
     private static final int MSG_DOCK_STATE_CHANGED = 0;
+
+    private final Object mLock = new Object();
 
     private int mDockState = Intent.EXTRA_DOCK_STATE_UNDOCKED;
     private int mPreviousDockState = Intent.EXTRA_DOCK_STATE_UNDOCKED;
@@ -74,7 +74,7 @@ class DockObserver extends UEventObserver {
             Slog.v(TAG, "Dock UEVENT: " + event.toString());
         }
 
-        synchronized (this) {
+        synchronized (mLock) {
             try {
                 int newState = Integer.parseInt(event.get("SWITCH_STATE"));
                 if (newState != mDockState) {
@@ -84,7 +84,7 @@ class DockObserver extends UEventObserver {
                         // Wake up immediately when docked or undocked.
                         mPowerManager.wakeUp(SystemClock.uptimeMillis());
 
-                        update();
+                        updateLocked();
                     }
                 }
             } catch (NumberFormatException e) {
@@ -93,97 +93,112 @@ class DockObserver extends UEventObserver {
         }
     }
 
-    private final void init() {
-        char[] buffer = new char[1024];
-
-        try {
-            FileReader file = new FileReader(DOCK_STATE_PATH);
-            int len = file.read(buffer, 0, 1024);
-            file.close();
-            mPreviousDockState = mDockState = Integer.valueOf((new String(buffer, 0, len)).trim());
-        } catch (FileNotFoundException e) {
-            Slog.w(TAG, "This kernel does not have dock station support");
-        } catch (Exception e) {
-            Slog.e(TAG, "" , e);
+    private void init() {
+        synchronized (mLock) {
+            try {
+                char[] buffer = new char[1024];
+                FileReader file = new FileReader(DOCK_STATE_PATH);
+                try {
+                    int len = file.read(buffer, 0, 1024);
+                    mDockState = Integer.valueOf((new String(buffer, 0, len)).trim());
+                    mPreviousDockState = mDockState;
+                } finally {
+                    file.close();
+                }
+            } catch (FileNotFoundException e) {
+                Slog.w(TAG, "This kernel does not have dock station support");
+            } catch (Exception e) {
+                Slog.e(TAG, "" , e);
+            }
         }
     }
 
     void systemReady() {
-        synchronized (this) {
+        synchronized (mLock) {
             // don't bother broadcasting undocked here
             if (mDockState != Intent.EXTRA_DOCK_STATE_UNDOCKED) {
-                update();
+                updateLocked();
             }
             mSystemReady = true;
         }
     }
 
-    private final void update() {
+    private void updateLocked() {
         mWakeLock.acquire();
         mHandler.sendEmptyMessage(MSG_DOCK_STATE_CHANGED);
     }
 
-    private final Handler mHandler = new Handler() {
+    private void handleDockStateChange() {
+        synchronized (mLock) {
+            Slog.i(TAG, "Dock state changed: " + mDockState);
+
+            // Skip the dock intent if not yet provisioned.
+            final ContentResolver cr = mContext.getContentResolver();
+            if (Settings.Global.getInt(cr,
+                    Settings.Global.DEVICE_PROVISIONED, 0) == 0) {
+                Slog.i(TAG, "Device not provisioned, skipping dock broadcast");
+                return;
+            }
+
+            // Pack up the values and broadcast them to everyone
+            Intent intent = new Intent(Intent.ACTION_DOCK_EVENT);
+            intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
+            intent.putExtra(Intent.EXTRA_DOCK_STATE, mDockState);
+
+            // Play a sound to provide feedback to confirm dock connection.
+            // Particularly useful for flaky contact pins...
+            if (Settings.Global.getInt(cr,
+                    Settings.Global.DOCK_SOUNDS_ENABLED, 1) == 1) {
+                String whichSound = null;
+                if (mDockState == Intent.EXTRA_DOCK_STATE_UNDOCKED) {
+                    if ((mPreviousDockState == Intent.EXTRA_DOCK_STATE_DESK) ||
+                        (mPreviousDockState == Intent.EXTRA_DOCK_STATE_LE_DESK) ||
+                        (mPreviousDockState == Intent.EXTRA_DOCK_STATE_HE_DESK)) {
+                        whichSound = Settings.Global.DESK_UNDOCK_SOUND;
+                    } else if (mPreviousDockState == Intent.EXTRA_DOCK_STATE_CAR) {
+                        whichSound = Settings.Global.CAR_UNDOCK_SOUND;
+                    }
+                } else {
+                    if ((mDockState == Intent.EXTRA_DOCK_STATE_DESK) ||
+                        (mDockState == Intent.EXTRA_DOCK_STATE_LE_DESK) ||
+                        (mDockState == Intent.EXTRA_DOCK_STATE_HE_DESK)) {
+                        whichSound = Settings.Global.DESK_DOCK_SOUND;
+                    } else if (mDockState == Intent.EXTRA_DOCK_STATE_CAR) {
+                        whichSound = Settings.Global.CAR_DOCK_SOUND;
+                    }
+                }
+
+                if (whichSound != null) {
+                    final String soundPath = Settings.Global.getString(cr, whichSound);
+                    if (soundPath != null) {
+                        final Uri soundUri = Uri.parse("file://" + soundPath);
+                        if (soundUri != null) {
+                            final Ringtone sfx = RingtoneManager.getRingtone(mContext, soundUri);
+                            if (sfx != null) {
+                                sfx.setStreamType(AudioManager.STREAM_SYSTEM);
+                                sfx.play();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Send the dock event intent.
+            // There are many components in the system watching for this so as to
+            // adjust audio routing, screen orientation, etc.
+            mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+
+            // Release the wake lock that was acquired when the message was posted.
+            mWakeLock.release();
+        }
+    }
+
+    private final Handler mHandler = new Handler(true /*async*/) {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_DOCK_STATE_CHANGED:
-                    synchronized (this) {
-                        Slog.i(TAG, "Dock state changed: " + mDockState);
-
-                        final ContentResolver cr = mContext.getContentResolver();
-
-                        if (Settings.Global.getInt(cr,
-                                Settings.Global.DEVICE_PROVISIONED, 0) == 0) {
-                            Slog.i(TAG, "Device not provisioned, skipping dock broadcast");
-                            return;
-                        }
-                        // Pack up the values and broadcast them to everyone
-                        Intent intent = new Intent(Intent.ACTION_DOCK_EVENT);
-                        intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
-                        intent.putExtra(Intent.EXTRA_DOCK_STATE, mDockState);
-
-                        // User feedback to confirm dock connection. Particularly
-                        // useful for flaky contact pins...
-                        if (Settings.Global.getInt(cr,
-                                Settings.Global.DOCK_SOUNDS_ENABLED, 1) == 1)
-                        {
-                            String whichSound = null;
-                            if (mDockState == Intent.EXTRA_DOCK_STATE_UNDOCKED) {
-                                if ((mPreviousDockState == Intent.EXTRA_DOCK_STATE_DESK) ||
-                                    (mPreviousDockState == Intent.EXTRA_DOCK_STATE_LE_DESK) ||
-                                    (mPreviousDockState == Intent.EXTRA_DOCK_STATE_HE_DESK)) {
-                                    whichSound = Settings.System.DESK_UNDOCK_SOUND;
-                                } else if (mPreviousDockState == Intent.EXTRA_DOCK_STATE_CAR) {
-                                    whichSound = Settings.System.CAR_UNDOCK_SOUND;
-                                }
-                            } else {
-                                if ((mDockState == Intent.EXTRA_DOCK_STATE_DESK) ||
-                                    (mDockState == Intent.EXTRA_DOCK_STATE_LE_DESK) ||
-                                    (mDockState == Intent.EXTRA_DOCK_STATE_HE_DESK)) {
-                                    whichSound = Settings.System.DESK_DOCK_SOUND;
-                                } else if (mDockState == Intent.EXTRA_DOCK_STATE_CAR) {
-                                    whichSound = Settings.System.CAR_DOCK_SOUND;
-                                }
-                            }
-
-                            if (whichSound != null) {
-                                final String soundPath = Settings.System.getString(cr, whichSound);
-                                if (soundPath != null) {
-                                    final Uri soundUri = Uri.parse("file://" + soundPath);
-                                    if (soundUri != null) {
-                                        final Ringtone sfx = RingtoneManager.getRingtone(mContext, soundUri);
-                                        if (sfx != null) {
-                                            sfx.setStreamType(AudioManager.STREAM_SYSTEM);
-                                            sfx.play();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        mContext.sendStickyBroadcast(intent);
-                    }
+                    handleDockStateChange();
                     break;
             }
         }

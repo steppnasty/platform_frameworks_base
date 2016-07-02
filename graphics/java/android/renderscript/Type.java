@@ -38,7 +38,7 @@ import android.util.Log;
  * <div class="special reference">
  * <h3>Developer Guides</h3>
  * <p>For more information about creating an application that uses Renderscript, read the
- * <a href="{@docRoot}guide/topics/graphics/renderscript.html">Renderscript</a> developer guide.</p>
+ * <a href="{@docRoot}guide/topics/renderscript/index.html">Renderscript</a> developer guide.</p>
  * </div>
  **/
 public class Type extends BaseObj {
@@ -180,7 +180,7 @@ public class Type extends BaseObj {
         // We have 6 integer to obtain mDimX; mDimY; mDimZ;
         // mDimLOD; mDimFaces; mElement;
         int[] dataBuffer = new int[6];
-        mRS.nTypeGetNativeData(getID(), dataBuffer);
+        mRS.nTypeGetNativeData(getID(mRS), dataBuffer);
 
         mDimX = dataBuffer[0];
         mDimY = dataBuffer[1];
@@ -280,7 +280,8 @@ public class Type extends BaseObj {
                 }
             }
 
-            int id = mRS.nTypeCreate(mElement.getID(), mDimX, mDimY, mDimZ, mDimMipmaps, mDimFaces);
+            int id = mRS.nTypeCreate(mElement.getID(mRS),
+                                     mDimX, mDimY, mDimZ, mDimMipmaps, mDimFaces);
             Type t = new Type(id, mRS);
             t.mElement = mElement;
             t.mDimX = mDimX;

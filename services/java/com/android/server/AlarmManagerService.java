@@ -493,7 +493,7 @@ class AlarmManagerService extends IAlarmManager.Stub {
                 alarmSeconds = alarm.when / 1000;
                 alarmNanoseconds = (alarm.when % 1000) * 1000 * 1000;
             }
-
+            
             set(mDescriptor, alarm.type, alarmSeconds, alarmNanoseconds);
         }
         else
@@ -979,7 +979,7 @@ class AlarmManagerService extends IAlarmManager.Stub {
             calendar.set(Calendar.SECOND, 0);
             calendar.set(Calendar.MILLISECOND, 0);
             calendar.add(Calendar.DAY_OF_MONTH, 1);
-
+      
             set(AlarmManager.RTC, calendar.getTimeInMillis(), mDateChangeSender);
         }
     }

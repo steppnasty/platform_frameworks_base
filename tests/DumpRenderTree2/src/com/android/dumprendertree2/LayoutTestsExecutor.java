@@ -41,9 +41,11 @@ import android.webkit.JsResult;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
+import android.webkit.WebSettingsClassic;
 import android.webkit.WebStorage;
 import android.webkit.WebStorage.QuotaUpdater;
 import android.webkit.WebView;
+import android.webkit.WebViewClassic;
 import android.webkit.WebViewClient;
 
 import java.lang.Thread.UncaughtExceptionHandler;
@@ -107,9 +109,6 @@ public class LayoutTestsExecutor extends Activity {
     private LayoutTestController mLayoutTestController = new LayoutTestController(this);
     private boolean mCanOpenWindows;
     private boolean mDumpDatabaseCallbacks;
-    private boolean mIsGeolocationPermissionSet;
-    private boolean mGeolocationPermission;
-    private Map<GeolocationPermissions.Callback, String> mPendingGeolocationPermissionCallbacks;
 
     private EventSender mEventSender = new EventSender();
 
@@ -253,15 +252,8 @@ public class LayoutTestsExecutor extends Activity {
         @Override
         public void onGeolocationPermissionsShowPrompt(String origin,
                 GeolocationPermissions.Callback callback) {
-            if (mIsGeolocationPermissionSet) {
-                callback.invoke(origin, mGeolocationPermission, false);
-                return;
-            }
-            if (mPendingGeolocationPermissionCallbacks == null) {
-                mPendingGeolocationPermissionCallbacks =
-                        new HashMap<GeolocationPermissions.Callback, String>();
-            }
-            mPendingGeolocationPermissionCallbacks.put(callback, origin);
+            throw new RuntimeException(
+                    "The WebCore mock used by DRT should bypass the usual permissions flow.");
         }
     };
 
@@ -369,11 +361,12 @@ public class LayoutTestsExecutor extends Activity {
          * a real use of touch events in a WebView)  and so if the WebView drops the event,
          * the test will fail as the test expects one callback for every touch it synthesizes.
          */
-        webView.setTouchInterval(-1);
+        WebViewClassic webViewClassic = WebViewClassic.fromWebView(webView);
+        webViewClassic.setTouchInterval(-1);
 
-        webView.clearCache(true);
+        webViewClassic.clearCache(true);
 
-        WebSettings webViewSettings = webView.getSettings();
+        WebSettingsClassic webViewSettings = webViewClassic.getSettings();
         webViewSettings.setAppCacheEnabled(true);
         webViewSettings.setAppCachePath(getApplicationContext().getCacheDir().getPath());
         // Use of larger values causes unexplained AppCache database corruption.
@@ -391,7 +384,8 @@ public class LayoutTestsExecutor extends Activity {
         webViewSettings.setPageCacheCapacity(0);
 
         // This is asynchronous, but it gets processed by WebCore before it starts loading pages.
-        mCurrentWebView.useMockDeviceOrientation();
+        WebViewClassic.fromWebView(mCurrentWebView).setUseMockGeolocation();
+        WebViewClassic.fromWebView(mCurrentWebView).setUseMockDeviceOrientation();
 
         // Must do this after setting the AppCache path.
         WebStorage.getInstance().deleteAllData();
@@ -570,9 +564,8 @@ public class LayoutTestsExecutor extends Activity {
     private static final int MSG_DUMP_CHILD_FRAMES_AS_TEXT = 3;
     private static final int MSG_SET_CAN_OPEN_WINDOWS = 4;
     private static final int MSG_DUMP_DATABASE_CALLBACKS = 5;
-    private static final int MSG_SET_GEOLOCATION_PERMISSION = 6;
-    private static final int MSG_OVERRIDE_PREFERENCE = 7;
-    private static final int MSG_SET_XSS_AUDITOR_ENABLED = 8;
+    private static final int MSG_OVERRIDE_PREFERENCE = 6;
+    private static final int MSG_SET_XSS_AUDITOR_ENABLED = 7;
 
     /** String constants for use with layoutTestController.overridePreference() */
     private final String WEBKIT_OFFLINE_WEB_APPLICATION_CACHE_ENABLED =
@@ -625,10 +618,12 @@ public class LayoutTestsExecutor extends Activity {
                     String key = msg.getData().getString("key");
                     boolean value = msg.getData().getBoolean("value");
                     if (WEBKIT_OFFLINE_WEB_APPLICATION_CACHE_ENABLED.equals(key)) {
-                        mCurrentWebView.getSettings().setAppCacheEnabled(value);
+                        WebViewClassic.fromWebView(mCurrentWebView).getSettings().
+                                setAppCacheEnabled(value);
                     } else if (WEBKIT_USES_PAGE_CACHE_PREFERENCE_KEY.equals(key)) {
                         // Cache the maximum possible number of pages.
-                        mCurrentWebView.getSettings().setPageCacheCapacity(Integer.MAX_VALUE);
+                        WebViewClassic.fromWebView(mCurrentWebView).getSettings().
+                                setPageCacheCapacity(Integer.MAX_VALUE);
                     } else {
                         Log.w(LOG_TAG, "LayoutTestController.overridePreference(): " +
                               "Unsupported preference '" + key + "'");
@@ -639,24 +634,9 @@ public class LayoutTestsExecutor extends Activity {
                     mCanOpenWindows = true;
                     break;
 
-                case MSG_SET_GEOLOCATION_PERMISSION:
-                    mIsGeolocationPermissionSet = true;
-                    mGeolocationPermission = msg.arg1 == 1;
-
-                    if (mPendingGeolocationPermissionCallbacks != null) {
-                        Iterator<GeolocationPermissions.Callback> iter =
-                                mPendingGeolocationPermissionCallbacks.keySet().iterator();
-                        while (iter.hasNext()) {
-                            GeolocationPermissions.Callback callback = iter.next();
-                            String origin = mPendingGeolocationPermissionCallbacks.get(callback);
-                            callback.invoke(origin, mGeolocationPermission, false);
-                        }
-                        mPendingGeolocationPermissionCallbacks = null;
-                    }
-                    break;
-
                 case MSG_SET_XSS_AUDITOR_ENABLED:
-                    mCurrentWebView.getSettings().setXSSAuditorEnabled(msg.arg1 == 1);
+                    WebViewClassic.fromWebView(mCurrentWebView).getSettings().
+                            setXSSAuditorEnabled(msg.arg1 == 1);
                     break;
 
                 case MSG_WAIT_UNTIL_DONE:
@@ -673,8 +653,6 @@ public class LayoutTestsExecutor extends Activity {
     private void resetLayoutTestController() {
         mCanOpenWindows = false;
         mDumpDatabaseCallbacks = false;
-        mIsGeolocationPermissionSet = false;
-        mPendingGeolocationPermissionCallbacks = null;
     }
 
     public void dumpAsText(boolean enablePixelTest) {
@@ -715,12 +693,19 @@ public class LayoutTestsExecutor extends Activity {
         mLayoutTestControllerHandler.sendEmptyMessage(MSG_SET_CAN_OPEN_WINDOWS);
     }
 
+    public void setMockGeolocationPosition(double latitude, double longitude, double accuracy) {
+        WebViewClassic.fromWebView(mCurrentWebView).setMockGeolocationPosition(latitude, longitude,
+                accuracy);
+    }
+
+    public void setMockGeolocationError(int code, String message) {
+        WebViewClassic.fromWebView(mCurrentWebView).setMockGeolocationError(code, message);
+    }
+
     public void setGeolocationPermission(boolean allow) {
         Log.i(LOG_TAG, mCurrentTestRelativePath + ": setGeolocationPermission(" + allow +
                 ") called");
-        Message msg = mLayoutTestControllerHandler.obtainMessage(MSG_SET_GEOLOCATION_PERMISSION);
-        msg.arg1 = allow ? 1 : 0;
-        msg.sendToTarget();
+        WebViewClassic.fromWebView(mCurrentWebView).setMockGeolocationPermission(allow);
     }
 
     public void setMockDeviceOrientation(boolean canProvideAlpha, double alpha,
@@ -728,8 +713,8 @@ public class LayoutTestsExecutor extends Activity {
         Log.i(LOG_TAG, mCurrentTestRelativePath + ": setMockDeviceOrientation(" + canProvideAlpha +
                 ", " + alpha + ", " + canProvideBeta + ", " + beta + ", " + canProvideGamma +
                 ", " + gamma + ")");
-        mCurrentWebView.setMockDeviceOrientation(canProvideAlpha, alpha, canProvideBeta, beta,
-                canProvideGamma, gamma);
+        WebViewClassic.fromWebView(mCurrentWebView).setMockDeviceOrientation(canProvideAlpha,
+                alpha, canProvideBeta, beta, canProvideGamma, gamma);
     }
 
     public void setXSSAuditorEnabled(boolean flag) {

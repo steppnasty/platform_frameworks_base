@@ -19,7 +19,7 @@
 #include "jni.h"
 #include <utils/String8.h>
 #include "utils/misc.h"
-#include "cutils/debuggerd.h"
+#include "cutils/debugger.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -539,6 +539,7 @@ static void android_os_Debug_dumpNativeHeap(JNIEnv* env, jobject clazz,
 
     fclose(fp);
 }
+
 
 static void android_os_Debug_dumpNativeBacktraceToFile(JNIEnv* env, jobject clazz,
     jint pid, jstring fileName)

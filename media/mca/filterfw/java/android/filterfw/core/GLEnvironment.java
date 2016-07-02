@@ -31,6 +31,8 @@ public class GLEnvironment {
 
     private int glEnvId;
 
+    private boolean mManageContext = true;
+
     public GLEnvironment() {
         nativeAllocate();
     }
@@ -51,12 +53,14 @@ public class GLEnvironment {
     }
 
     public void initWithNewContext() {
+        mManageContext = true;
         if (!nativeInitWithNewContext()) {
             throw new RuntimeException("Could not initialize GLEnvironment with new context!");
         }
     }
 
     public void initWithCurrentContext() {
+        mManageContext = false;
         if (!nativeInitWithCurrentContext()) {
             throw new RuntimeException("Could not initialize GLEnvironment with current context!");
         }
@@ -78,13 +82,13 @@ public class GLEnvironment {
         if (Looper.myLooper() != null && Looper.myLooper().equals(Looper.getMainLooper())) {
             Log.e("FilterFramework", "Activating GL context in UI thread!");
         }
-        if (!nativeActivate()) {
+        if (mManageContext && !nativeActivate()) {
             throw new RuntimeException("Could not activate GLEnvironment!");
         }
     }
 
     public void deactivate() {
-        if (!nativeDeactivate()) {
+        if (mManageContext && !nativeDeactivate()) {
             throw new RuntimeException("Could not deactivate GLEnvironment!");
         }
     }
@@ -104,7 +108,9 @@ public class GLEnvironment {
     }
 
     public int registerSurfaceTexture(SurfaceTexture surfaceTexture, int width, int height) {
-        int result = nativeAddSurfaceTexture(surfaceTexture, width, height);
+        Surface surface = new Surface(surfaceTexture);
+        int result = nativeAddSurfaceWidthHeight(surface, width, height);
+        surface.release();
         if (result < 0) {
             throw new RuntimeException("Error registering surfaceTexture " + surfaceTexture + "!");
         }
@@ -164,7 +170,7 @@ public class GLEnvironment {
 
     private native int nativeAddSurface(Surface surface);
 
-    private native int nativeAddSurfaceTexture(SurfaceTexture surface, int width, int height);
+    private native int nativeAddSurfaceWidthHeight(Surface surface, int width, int height);
 
     private native int nativeAddSurfaceFromMediaRecorder(MediaRecorder mediaRecorder);
 

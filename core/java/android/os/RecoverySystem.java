@@ -26,6 +26,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.security.GeneralSecurityException;
 import java.security.PublicKey;
@@ -39,6 +40,7 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -103,7 +105,12 @@ public class RecoverySystem {
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                trusted.add(cf.generateCertificate(zip.getInputStream(entry)));
+                InputStream is = zip.getInputStream(entry);
+                try {
+                    trusted.add(cf.generateCertificate(is));
+                } finally {
+                    is.close();
+                }
             }
         } finally {
             zip.close();
@@ -162,8 +169,6 @@ public class RecoverySystem {
 
             int commentSize = (footer[4] & 0xff) | ((footer[5] & 0xff) << 8);
             int signatureStart = (footer[0] & 0xff) | ((footer[1] & 0xff) << 8);
-            Log.v(TAG, String.format("comment size %d; signature start %d",
-                                     commentSize, signatureStart));
 
             byte[] eocd = new byte[commentSize + 22];
             raf.seek(fileLen - (commentSize + 22));
@@ -322,7 +327,8 @@ public class RecoverySystem {
         throws IOException {
         String filename = packageFile.getCanonicalPath();
         Log.w(TAG, "!!! REBOOTING TO INSTALL " + filename + " !!!");
-        String arg = "--update_package=" + filename;
+        String arg = "--update_package=" + filename +
+            "\n--locale=" + Locale.getDefault().toString();
         bootCommand(context, arg);
     }
 
@@ -342,7 +348,8 @@ public class RecoverySystem {
         final ConditionVariable condition = new ConditionVariable();
 
         Intent intent = new Intent("android.intent.action.MASTER_CLEAR_NOTIFICATION");
-        context.sendOrderedBroadcast(intent, android.Manifest.permission.MASTER_CLEAR,
+        context.sendOrderedBroadcastAsUser(intent, UserHandle.OWNER,
+                android.Manifest.permission.MASTER_CLEAR,
                 new BroadcastReceiver() {
                     @Override
                     public void onReceive(Context context, Intent intent) {
@@ -353,7 +360,7 @@ public class RecoverySystem {
         // Block until the ordered broadcast has completed.
         condition.block();
 
-        bootCommand(context, "--wipe_data");
+        bootCommand(context, "--wipe_data\n--locale=" + Locale.getDefault().toString());
     }
 
     /**
@@ -361,7 +368,7 @@ public class RecoverySystem {
      * @throws IOException if something goes wrong.
      */
     public static void rebootWipeCache(Context context) throws IOException {
-        bootCommand(context, "--wipe_cache");
+        bootCommand(context, "--wipe_cache\n--locale=" + Locale.getDefault().toString());
     }
 
     /**

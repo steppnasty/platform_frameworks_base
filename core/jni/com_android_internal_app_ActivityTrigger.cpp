@@ -130,7 +130,6 @@ com_android_internal_app_ActivityTrigger_native_at_startActivity(JNIEnv *env, jo
         const char *actStr = env->GetStringUTFChars(activity, NULL);
         if (actStr) {
             (*startActivity)(actStr);
-            env->ReleaseStringUTFChars(activity, actStr);
         }
     }
 }
@@ -142,7 +141,6 @@ com_android_internal_app_ActivityTrigger_native_at_resumeActivity(JNIEnv *env, j
         const char *actStr = env->GetStringUTFChars(activity, NULL);
         if (actStr) {
             (*resumeActivity)(actStr);
-            env->ReleaseStringUTFChars(activity, actStr);
         }
     }
 }

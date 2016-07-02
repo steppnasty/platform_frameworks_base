@@ -882,6 +882,8 @@ status_t DisplayList::replay(OpenGLRenderer& renderer, Rect& dirty, int32_t flag
             clipRect->right, clipRect->bottom);
 #endif
 
+    renderer.startMark(mName.string());
+
     int restoreTo = renderer.save(SkCanvas::kMatrix_SaveFlag | SkCanvas::kClip_SaveFlag);
     DISPLAY_LIST_LOGD("%s%s %d %d", indent, "Save",
             SkCanvas::kMatrix_SaveFlag | SkCanvas::kClip_SaveFlag, restoreTo);
@@ -890,6 +892,7 @@ status_t DisplayList::replay(OpenGLRenderer& renderer, Rect& dirty, int32_t flag
     if (renderer.quickRejectNoScissor(0, 0, mWidth, mHeight)) {
         DISPLAY_LIST_LOGD("%s%s %d", (char*) indent, "RestoreToCount", restoreTo);
         renderer.restoreToCount(restoreTo);
+        renderer.endMark();
         return drawGlStatus;
     }
 
@@ -919,7 +922,9 @@ status_t DisplayList::replay(OpenGLRenderer& renderer, Rect& dirty, int32_t flag
             case DrawGLFunction: {
                 Functor *functor = (Functor *) getInt();
                 DISPLAY_LIST_LOGD("%s%s %p", (char*) indent, OP_NAMES[op], functor);
+                renderer.startMark("GL functor");
                 drawGlStatus |= renderer.callDrawGLFunction(functor, dirty);
+                renderer.endMark();
             }
             break;
             case Save: {
@@ -1331,6 +1336,7 @@ status_t DisplayList::replay(OpenGLRenderer& renderer, Rect& dirty, int32_t flag
 
     DISPLAY_LIST_LOGD("%s%s %d", (char*) indent, "RestoreToCount", restoreTo);
     renderer.restoreToCount(restoreTo);
+    renderer.endMark();
 
     DISPLAY_LIST_LOGD("%sDone (%p, %s), returning %d", (char*) indent + 2, this, mName.string(),
             drawGlStatus);

@@ -37,6 +37,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libutils \
 	libmedia \
+	libmedia_native \
 	libstagefright_amrnb_common
 
 LOCAL_STATIC_LIBRARIES := libgsm libstagefright_amrnbdec libstagefright_amrnbenc
@@ -50,7 +51,7 @@ LOCAL_C_INCLUDES += \
 	frameworks/av/media/libstagefright/codecs/amrnb/enc/src \
 	frameworks/av/media/libstagefright/codecs/amrnb/dec/include \
 	frameworks/av/media/libstagefright/codecs/amrnb/dec/src \
-	system/media/audio_effects/include
+	$(call include-path-for, audio-effects)
 
 LOCAL_CFLAGS += -fvisibility=hidden
 

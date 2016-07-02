@@ -92,8 +92,7 @@ public final class BridgeContentProvider implements IContentProvider {
 
     @Override
     public Cursor query(Uri arg0, String[] arg1, String arg2, String[] arg3, String arg4,
-                ICancellationSignal arg5)
-            throws RemoteException {
+            ICancellationSignal arg5) throws RemoteException {
         // TODO Auto-generated method stub
         return null;
     }

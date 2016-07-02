@@ -30,7 +30,6 @@
 #include <M4OSA_Debug.h>
 #include <M4xVSS_Internal.h>
 #include <gui/Surface.h>
-#include <gui/ISurface.h>
 #include "VideoEditorPreviewController.h"
 
 #include "VideoEditorMain.h"
@@ -381,6 +380,9 @@ getClipSetting(
                     pEnv->GetIntField(object,fid);
    M4OSA_TRACE1_1("videoRotation = %d",
                     pSettings->ClipProperties.videoRotationDegrees);
+
+   // Free the local references to avoid memory leaks
+   pEnv->DeleteLocalRef(clazz);
 }
 
 static void jniPreviewProgressCallback (void* cookie, M4OSA_UInt32 msgType,
@@ -1850,7 +1852,9 @@ videoEditor_populateSettings(
                 "not initialized");
             if (needToBeLoaded) {
                 getClipSetting(pEnv,properties, pContext->pEditSettings->pClipList[i]);
+                pEnv->DeleteLocalRef(properties);
             } else {
+                pEnv->DeleteLocalRef(properties);
                 goto videoEditor_populateSettings_cleanup;
             }
         }
@@ -2624,16 +2628,21 @@ videoEditor_init(
             M4OSA_Char* tmpString =
                 (M4OSA_Char *)videoEditJava_getString(&initialized, pEnv, tempPath,
                 NULL, M4OSA_NULL);
+            M4OSA_UInt32 length = strlen((const char *)tmpString);
+            // Malloc additional 2 bytes for beginning and tail separator.
+            M4OSA_UInt32 pathLength = length + 2;
+
             pContext->initParams.pTempPath = (M4OSA_Char *)
-                 M4OSA_32bitAlignedMalloc(strlen((const char *)tmpString) + 1, 0x0,
-                                                 (M4OSA_Char *)"tempPath");
+                 M4OSA_32bitAlignedMalloc(pathLength, 0x0, (M4OSA_Char *)"tempPath");
+
             //initialize the first char. so that strcat works.
             M4OSA_Char *ptmpChar = (M4OSA_Char*)pContext->initParams.pTempPath;
             ptmpChar[0] = 0x00;
             strncat((char *)pContext->initParams.pTempPath, (const char *)tmpString,
-                (size_t)strlen((const char *)tmpString));
+                length);
             strncat((char *)pContext->initParams.pTempPath, (const char *)"/", (size_t)1);
             free(tmpString);
+            tmpString = NULL;
             pContext->mIsUpdateOverlay = false;
             pContext->mOverlayFileName = NULL;
             pContext->decoders = NULL;

@@ -42,7 +42,6 @@ import static android.view.WindowManager.LayoutParams.TYPE_WALLPAPER;
 
 import com.android.internal.app.IBatteryStats;
 import com.android.internal.app.ThemeUtils;
-
 import com.android.internal.policy.PolicyManager;
 import com.android.internal.policy.impl.PhoneWindowManager;
 import com.android.internal.view.IInputContext;
@@ -5906,7 +5905,6 @@ public class WindowManagerService extends IWindowManager.Stub
 
             // The screenshot API does not apply the current screen rotation.
             rot = getDefaultDisplayContentLocked().getDisplay().getRotation();
-
             int fw = frame.width();
             int fh = frame.height();
 
@@ -10247,7 +10245,7 @@ public class WindowManagerService extends IWindowManager.Stub
         // now to catch that.
         configChanged = updateOrientationFromAppTokensLocked(false);
 
-        // A little nudge: a lot could have happened while the
+        // A little kludge: a lot could have happened while the
         // display was frozen, so now that we are coming back we
         // do a gc so that any remote references the system
         // processes holds on others can be released if they are

@@ -406,11 +406,7 @@ void AudioStream::decode(int tick)
         count = recv(mSocket, samples, sizeof(samples),
             MSG_TRUNC | MSG_DONTWAIT) >> 1;
     } else {
-        __attribute__((aligned(4))) union {
-		uint8_t buffer[2048];
-		uint16_t buffer16[2048/2];
-		uint32_t buffer32[2048/4];
-	};
+        __attribute__((aligned(4))) uint8_t buffer[2048];
         sockaddr_storage remote;
         socklen_t addrlen = sizeof(remote);
 
@@ -420,13 +416,13 @@ void AudioStream::decode(int tick)
         // Do we need to check SSRC, sequence, and timestamp? They are not
         // reliable but at least they can be used to identify duplicates?
         if (length < 12 || length > (int)sizeof(buffer) ||
-            (ntohl(*buffer32) & 0xC07F0000) != mCodecMagic) {
+            (ntohl(*(uint32_t *)buffer) & 0xC07F0000) != mCodecMagic) {
             ALOGV("stream[%d] malformed packet", mSocket);
             return;
         }
         int offset = 12 + ((buffer[0] & 0x0F) << 2);
         if ((buffer[0] & 0x10) != 0) {
-            offset += 4 + (ntohs(buffer16[(offset + 2)/2]) << 2);
+            offset += 4 + (ntohs(*(uint16_t *)&buffer[offset + 2]) << 2);
         }
         if ((buffer[0] & 0x20) != 0) {
             length -= buffer[length - 1];
@@ -482,7 +478,7 @@ public:
     bool setMode(int mode);
     bool sendDtmf(int event);
     bool add(AudioStream *stream);
-    bool remove(int socket);
+    bool remove(AudioStream *stream);
     bool platformHasAec() { return mPlatformHasAec; }
 
 private:
@@ -695,20 +691,19 @@ bool AudioGroup::add(AudioStream *stream)
     return true;
 }
 
-bool AudioGroup::remove(int socket)
+bool AudioGroup::remove(AudioStream *stream)
 {
     mNetworkThread->requestExitAndWait();
 
-    for (AudioStream *stream = mChain; stream->mNext; stream = stream->mNext) {
-        AudioStream *target = stream->mNext;
-        if (target->mSocket == socket) {
-            if (epoll_ctl(mEventQueue, EPOLL_CTL_DEL, socket, NULL)) {
+    for (AudioStream *chain = mChain; chain->mNext; chain = chain->mNext) {
+        if (chain->mNext == stream) {
+            if (epoll_ctl(mEventQueue, EPOLL_CTL_DEL, stream->mSocket, NULL)) {
                 ALOGE("epoll_ctl: %s", strerror(errno));
                 return false;
             }
-            stream->mNext = target->mNext;
-            ALOGD("stream[%d] leaves group[%d]", socket, mDeviceSocket);
-            delete target;
+            chain->mNext = stream->mNext;
+            ALOGD("stream[%d] leaves group[%d]", stream->mSocket, mDeviceSocket);
+            delete stream;
             break;
         }
     }
@@ -795,7 +790,7 @@ bool AudioGroup::DeviceThread::threadLoop()
     if (AudioTrack::getMinFrameCount(&output, AUDIO_STREAM_VOICE_CALL,
         sampleRate) != NO_ERROR || output <= 0 ||
         AudioRecord::getMinFrameCount(&input, sampleRate,
-        AUDIO_FORMAT_PCM_16_BIT, 1) != NO_ERROR || input <= 0) {
+        AUDIO_FORMAT_PCM_16_BIT, AUDIO_CHANNEL_IN_MONO) != NO_ERROR || input <= 0) {
         ALOGE("cannot compute frame count");
         return false;
     }
@@ -813,9 +808,9 @@ bool AudioGroup::DeviceThread::threadLoop()
     AudioTrack track;
     AudioRecord record;
     if (track.set(AUDIO_STREAM_VOICE_CALL, sampleRate, AUDIO_FORMAT_PCM_16_BIT,
-        AUDIO_CHANNEL_OUT_MONO, output) != NO_ERROR || record.set(
-        AUDIO_SOURCE_VOICE_COMMUNICATION, sampleRate, AUDIO_FORMAT_PCM_16_BIT,
-        AUDIO_CHANNEL_IN_MONO, input) != NO_ERROR) {
+                AUDIO_CHANNEL_OUT_MONO, output) != NO_ERROR ||
+            record.set(AUDIO_SOURCE_VOICE_COMMUNICATION, sampleRate, AUDIO_FORMAT_PCM_16_BIT,
+                AUDIO_CHANNEL_IN_MONO, input) != NO_ERROR) {
         ALOGE("cannot initialize audio device");
         return false;
     }
@@ -935,7 +930,7 @@ exit:
 static jfieldID gNative;
 static jfieldID gMode;
 
-void add(JNIEnv *env, jobject thiz, jint mode,
+int add(JNIEnv *env, jobject thiz, jint mode,
     jint socket, jstring jRemoteAddress, jint remotePort,
     jstring jCodecSpec, jint dtmfType)
 {
@@ -947,16 +942,22 @@ void add(JNIEnv *env, jobject thiz, jint mode,
     sockaddr_storage remote;
     if (parse(env, jRemoteAddress, remotePort, &remote) < 0) {
         // Exception already thrown.
-        return;
+        return 0;
     }
     if (!jCodecSpec) {
         jniThrowNullPointerException(env, "codecSpec");
-        return;
+        return 0;
     }
     const char *codecSpec = env->GetStringUTFChars(jCodecSpec, NULL);
     if (!codecSpec) {
         // Exception already thrown.
-        return;
+        return 0;
+    }
+    socket = dup(socket);
+    if (socket == -1) {
+        jniThrowException(env, "java/lang/IllegalStateException",
+            "cannot get stream socket");
+        return 0;
     }
 
     // Create audio codec.
@@ -1005,23 +1006,24 @@ void add(JNIEnv *env, jobject thiz, jint mode,
 
     // Succeed.
     env->SetIntField(thiz, gNative, (int)group);
-    return;
+    return (int)stream;
 
 error:
     delete group;
     delete stream;
     delete codec;
     close(socket);
-    env->SetIntField(thiz, gNative, NULL);
+    env->SetIntField(thiz, gNative, 0);
+    return 0;
 }
 
-void remove(JNIEnv *env, jobject thiz, jint socket)
+void remove(JNIEnv *env, jobject thiz, jint stream)
 {
     AudioGroup *group = (AudioGroup *)env->GetIntField(thiz, gNative);
     if (group) {
-        if (socket == -1 || !group->remove(socket)) {
+        if (!stream || !group->remove((AudioStream *)stream)) {
             delete group;
-            env->SetIntField(thiz, gNative, NULL);
+            env->SetIntField(thiz, gNative, 0);
         }
     }
 }
@@ -1043,7 +1045,7 @@ void sendDtmf(JNIEnv *env, jobject thiz, jint event)
 }
 
 JNINativeMethod gMethods[] = {
-    {"nativeAdd", "(IILjava/lang/String;ILjava/lang/String;I)V", (void *)add},
+    {"nativeAdd", "(IILjava/lang/String;ILjava/lang/String;I)I", (void *)add},
     {"nativeRemove", "(I)V", (void *)remove},
     {"nativeSetMode", "(I)V", (void *)setMode},
     {"nativeSendDtmf", "(I)V", (void *)sendDtmf},

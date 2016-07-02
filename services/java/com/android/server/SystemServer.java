@@ -1,7 +1,5 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
- * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
- * This code has been modified.  Portions copyright (C) 2010, T-Mobile USA, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +27,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.IPackageManager;
 import android.content.res.Configuration;
-import android.database.ContentObserver;
-import android.database.Cursor;
 import android.media.AudioService;
 import android.net.wifi.p2p.WifiP2pService;
 import android.os.Handler;
@@ -43,7 +39,6 @@ import android.os.StrictMode;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
-import android.provider.Settings;
 import android.server.search.SearchManagerService;
 import android.service.dreams.DreamService;
 import android.util.DisplayMetrics;
@@ -88,19 +83,6 @@ class ServerThread extends Thread {
     void reportWtf(String msg, Throwable e) {
         Slog.w(TAG, "***********************************************");
         Log.wtf(TAG, "BOOT FAILURE " + msg, e);
-    }
-
-    private class AdbPortObserver extends ContentObserver {
-        public AdbPortObserver() {
-            super(null);
-        }
-        @Override
-        public void onChange(boolean selfChange) {
-            int adbPort = Settings.Secure.getInt(mContentResolver,
-                Settings.Secure.ADB_PORT, 0);
-            // setting this will control whether ADB runs on TCP/IP or USB
-            SystemProperties.set("service.adb.tcp.port", Integer.toString(adbPort));
-        }
     }
 
     @Override
@@ -155,20 +137,23 @@ class ServerThread extends Thread {
         ConnectivityService connectivity = null;
         WifiP2pService wifiP2p = null;
         WifiService wifi = null;
+        NsdService serviceDiscovery= null;
         IPackageManager pm = null;
         Context context = null;
         WindowManagerService wm = null;
         BluetoothManagerService bluetooth = null;
         DockObserver dock = null;
         UsbService usb = null;
+        SerialService serial = null;
         TwilightService twilight = null;
         UiModeManagerService uiMode = null;
         RecognitionManagerService recognition = null;
         ThrottleService throttle = null;
         NetworkTimeUpdateService networkTimeUpdater = null;
-        CpuGovernorService cpuGovernorManager = null;
+        CommonTimeManagementService commonTimeMgmtService = null;
         InputManagerService inputManager = null;
         TelephonyRegistry telephonyRegistry = null;
+        CpuGovernorService cpuGovernorManager = null;
 
         // Create a shared handler thread for UI within the system server.
         // This thread is used by at least the following components:
@@ -213,7 +198,7 @@ class ServerThread extends Thread {
                 }
             }
         });
-         
+
         // Critical services...
         boolean onlyCore = false;
         try {
@@ -224,8 +209,8 @@ class ServerThread extends Thread {
             installer = new Installer();
             installer.ping();
 
-            Slog.i(TAG, "Entropy Service");
-            ServiceManager.addService("entropy", new EntropyService());
+            Slog.i(TAG, "Entropy Mixer");
+            ServiceManager.addService("entropy", new EntropyMixer());
 
             Slog.i(TAG, "Power Manager");
             power = new PowerManagerService();
@@ -263,6 +248,7 @@ class ServerThread extends Thread {
                 Slog.w(TAG, "Device encrypted - only parsing core apps");
                 onlyCore = true;
             }
+
             pm = PackageManagerService.main(context, installer,
                     factoryTest != SystemServer.FACTORY_TEST_OFF,
                     onlyCore);
@@ -273,10 +259,11 @@ class ServerThread extends Thread {
             }
 
             ActivityManagerService.setSystemProcess();
-
+            
             Slog.i(TAG, "User Service");
             ServiceManager.addService(Context.USER_SERVICE,
                     UserManagerService.getInstance());
+
 
             mContentResolver = context.getContentResolver();
 
@@ -288,7 +275,6 @@ class ServerThread extends Thread {
             } catch (Throwable e) {
                 Slog.e(TAG, "Failure starting Account Manager", e);
             }
-
 
             Slog.i(TAG, "Content Manager");
             contentService = ContentService.main(context,
@@ -353,6 +339,14 @@ class ServerThread extends Thread {
                 ServiceManager.addService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE, bluetooth);
             }
 
+            Slog.i(TAG, "DynamicMemoryManager Service");
+            dmm = new DynamicMemoryManagerService(context);
+
+            cpuGovernorManager = new CpuGovernorService(context);
+
+            if (cpuGovernorManager == null) {
+                Slog.e(TAG, "CpuGovernorService failed to start");
+            }
         } catch (RuntimeException e) {
             Slog.e("System", "******************************************");
             Slog.e("System", "************ Failure starting core service", e);
@@ -414,8 +408,7 @@ class ServerThread extends Thread {
                 try {
                     /*
                      * NotificationManagerService is dependant on MountService,
-                     * (for media / usb notification) so we must start MountService
-                     * first
+                     * (for media / usb notifications) so we must start MountService first.
                      */
                     Slog.i(TAG, "Mount Service");
                     mountService = new MountService(context);
@@ -426,7 +419,7 @@ class ServerThread extends Thread {
             }
 
             try {
-                Slog.i(TAG, "LockSettingsService");
+                Slog.i(TAG,  "LockSettingsService");
                 lockSettings = new LockSettingsService(context);
                 ServiceManager.addService("lock_settings", lockSettings);
             } catch (Throwable e) {
@@ -518,6 +511,15 @@ class ServerThread extends Thread {
                 wifiP2p.connectivityServiceReady();
             } catch (Throwable e) {
                 reportWtf("starting Connectivity Service", e);
+            }
+
+            try {
+                Slog.i(TAG, "Network Service Discovery Service");
+                serviceDiscovery = NsdService.create(context);
+                ServiceManager.addService(
+                        Context.NSD_SERVICE, serviceDiscovery);
+            } catch (Throwable e) {
+                reportWtf("starting Service Discovery Service", e);
             }
 
             try {
@@ -622,11 +624,13 @@ class ServerThread extends Thread {
                 }
             }
 
-            try {
-                Slog.i(TAG, "Audio Service");
-                ServiceManager.addService(Context.AUDIO_SERVICE, new AudioService(context));
-            } catch (Throwable e) {
-                reportWtf("starting Audio Service", e);
+            if (!"0".equals(SystemProperties.get("system_init.startaudioservice"))) {
+                try {
+                    Slog.i(TAG, "Audio Service");
+                    ServiceManager.addService(Context.AUDIO_SERVICE, new AudioService(context));
+                } catch (Throwable e) {
+                    reportWtf("starting Audio Service", e);
+                }
             }
 
             try {
@@ -653,6 +657,15 @@ class ServerThread extends Thread {
                 ServiceManager.addService(Context.USB_SERVICE, usb);
             } catch (Throwable e) {
                 reportWtf("starting UsbService", e);
+            }
+
+            try {
+                Slog.i(TAG, "Serial Service");
+                // Serial port support
+                serial = new SerialService(context);
+                ServiceManager.addService(Context.SERIAL_SERVICE, serial);
+            } catch (Throwable e) {
+                Slog.e(TAG, "Failure starting SerialService", e);
             }
 
             try {
@@ -725,16 +738,34 @@ class ServerThread extends Thread {
             } catch (Throwable e) {
                 Slog.e(TAG, "Failure starting AssetRedirectionManager Service", e);
             }
+
+            try {
+                Slog.i(TAG, "CommonTimeManagementService");
+                commonTimeMgmtService = new CommonTimeManagementService(context);
+                ServiceManager.addService("commontime_management", commonTimeMgmtService);
+            } catch (Throwable e) {
+                reportWtf("starting CommonTimeManagementService service", e);
+            }
+
+            try {
+                Slog.i(TAG, "CertBlacklister");
+                CertBlacklister blacklister = new CertBlacklister(context);
+            } catch (Throwable e) {
+                reportWtf("starting CertBlacklister", e);
+            }
+            
+            if (context.getResources().getBoolean(
+                    com.android.internal.R.bool.config_dreamsSupported)) {
+                try {
+                    Slog.i(TAG, "Dreams Service");
+                    // Dreams (interactive idle-time views, a/k/a screen savers)
+                    dreamy = new DreamManagerService(context, wmHandler);
+                    ServiceManager.addService(DreamService.DREAM_SERVICE, dreamy);
+                } catch (Throwable e) {
+                    reportWtf("starting DreamManagerService", e);
+                }
+            }
         }
-
-        // make sure the ADB_ENABLED setting value matches the secure property value
-        Settings.Secure.putInt(mContentResolver, Settings.Secure.ADB_PORT,
-                Integer.parseInt(SystemProperties.get("service.adb.tcp.port", "-1")));
-
-        // register observer to listen for settings changes
-        mContentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.ADB_PORT),
-            false, new AdbPortObserver());
 
         // Before things start rolling, be sure we have decided whether
         // we are in safe mode.
@@ -846,6 +877,7 @@ class ServerThread extends Thread {
         final LocationManagerService locationF = location;
         final CountryDetectorService countryDetectorF = countryDetector;
         final NetworkTimeUpdateService networkTimeUpdaterF = networkTimeUpdater;
+        final CommonTimeManagementService commonTimeMgmtServiceF = commonTimeMgmtService;
         final TextServicesManagerService textServiceManagerServiceF = tsms;
         final StatusBarManagerService statusBarF = statusBar;
         final DreamManagerService dreamyF = dreamy;
@@ -905,7 +937,7 @@ class ServerThread extends Thread {
                 try {
                     if (twilightF != null) twilightF.systemReady();
                 } catch (Throwable e) {
-                    reportWtf("making Twilight Service ready", e);
+                    reportWtf("makin Twilight Service ready", e);
                 }
                 try {
                     if (uiModeF != null) uiModeF.systemReady();
@@ -958,6 +990,11 @@ class ServerThread extends Thread {
                     reportWtf("making Network Time Service ready", e);
                 }
                 try {
+                    if (commonTimeMgmtServiceF != null) commonTimeMgmtServiceF.systemReady();
+                } catch (Throwable e) {
+                    reportWtf("making Common time management service ready", e);
+                }
+                try {
                     if (textServiceManagerServiceF != null) textServiceManagerServiceF.systemReady();
                 } catch (Throwable e) {
                     reportWtf("making Text Services Manager Service ready", e);
@@ -994,7 +1031,7 @@ class ServerThread extends Thread {
         Intent intent = new Intent();
         intent.setComponent(new ComponentName("com.android.systemui",
                     "com.android.systemui.SystemUIService"));
-        Slog.d(TAG, "Starting service: " + intent);
+        //Slog.d(TAG, "Starting service: " + intent);
         context.startServiceAsUser(intent, UserHandle.OWNER);
     }
 }

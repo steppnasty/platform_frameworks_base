@@ -127,9 +127,11 @@ LOCAL_SRC_FILES:= \
 	android_media_AudioSystem.cpp \
 	android_media_AudioTrack.cpp \
 	android_media_JetPlayer.cpp \
+	android_media_RemoteDisplay.cpp \
 	android_media_ToneGenerator.cpp \
 	android_hardware_Camera.cpp \
 	android_hardware_SensorManager.cpp \
+	android_hardware_SerialPort.cpp \
 	android_hardware_UsbDevice.cpp \
 	android_hardware_UsbDeviceConnection.cpp \
 	android_hardware_UsbRequest.cpp \
@@ -148,12 +150,10 @@ LOCAL_SRC_FILES:= \
 	android_app_backup_FullBackup.cpp \
 	android_content_res_ObbScanner.cpp \
 	android_content_res_Configuration.cpp \
-	android_animation_PropertyValuesHolder.cpp
-
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-        LOCAL_CFLAGS += -DQCOM_HARDWARE
-	LOCAL_SRC_FILES += org_codeaurora_Performance.cpp \
-            com_android_internal_app_ActivityTrigger.cpp
+	android_animation_PropertyValuesHolder.cpp \
+	com_android_internal_app_ActivityTrigger.cpp
+ifeq ($(call is-vendor-board-platform,QCOM),true)
+LOCAL_SRC_FILES += org_codeaurora_Performance.cpp
 endif
 
 LOCAL_C_INCLUDES += \
@@ -164,12 +164,11 @@ LOCAL_C_INCLUDES += \
 	$(call include-path-for, bluedroid) \
 	$(call include-path-for, libhardware)/hardware \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
-	$(LOCAL_PATH)/../../include/ui \
-	$(LOCAL_PATH)/../../include/utils \
+ $(TOP)/frameworks/av/include \
 	external/skia/include/core \
 	external/skia/include/effects \
 	external/skia/include/images \
-        external/skia/include/ports \
+	external/skia/include/ports \
 	external/skia/src/ports \
 	external/skia/include/utils \
 	external/sqlite/dist \
@@ -185,9 +184,15 @@ LOCAL_C_INCLUDES += \
 	external/zlib \
 	frameworks/opt/emoji \
 	libcore/include
+ifeq ($(call is-vendor-board-platform,QCOM),true)
+	LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+	LOCAL_ADDITIONAL_DEPENDENCIES := $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
+else
+	LOCAL_CFLAGS += -DNON_QCOM_TARGET
+endif
 
 LOCAL_SHARED_LIBRARIES := \
-        libandroidfw \
+	libandroidfw \
 	libexpat \
 	libnativehelper \
 	libcutils \
@@ -212,23 +217,21 @@ LOCAL_SHARED_LIBRARIES := \
 	libicuuc \
 	libicui18n \
 	libmedia \
+	libmedia_native \
 	libwpa_client \
 	libjpeg \
-	libnfc_ndef \
 	libusbhost \
 	libharfbuzz \
-	libz \
+	libz
+
+ifeq ($(HAVE_SELINUX),true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
 
 ifeq ($(USE_OPENGL_RENDERER),true)
 	LOCAL_SHARED_LIBRARIES += libhwui
-endif
-
-ifeq ($(BOARD_HAVE_BLUETOOTH),true)
-LOCAL_C_INCLUDES += \
-	external/dbus \
-	system/bluetooth/bluez-clean-headers
-LOCAL_CFLAGS += -DHAVE_BLUETOOTH
-LOCAL_SHARED_LIBRARIES += libbluedroid libdbus
 endif
 
 LOCAL_SHARED_LIBRARIES += \
@@ -244,10 +247,6 @@ ifeq ($(WITH_MALLOC_LEAK_CHECK),true)
 endif
 
 LOCAL_MODULE:= libandroid_runtime
-
-ifneq ($(BOARD_MOBILEDATA_INTERFACE_NAME),)
-	LOCAL_CFLAGS += -DMOBILE_IFACE_NAME='$(BOARD_MOBILEDATA_INTERFACE_NAME)'
-endif
 
 include $(BUILD_SHARED_LIBRARY)
 

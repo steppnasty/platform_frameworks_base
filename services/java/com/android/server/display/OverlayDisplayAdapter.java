@@ -91,7 +91,7 @@ final class OverlayDisplayAdapter extends DisplayAdapter {
             @Override
             public void run() {
                 getContext().getContentResolver().registerContentObserver(
-                        Settings.Global.getUriFor(Settings.Secure.OVERLAY_DISPLAY_DEVICES),
+                        Settings.Global.getUriFor(Settings.Global.OVERLAY_DISPLAY_DEVICES),
                         true, new ContentObserver(getHandler()) {
                             @Override
                             public void onChange(boolean selfChange) {
@@ -112,7 +112,7 @@ final class OverlayDisplayAdapter extends DisplayAdapter {
 
     private void updateOverlayDisplayDevicesLocked() {
         String value = Settings.Global.getString(getContext().getContentResolver(),
-                Settings.Secure.OVERLAY_DISPLAY_DEVICES);
+                Settings.Global.OVERLAY_DISPLAY_DEVICES);
         if (value == null) {
             value = "";
         }

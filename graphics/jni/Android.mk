@@ -5,8 +5,8 @@ LOCAL_SRC_FILES:= \
     android_renderscript_RenderScript.cpp
 
 LOCAL_SHARED_LIBRARIES := \
-	libandroidfw \
         libandroid_runtime \
+        libandroidfw \
         libnativehelper \
         libRS \
         libcutils \
@@ -21,7 +21,7 @@ rs_generated_include_dir := $(call intermediates-dir-for,SHARED_LIBRARIES,libRS,
 
 LOCAL_C_INCLUDES += \
 	$(JNI_H_INCLUDE) \
-	$(LOCAL_PATH)/../../libs/rs \
+	frameworks/rs \
 	$(rs_generated_include_dir) \
 	$(call include-path-for, corecg graphics)
 
@@ -32,6 +32,6 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(addprefix $(rs_generated_include_dir)/,rsgApi
 LOCAL_MODULE:= librs_jni
 LOCAL_ADDITIONAL_DEPENDENCIES += $(rs_generated_source)
 LOCAL_MODULE_TAGS := optional
-LOCAL_REQUIRED_MODULES := libRS
+LOCAL_REQUIRED_MODULES := libRS libRSDriver
 
 include $(BUILD_SHARED_LIBRARY)

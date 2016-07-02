@@ -204,6 +204,7 @@ static void nativeReboot(JNIEnv *env, jclass clazz, jstring reason) {
     jniThrowIOException(env, errno);
 }
 
+
 // ----------------------------------------------------------------------------
 
 static JNINativeMethod gPowerManagerServiceMethods[] = {

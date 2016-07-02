@@ -39,9 +39,11 @@ public class SamplingProfilerService extends Binder {
     private static final boolean LOCAL_LOGV = false;
     public static final String SNAPSHOT_DIR = SamplingProfilerIntegration.SNAPSHOT_DIR;
 
+    private final Context mContext;
     private FileObserver snapshotObserver;
 
     public SamplingProfilerService(Context context) {
+        mContext = context;
         registerSettingObserver(context);
         startWorking(context);
     }
@@ -88,12 +90,14 @@ public class SamplingProfilerService extends Binder {
     private void registerSettingObserver(Context context) {
         ContentResolver contentResolver = context.getContentResolver();
         contentResolver.registerContentObserver(
-                Settings.Secure.getUriFor(Settings.Secure.SAMPLING_PROFILER_MS),
+                Settings.Global.getUriFor(Settings.Global.SAMPLING_PROFILER_MS),
                 false, new SamplingProfilerSettingsObserver(contentResolver));
     }
 
     @Override
     protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+        mContext.enforceCallingOrSelfPermission(android.Manifest.permission.DUMP, TAG);
+
         pw.println("SamplingProfilerService:");
         pw.println("Watching directory: " + SNAPSHOT_DIR);
     }
@@ -107,8 +111,8 @@ public class SamplingProfilerService extends Binder {
         }
         @Override
         public void onChange(boolean selfChange) {
-            Integer samplingProfilerMs = Settings.Secure.getInt(
-                    mContentResolver, Settings.Secure.SAMPLING_PROFILER_MS, 0);
+            Integer samplingProfilerMs = Settings.Global.getInt(
+                    mContentResolver, Settings.Global.SAMPLING_PROFILER_MS, 0);
             // setting this secure property will start or stop sampling profiler,
             // as well as adjust the the time between taking snapshots.
             SystemProperties.set("persist.sys.profiler_ms", samplingProfilerMs.toString());

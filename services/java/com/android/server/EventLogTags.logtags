@@ -47,16 +47,17 @@ option java_package com.android.server
 # file on cache partition was deleted
 2748 cache_file_deleted (path|3)
 
+
 # ---------------------------
 # NotificationManagerService.java
 # ---------------------------
 # when a NotificationManager.notify is called
-2750 notification_enqueue (pkg|3),(id|1|5),(tag|3),(notification|3)
+2750 notification_enqueue (pkg|3),(id|1|5),(tag|3),(userid|1|5),(notification|3)
 # when someone tries to cancel a notification, the notification manager sometimes
 # calls this with flags too
-2751 notification_cancel (pkg|3),(id|1|5),(tag|3),(required_flags|1),(forbidden_flags|1)
+2751 notification_cancel (pkg|3),(id|1|5),(tag|3),(userid|1|5),(required_flags|1),(forbidden_flags|1)
 # when someone tries to cancel all of the notifications for a particular package
-2752 notification_cancel_all (pkg|3),(required_flags|1),(forbidden_flags|1)
+2752 notification_cancel_all (pkg|3),(userid|1|5),(required_flags|1),(forbidden_flags|1)
 
 
 # ---------------------------
@@ -143,6 +144,7 @@ option java_package com.android.server
 # ---------------------------
 51100 netstats_mobile_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3)
 51101 netstats_wifi_sample (dev_rx_bytes|2|2),(dev_tx_bytes|2|2),(dev_rx_pkts|2|1),(dev_tx_pkts|2|1),(xt_rx_bytes|2|2),(xt_tx_bytes|2|2),(xt_rx_pkts|2|1),(xt_tx_pkts|2|1),(uid_rx_bytes|2|2),(uid_tx_bytes|2|2),(uid_rx_pkts|2|1),(uid_tx_pkts|2|1),(trusted_time|2|3)
+
 
 # ---------------------------
 # LockdownVpnTracker.java

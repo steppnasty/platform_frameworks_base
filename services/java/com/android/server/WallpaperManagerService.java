@@ -751,6 +751,9 @@ class WallpaperManagerService extends IWallpaperManager.Stub {
             File file = new File(dir, WALLPAPER);
             ParcelFileDescriptor fd = ParcelFileDescriptor.open(file,
                     MODE_CREATE|MODE_READ_WRITE);
+            if (!SELinux.restorecon(file)) {
+                return null;
+            }
             wallpaper.name = name;
             return fd;
         } catch (FileNotFoundException e) {

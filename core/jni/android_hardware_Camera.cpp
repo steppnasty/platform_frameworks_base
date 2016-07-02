@@ -23,6 +23,7 @@
 #include "JNIHelp.h"
 #include "android_runtime/AndroidRuntime.h"
 
+#include <cutils/properties.h>
 #include <utils/Vector.h>
 
 #include <gui/SurfaceTexture.h>
@@ -38,6 +39,7 @@ struct fields_t {
     jfieldID    surfaceTexture;
     jfieldID    facing;
     jfieldID    orientation;
+    jfieldID    canDisableShutterSound;
     jfieldID    face_rect;
     jfieldID    face_score;
     jfieldID    rect_left;
@@ -453,6 +455,12 @@ static void android_hardware_Camera_getCameraInfo(JNIEnv *env, jobject thiz,
     }
     env->SetIntField(info_obj, fields.facing, cameraInfo.facing);
     env->SetIntField(info_obj, fields.orientation, cameraInfo.orientation);
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("ro.camera.sound.forced", value, "0");
+    jboolean canDisableShutterSound = (strncmp(value, "0", 2) == 0);
+    env->SetBooleanField(info_obj, fields.canDisableShutterSound,
+            canDisableShutterSound);
 }
 
 // connect to camera service
@@ -557,7 +565,9 @@ static void android_hardware_Camera_setPreviewTexture(JNIEnv *env,
                     "SurfaceTexture already released in setPreviewTexture");
             return;
         }
+
     }
+
     if (camera->setPreviewTexture(bufferQueue) != NO_ERROR) {
         jniThrowException(env, "java/io/IOException",
                 "setPreviewTexture failed");
@@ -608,13 +618,6 @@ static void android_hardware_Camera_setHasPreviewCallback(JNIEnv *env, jobject t
     // camera->setPreviewCallbackFlags within a mutex for us.
     context->setCallbackMode(env, installed, manualBuffer);
 }
-
- static void android_hardware_Camera_sendHistogramData(JNIEnv *env, jobject thiz)
- {
- }
- static void android_hardware_Camera_setHistogramMode(JNIEnv *env, jobject thiz, jboolean mode)
- {
- }
 
 static void android_hardware_Camera_addCallbackBuffer(JNIEnv *env, jobject thiz, jbyteArray bytes, int msgType) {
     ALOGV("addCallbackBuffer: 0x%x", msgType);
@@ -705,7 +708,12 @@ static jstring android_hardware_Camera_getParameters(JNIEnv *env, jobject thiz)
     sp<Camera> camera = get_native_camera(env, thiz, NULL);
     if (camera == 0) return 0;
 
-    return env->NewStringUTF(camera->getParameters().string());
+    String8 params8 = camera->getParameters();
+    if (params8.isEmpty()) {
+        jniThrowRuntimeException(env, "getParameters failed (empty parameters)");
+        return 0;
+    }
+    return env->NewStringUTF(params8.string());
 }
 
 static void android_hardware_Camera_reconnect(JNIEnv *env, jobject thiz)
@@ -846,7 +854,7 @@ static JNINativeMethod camMethods[] = {
   { "getNumberOfCameras",
     "()I",
     (void *)android_hardware_Camera_getNumberOfCameras },
-  { "getCameraInfo",
+  { "_getCameraInfo",
     "(ILandroid/hardware/Camera$CameraInfo;)V",
     (void*)android_hardware_Camera_getCameraInfo },
   { "native_setup",
@@ -885,12 +893,6 @@ static JNINativeMethod camMethods[] = {
   { "native_takePicture",
     "(I)V",
     (void *)android_hardware_Camera_takePicture },
-  { "native_setHistogramMode",
-    "(Z)V",
-    (void *)android_hardware_Camera_setHistogramMode },
-  { "native_sendHistogramData",
-    "()V",
-    (void *)android_hardware_Camera_sendHistogramData },
   { "native_setParameters",
     "(Ljava/lang/String;)V",
     (void *)android_hardware_Camera_setParameters },
@@ -968,6 +970,8 @@ int register_android_hardware_Camera(JNIEnv *env)
           ANDROID_GRAPHICS_SURFACETEXTURE_JNI_ID, "I", &fields.surfaceTexture },
         { "android/hardware/Camera$CameraInfo", "facing",   "I", &fields.facing },
         { "android/hardware/Camera$CameraInfo", "orientation",   "I", &fields.orientation },
+        { "android/hardware/Camera$CameraInfo", "canDisableShutterSound",   "Z",
+          &fields.canDisableShutterSound },
         { "android/hardware/Camera$Face", "rect", "Landroid/graphics/Rect;", &fields.face_rect },
         { "android/hardware/Camera$Face", "score", "I", &fields.face_score },
         { "android/graphics/Rect", "left", "I", &fields.rect_left },

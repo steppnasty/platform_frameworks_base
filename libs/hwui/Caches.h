@@ -269,8 +269,17 @@ public:
     Stencil stencil;
 #endif
 
+    // Debug methods
+    PFNGLINSERTEVENTMARKEREXTPROC eventMark;
+    PFNGLPUSHGROUPMARKEREXTPROC startMark;
+    PFNGLPOPGROUPMARKEREXTPROC endMark;
+
+    PFNGLLABELOBJECTEXTPROC setLabel;
+    PFNGLGETOBJECTLABELEXTPROC getLabel;
+
 private:
     void initFont();
+    void initExtensions();
     void initConstraints();
     void initProperties();
 

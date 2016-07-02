@@ -46,7 +46,7 @@ class NativeWindowHandle : public WindowHandle {
     }
 
     virtual void Destroy() {
-      LOGI("Releasing ANativeWindow!");
+      ALOGI("Releasing ANativeWindow!");
       ANativeWindow_release(window_);
     }
 
@@ -135,13 +135,13 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurface(JNIEnv* env,
                                                                jobject surface) {
   GLEnv* gl_env = ConvertFromJava<GLEnv>(env, thiz);
   if (!surface) {
-    LOGE("GLEnvironment: Null Surface passed!");
+    ALOGE("GLEnvironment: Null Surface passed!");
     return -1;
   } else if (gl_env) {
     // Get the ANativeWindow
     ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
     if (!window) {
-      LOGE("GLEnvironment: Error creating window!");
+      ALOGE("GLEnvironment: Error creating window!");
       return -1;
     }
 
@@ -165,7 +165,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurface(JNIEnv* env,
 
       eglChooseConfig(gl_env->display(), configAttribs, &config, 1, &numConfigs);
       if (numConfigs < 1) {
-        LOGE("GLEnvironment: No suitable EGL configuration found for surface!");
+        ALOGE("GLEnvironment: No suitable EGL configuration found for surface!");
         return -1;
       }
 
@@ -176,7 +176,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurface(JNIEnv* env,
                                                       NULL);
 
       if (GLEnv::CheckEGLError("eglCreateWindowSurface")) {
-        LOGE("GLEnvironment: Error creating window surface!");
+        ALOGE("GLEnvironment: Error creating window surface!");
         return -1;
       }
 
@@ -190,20 +190,20 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurface(JNIEnv* env,
   return -1;
 }
 
-jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceTexture(JNIEnv* env,
+jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceWidthHeight(JNIEnv* env,
                                                                       jobject thiz,
-                                                                      jobject surfaceTexture,
+                                                                      jobject surface,
                                                                       jint width,
                                                                       jint height) {
   GLEnv* gl_env = ConvertFromJava<GLEnv>(env, thiz);
-  if (!surfaceTexture) {
-    LOGE("GLEnvironment: Null SurfaceTexture passed!");
+  if (!surface) {
+    ALOGE("GLEnvironment: Null SurfaceTexture passed!");
     return -1;
   } else if (gl_env) {
     // Get the ANativeWindow
-    ANativeWindow* window = ANativeWindow_fromSurface(env, surfaceTexture);
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
     if (!window) {
-      LOGE("GLEnvironment: Error creating window!");
+      ALOGE("GLEnvironment: Error creating window!");
       return -1;
     }
 
@@ -234,7 +234,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceTexture(JNIEnv* en
 
       eglChooseConfig(gl_env->display(), configAttribs, &config, 1, &numConfigs);
       if (numConfigs < 1) {
-        LOGE("GLEnvironment: No suitable EGL configuration found for surface texture!");
+        ALOGE("GLEnvironment: No suitable EGL configuration found for surface texture!");
         return -1;
       }
 
@@ -245,7 +245,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceTexture(JNIEnv* en
                                                       NULL);
 
       if (GLEnv::CheckEGLError("eglCreateWindowSurface")) {
-        LOGE("GLEnvironment: Error creating window surface!");
+        ALOGE("GLEnvironment: Error creating window surface!");
         return -1;
       }
 
@@ -269,7 +269,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
                                                       JNIEnv* env,
                                                       jobject thiz,
                                                       jobject jmediarecorder) {
-    LOGV("GLEnv Jni: nativeAddSurfaceFromMediaRecorder");
+    ALOGV("GLEnv Jni: nativeAddSurfaceFromMediaRecorder");
     GLEnv* gl_env = ConvertFromJava<GLEnv>(env, thiz);
     if (!gl_env) {
         return -1;
@@ -277,7 +277,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
     // get a native mediarecorder object from the java object
     sp<MediaRecorder> mr = getMediaRecorder(env, jmediarecorder);
     if (mr == NULL) {
-        LOGE("GLEnvironment: Error- MediaRecorder could not be initialized!");
+        ALOGE("GLEnvironment: Error- MediaRecorder could not be initialized!");
         return -1;
     }
 
@@ -286,7 +286,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
     // over binder calls
     sp<ISurfaceTexture> surfaceMS = mr->querySurfaceMediaSourceFromMediaServer();
     if (surfaceMS == NULL) {
-      LOGE("GLEnvironment: Error- MediaRecorder returned a null \
+      ALOGE("GLEnvironment: Error- MediaRecorder returned a null \
               <ISurfaceTexture> handle.");
       return -1;
     }
@@ -296,7 +296,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
 
 
     if (window == NULL) {
-      LOGE("GLEnvironment: Error creating window!");
+      ALOGE("GLEnvironment: Error creating window!");
       return -1;
     }
     window->incStrong((void*)ANativeWindow_acquire);
@@ -332,7 +332,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
 
     eglChooseConfig(gl_env->display(), configAttribs, &config, 1, &numConfigs);
     if (numConfigs < 1) {
-      LOGE("GLEnvironment: No suitable EGL configuration found for surface texture!");
+      ALOGE("GLEnvironment: No suitable EGL configuration found for surface texture!");
       delete winHandle;
       return -1;
     }
@@ -344,7 +344,7 @@ jint Java_android_filterfw_core_GLEnvironment_nativeAddSurfaceFromMediaRecorder(
                                                     NULL);
 
     if (GLEnv::CheckEGLError("eglCreateWindowSurface")) {
-      LOGE("GLEnvironment: Error creating window surface!");
+      ALOGE("GLEnvironment: Error creating window surface!");
       delete winHandle;
       return -1;
     }

@@ -93,7 +93,7 @@ int main(int argc, char** argv)
     bool png = false;
     int32_t displayId = DEFAULT_DISPLAY_ID;
     int c;
-    while ((c = getopt(argc, argv, "phd")) != -1) {
+    while ((c = getopt(argc, argv, "phd:")) != -1) {
         switch (c) {
             case 'p':
                 png = true;

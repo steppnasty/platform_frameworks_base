@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2008-2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,112 @@
 
 package android.renderscript;
 
+import android.util.SparseArray;
+
 /**
  *
  **/
 public class Script extends BaseObj {
+
+    /**
+     * KernelID is an identifier for a Script + root function pair. It is used
+     * as an identifier for ScriptGroup creation.
+     *
+     * This class should not be directly created. Instead use the method in the
+     * reflected or intrinsic code "getKernelID_funcname()".
+     *
+     */
+    public static final class KernelID extends BaseObj {
+        Script mScript;
+        int mSlot;
+        int mSig;
+        KernelID(int id, RenderScript rs, Script s, int slot, int sig) {
+            super(id, rs);
+            mScript = s;
+            mSlot = slot;
+            mSig = sig;
+        }
+    }
+
+    private final SparseArray<KernelID> mKIDs = new SparseArray<KernelID>();
+    /**
+     * Only to be used by generated reflected classes.
+     *
+     *
+     * @param slot
+     * @param sig
+     * @param ein
+     * @param eout
+     *
+     * @return KernelID
+     */
+    protected KernelID createKernelID(int slot, int sig, Element ein, Element eout) {
+        KernelID k = mKIDs.get(slot);
+        if (k != null) {
+            return k;
+        }
+
+        int id = mRS.nScriptKernelIDCreate(getID(mRS), slot, sig);
+        if (id == 0) {
+            throw new RSDriverException("Failed to create KernelID");
+        }
+
+        k = new KernelID(id, mRS, this, slot, sig);
+        mKIDs.put(slot, k);
+        return k;
+    }
+
+    /**
+     * FieldID is an identifier for a Script + exported field pair. It is used
+     * as an identifier for ScriptGroup creation.
+     *
+     * This class should not be directly created. Instead use the method in the
+     * reflected or intrinsic code "getFieldID_funcname()".
+     *
+     */
+    public static final class FieldID extends BaseObj {
+        Script mScript;
+        int mSlot;
+        FieldID(int id, RenderScript rs, Script s, int slot) {
+            super(id, rs);
+            mScript = s;
+            mSlot = slot;
+        }
+    }
+
+    private final SparseArray<FieldID> mFIDs = new SparseArray();
+    /**
+     * Only to be used by generated reflected classes.
+     *
+     * @param slot
+     * @param e
+     *
+     * @return FieldID
+     */
+    protected FieldID createFieldID(int slot, Element e) {
+        FieldID f = mFIDs.get(slot);
+        if (f != null) {
+            return f;
+        }
+
+        int id = mRS.nScriptFieldIDCreate(getID(mRS), slot);
+        if (id == 0) {
+            throw new RSDriverException("Failed to create FieldID");
+        }
+
+        f = new FieldID(id, mRS, this, slot);
+        mFIDs.put(slot, f);
+        return f;
+    }
+
+
     /**
      * Only intended for use by generated reflected code.
      *
      * @param slot
      */
     protected void invoke(int slot) {
-        mRS.nScriptInvoke(getID(), slot);
+        mRS.nScriptInvoke(getID(mRS), slot);
     }
 
     /**
@@ -37,9 +132,9 @@ public class Script extends BaseObj {
      */
     protected void invoke(int slot, FieldPacker v) {
         if (v != null) {
-            mRS.nScriptInvokeV(getID(), slot, v.getData());
+            mRS.nScriptInvokeV(getID(mRS), slot, v.getData());
         } else {
-            mRS.nScriptInvoke(getID(), slot);
+            mRS.nScriptInvoke(getID(mRS), slot);
         }
     }
 
@@ -58,17 +153,17 @@ public class Script extends BaseObj {
         }
         int in_id = 0;
         if (ain != null) {
-            in_id = ain.getID();
+            in_id = ain.getID(mRS);
         }
         int out_id = 0;
         if (aout != null) {
-            out_id = aout.getID();
+            out_id = aout.getID(mRS);
         }
         byte[] params = null;
         if (v != null) {
             params = v.getData();
         }
-        mRS.nScriptForEach(getID(), slot, in_id, out_id, params);
+        mRS.nScriptForEach(getID(mRS), slot, in_id, out_id, params);
     }
 
 
@@ -86,9 +181,9 @@ public class Script extends BaseObj {
     public void bindAllocation(Allocation va, int slot) {
         mRS.validate();
         if (va != null) {
-            mRS.nScriptBindAllocation(getID(), va.getID(), slot);
+            mRS.nScriptBindAllocation(getID(mRS), va.getID(mRS), slot);
         } else {
-            mRS.nScriptBindAllocation(getID(), 0, slot);
+            mRS.nScriptBindAllocation(getID(mRS), 0, slot);
         }
     }
 
@@ -99,7 +194,7 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, float v) {
-        mRS.nScriptSetVarF(getID(), index, v);
+        mRS.nScriptSetVarF(getID(mRS), index, v);
     }
 
     /**
@@ -109,7 +204,7 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, double v) {
-        mRS.nScriptSetVarD(getID(), index, v);
+        mRS.nScriptSetVarD(getID(mRS), index, v);
     }
 
     /**
@@ -119,7 +214,7 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, int v) {
-        mRS.nScriptSetVarI(getID(), index, v);
+        mRS.nScriptSetVarI(getID(mRS), index, v);
     }
 
     /**
@@ -129,7 +224,7 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, long v) {
-        mRS.nScriptSetVarJ(getID(), index, v);
+        mRS.nScriptSetVarJ(getID(mRS), index, v);
     }
 
     /**
@@ -139,7 +234,7 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, boolean v) {
-        mRS.nScriptSetVarI(getID(), index, v ? 1 : 0);
+        mRS.nScriptSetVarI(getID(mRS), index, v ? 1 : 0);
     }
 
     /**
@@ -149,7 +244,7 @@ public class Script extends BaseObj {
      * @param o
      */
     public void setVar(int index, BaseObj o) {
-        mRS.nScriptSetVarObj(getID(), index, (o == null) ? 0 : o.getID());
+        mRS.nScriptSetVarObj(getID(mRS), index, (o == null) ? 0 : o.getID(mRS));
     }
 
     /**
@@ -159,13 +254,25 @@ public class Script extends BaseObj {
      * @param v
      */
     public void setVar(int index, FieldPacker v) {
-        mRS.nScriptSetVarV(getID(), index, v.getData());
+        mRS.nScriptSetVarV(getID(mRS), index, v.getData());
+    }
+
+    /**
+     * Only intended for use by generated reflected code.
+     *
+     * @param index
+     * @param v
+     * @param e
+     * @param dims
+     */
+    public void setVar(int index, FieldPacker v, Element e, int[] dims) {
+        mRS.nScriptSetVarVE(getID(mRS), index, v.getData(), e.getID(mRS), dims);
     }
 
     public void setTimeZone(String timeZone) {
         mRS.validate();
         try {
-            mRS.nScriptSetTimeZone(getID(), timeZone.getBytes("UTF-8"));
+            mRS.nScriptSetTimeZone(getID(mRS), timeZone.getBytes("UTF-8"));
         } catch (java.io.UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
