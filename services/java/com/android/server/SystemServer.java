@@ -339,11 +339,7 @@ class ServerThread extends Thread {
                 ServiceManager.addService(BluetoothAdapter.BLUETOOTH_MANAGER_SERVICE, bluetooth);
             }
 
-            Slog.i(TAG, "DynamicMemoryManager Service");
-            dmm = new DynamicMemoryManagerService(context);
-
             cpuGovernorManager = new CpuGovernorService(context);
-
             if (cpuGovernorManager == null) {
                 Slog.e(TAG, "CpuGovernorService failed to start");
             }
