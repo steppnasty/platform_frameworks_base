@@ -191,6 +191,12 @@ else
 	LOCAL_CFLAGS += -DNON_QCOM_TARGET
 endif
 
+LOCAL_CFLAGS += -include bionic/libc/kernel/arch-arm/asm/posix_types.h
+LOCAL_CFLAGS += -include bionic/libc/kernel/arch-arm/asm/byteorder.h
+LOCAL_CFLAGS += -include bionic/libc/kernel/common/linux/types.h
+LOCAL_CFLAGS += -include bionic/libc/kernel/common/linux/posix_types.h
+LOCAL_CFLAGS += -include bionic/libc/kernel/common/linux/socket.h
+
 LOCAL_SHARED_LIBRARIES := \
 	libandroidfw \
 	libexpat \
