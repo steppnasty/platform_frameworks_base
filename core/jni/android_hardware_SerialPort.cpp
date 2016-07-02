@@ -120,8 +120,8 @@ android_hardware_SerialPort_open(JNIEnv *env, jobject thiz, jobject fileDescript
         case 3000000:
             speed = B3000000;
             break;
-        case 3500000:
-            speed = B3500000;
+        case 3686400:
+            speed = B3686400;
             break;
         case 4000000:
             speed = B4000000;
